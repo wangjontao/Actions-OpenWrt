@@ -1,0 +1,277 @@
+name: HY3000 Default WiFi ImmortalWrt 24.10
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - jontaoNpS-hy3000-defaultwifi-imm2410
+
+permissions:
+  contents: write
+
+env:
+  PASSWALL_TAG: 26.3.6-1
+  PASSWALL2_TAG: 26.3.5-1
+  PASSWALL_PACKAGES_COMMIT: 3e11c458c552aefd348232c627fd1ed9f8f08e41
+  HOMEPROXY_COMMIT: edece28a0085f36d469ec82c8d45f562f602db53
+  OPENCLASH_COMMIT: c3a33c1d3407956fdf8f0e0b7c1a4c52e6ad9593
+  NPS_COMMIT: 480f2e502575641a0c9280d6fad971550621316d
+  LEAN_LUCI_COMMIT: 0fb07d4de6db4bae39cd5c6c399dec0f0dde3cc6
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout Actions-OpenWrt
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Clone HY3000 ImmortalWrt source
+        run: |
+          git clone --depth=1 --branch jontaoNpS-philips-hy3000-defaultwifi-imm2410 \
+            https://github.com/wangjontao/immortalwrt-24.10.git openwrt
+
+      - name: Initialize environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        working-directory: openwrt
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib gettext git \
+            libncurses-dev libssl-dev python3-setuptools rsync swig unzip zlib1g-dev file wget curl jq \
+            openssl ccache zstd
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/Ruby
+          sudo docker system prune -af >/dev/null 2>&1 || true
+          sudo apt-get clean
+          df -h /
+          echo "BUILD_DATE=$(date +'%Y.%m.%d-%H.%M.%S')" >> "$GITHUB_ENV"
+          echo "SOURCE_HASH=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+
+      - name: Install Go 1.24
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.24.x
+          cache: false
+
+      - name: Verify native HY3000 layout
+        working-directory: openwrt
+        run: |
+          DTS=target/linux/mediatek/dts/mt7981b-philips-hy3000.dts
+          test -s "$DTS"
+          grep -q 'compatible = "philips,hy3000", "mediatek,mt7981"' "$DTS"
+          grep -q 'root=PARTLABEL=rootfs rootwait rootfstype=squashfs,f2fs' "$DTS"
+          grep -q 'partname = "factory"' "$DTS"
+          grep -q 'nvmem-cell-names = "eeprom"' "$DTS"
+          sed -n '/^define Device\/philips_hy3000$/,/^endef$/p' target/linux/mediatek/image/filogic.mk | grep -q 'DEVICE_DTS := mt7981b-philips-hy3000'
+          grep -q 'TARGET_DEVICES += philips_hy3000' target/linux/mediatek/image/filogic.mk
+          echo 'Verified native HY3000 target from this source tree.'
+
+      - name: Update feeds and add application sources
+        working-directory: openwrt
+        run: |
+          cat >> feeds.conf.default <<'FEEDS'
+          src-git istore https://github.com/linkease/istore.git;main
+          src-git nas_packages https://github.com/linkease/nas-packages.git;master
+          src-git nas_luci https://github.com/linkease/nas-packages-luci.git;main
+          FEEDS
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          ./scripts/feeds install -d y -p istore luci-app-store
+          ./scripts/feeds install -d y -p nas_packages quickstart
+          ./scripts/feeds install -d y -p nas_luci luci-app-quickstart
+
+          rm -rf package/luci-app-passwall package/luci-app-passwall2 package/passwall-packages
+          git clone --depth=1 --branch "$PASSWALL_TAG" https://github.com/Openwrt-Passwall/openwrt-passwall.git /tmp/passwall
+          mv /tmp/passwall/luci-app-passwall package/
+          git clone --depth=1 --branch "$PASSWALL2_TAG" https://github.com/Openwrt-Passwall/openwrt-passwall2.git /tmp/passwall2
+          mv /tmp/passwall2/luci-app-passwall2 package/
+          git clone https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git package/passwall-packages
+          git -C package/passwall-packages checkout "$PASSWALL_PACKAGES_COMMIT"
+          rm -rf package/passwall-packages/.git
+
+          rm -rf package/homeproxy package/luci-app-homeproxy
+          git clone https://github.com/immortalwrt/homeproxy.git package/homeproxy
+          git -C package/homeproxy checkout "$HOMEPROXY_COMMIT"
+          rm -rf package/homeproxy/.git
+
+          rm -rf package/luci-app-openclash
+          OPENCLASH_TMP="$(mktemp -d)"
+          curl --fail --location --show-error --silent \
+            --connect-timeout 30 --max-time 300 \
+            --retry 5 --retry-all-errors --retry-delay 10 --retry-max-time 1800 \
+            "https://codeload.github.com/vernesong/OpenClash/tar.gz/${OPENCLASH_COMMIT}" \
+            --output "$OPENCLASH_TMP/source.tar.gz"
+          tar -xzf "$OPENCLASH_TMP/source.tar.gz" -C "$OPENCLASH_TMP"
+          test -s "$OPENCLASH_TMP/OpenClash-${OPENCLASH_COMMIT}/luci-app-openclash/Makefile"
+          cp -a "$OPENCLASH_TMP/OpenClash-${OPENCLASH_COMMIT}/luci-app-openclash" package/
+
+          rm -rf \
+            feeds/luci/applications/luci-app-nps feeds/luci/applications/luci-app-npc \
+            feeds/packages/net/npc feeds/packages/net/nps \
+            package/feeds/luci/luci-app-nps package/feeds/luci/luci-app-npc \
+            package/feeds/packages/npc package/feeds/packages/nps \
+            package/npc package/luci-app-nps package/luci-app-npc
+          git clone https://github.com/djylb/nps-openwrt.git /tmp/nps
+          git -C /tmp/nps checkout "$NPS_COMMIT"
+          cp -a /tmp/nps/npc package/
+          git init /tmp/lean-luci
+          git -C /tmp/lean-luci remote add origin https://github.com/coolsnowwolf/luci.git
+          git -C /tmp/lean-luci sparse-checkout init --cone
+          git -C /tmp/lean-luci sparse-checkout set applications/luci-app-nps
+          git -C /tmp/lean-luci fetch --depth=1 origin "$LEAN_LUCI_COMMIT"
+          git -C /tmp/lean-luci checkout --detach FETCH_HEAD
+          cp -a /tmp/lean-luci/applications/luci-app-nps package/
+          sed -i 's#include ../../luci.mk#include $(TOPDIR)/feeds/luci/luci.mk#' package/luci-app-nps/Makefile
+          sed -i '/^LUCI_DEPENDS:=/s/ +npc//' package/luci-app-nps/Makefile
+          sed -i 's/server\.datatype[[:space:]]*=[[:space:]]*"ipaddr"/server.datatype = "host"/' package/luci-app-nps/luasrc/model/cbi/nps.lua
+
+          rm -rf package/luci-theme-argon package/luci-app-argon-config
+          git clone --depth=1 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
+          git clone --depth=1 https://github.com/jerrykuku/luci-app-argon-config.git package/luci-app-argon-config
+
+          rm -rf feeds/nas_packages/network/services/librespeed-cli \
+            feeds/nas_packages/network/services/librespeed-cli-rust \
+            feeds/nas_packages/libs/librespeed-common
+          rm -rf package/feeds/nas_packages/librespeed-cli \
+            package/feeds/nas_packages/librespeed-cli-rust \
+            package/feeds/nas_packages/librespeed-common
+          rm -rf tmp
+
+      - name: Configure HY3000 A WiFi and first-boot defaults
+        working-directory: openwrt
+        run: |
+          cat > .config <<'CONFIG'
+          CONFIG_TARGET_mediatek=y
+          CONFIG_TARGET_mediatek_filogic=y
+          CONFIG_TARGET_mediatek_filogic_DEVICE_philips_hy3000=y
+          CONFIG_PACKAGE_luci=y
+          CONFIG_LUCI_LANG_zh_Hans=y
+          CONFIG_PACKAGE_luci-app-store=y
+          CONFIG_PACKAGE_luci-app-quickstart=y
+          CONFIG_PACKAGE_quickstart=y
+          CONFIG_PACKAGE_luci-theme-argon=y
+          CONFIG_PACKAGE_luci-app-argon-config=y
+          CONFIG_PACKAGE_luci-app-ttyd=y
+          CONFIG_PACKAGE_ttyd=y
+          CONFIG_PACKAGE_luci-app-passwall=y
+          CONFIG_PACKAGE_luci-app-passwall2=y
+          CONFIG_PACKAGE_luci-app-homeproxy=y
+          CONFIG_PACKAGE_luci-app-openclash=y
+          CONFIG_PACKAGE_npc=y
+          CONFIG_PACKAGE_luci-app-nps=y
+          # CONFIG_PACKAGE_luci-app-npc is not set
+          CONFIG_PACKAGE_luci-app-filemanager=y
+          CONFIG_PACKAGE_luci-app-upnp=y
+          CONFIG_PACKAGE_luci-app-wol=y
+          CONFIG_PACKAGE_luci-app-samba4=y
+          CONFIG_PACKAGE_luci-app-sqm=y
+          CONFIG_PACKAGE_luci-app-statistics=y
+          CONFIG_PACKAGE_curl=y
+          CONFIG_PACKAGE_ip-full=y
+          CONFIG_PACKAGE_ca-certificates=y
+          CONFIG_PACKAGE_kmod-tun=y
+          CONFIG_PACKAGE_kmod-nft-socket=y
+          CONFIG_PACKAGE_kmod-nft-tproxy=y
+          CONFIG_PACKAGE_dnsmasq-full=y
+          # CONFIG_CCACHE is not set
+          CONFIG
+          make defconfig
+
+          mkdir -p files/etc
+          openssl passwd -1 '@password@' > files/etc/dulwifi-root.hash
+          cp package/base-files/files/etc/shadow files/etc/shadow
+          HASH="$(cat files/etc/dulwifi-root.hash)"
+          sed -i "s#^root:[^:]*:#root:${HASH}:#" files/etc/shadow
+          chmod 600 files/etc/shadow files/etc/dulwifi-root.hash
+          chmod 755 files/etc/uci-defaults/99-zz-dulwifi files/etc/init.d/dulwifi-firstboot files/usr/libexec/dulwifi-firstboot
+          sh -n files/etc/uci-defaults/99-zz-dulwifi
+          sh -n files/usr/libexec/dulwifi-firstboot
+          test ! -e package/feeds/luci/luci-app-nps
+          test ! -e package/feeds/packages/npc
+          grep -q '^LUCI_DEPENDS:=' package/luci-app-nps/Makefile || { echo 'ERROR: luci-app-nps LUCI_DEPENDS is missing'; exit 1; }
+          if grep -Eq '^LUCI_DEPENDS:=.*[[:space:]]\+npc([[:space:]]|$)' package/luci-app-nps/Makefile; then
+            echo 'ERROR: luci-app-nps still depends on npc and would create a recursive dependency'
+            exit 1
+          fi
+          grep -Fq 'server.datatype = "host"' package/luci-app-nps/luasrc/model/cbi/nps.lua
+          grep -Fq "server_addr='nps.jontao.top'" files/usr/libexec/dulwifi-firstboot
+
+          for symbol in CONFIG_PACKAGE_luci-app-store CONFIG_PACKAGE_luci-app-quickstart \
+            CONFIG_PACKAGE_luci-theme-argon CONFIG_PACKAGE_luci-app-ttyd \
+            CONFIG_PACKAGE_luci-app-passwall CONFIG_PACKAGE_luci-app-passwall2 \
+            CONFIG_PACKAGE_luci-app-homeproxy CONFIG_PACKAGE_luci-app-openclash \
+            CONFIG_PACKAGE_luci-app-nps CONFIG_PACKAGE_npc; do
+            grep -qx "$symbol=y" .config || { echo "ERROR: $symbol missing"; exit 1; }
+          done
+          ./scripts/diffconfig.sh | tee HY3000-DefaultWiFi-final.config
+
+      - name: Restore download cache
+        id: downloads
+        uses: actions/cache/restore@v4
+        with:
+          path: openwrt/dl
+          key: hy3000-actions-downloads-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            hy3000-actions-downloads-v1-
+
+      - name: Download and compile
+        working-directory: openwrt
+        run: |
+          make download -j"$(nproc)"
+          find dl -type f -size -1024c -print -delete
+          rm -rf feeds/*/.git package/*/.git package/*/*/.git
+          rm -rf dl/go-mod-cache
+          mkdir -p dl/go-mod-cache
+          df -h /
+          # mt76 needs the mac80211 backport headers to be staged first. Building
+          # these two packages sequentially avoids a parallel dependency race.
+          make package/kernel/mac80211/compile -j1 V=s
+          make package/kernel/mt76/compile -j1 V=s
+          make -j"$(nproc)" || { df -h /; make -j1 V=s; }
+
+      - name: Save download cache even after failure
+        if: ${{ always() && steps.downloads.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: openwrt/dl
+          key: ${{ steps.downloads.outputs.cache-primary-key }}
+
+      - name: Verify and collect
+        working-directory: openwrt
+        run: |
+          mkdir -p upload
+          mapfile -t images < <(find bin/targets/mediatek/filogic -maxdepth 1 -type f \( -iname '*philips_hy3000*sysupgrade.bin' \) -size +5M)
+          [ "${#images[@]}" -gt 0 ]
+          mapfile -t manifests < <(find bin/targets/mediatek/filogic -maxdepth 1 -type f -iname '*philips_hy3000*.manifest')
+          [ "${#manifests[@]}" -gt 0 ]
+          for package in luci-app-store luci-app-quickstart luci-theme-argon luci-app-ttyd \
+            luci-app-passwall luci-app-passwall2 luci-app-homeproxy luci-app-openclash luci-app-nps npc; do
+            grep -q "^${package} " "${manifests[0]}" || { echo "ERROR: ${package} missing"; exit 1; }
+          done
+          cp -a "${images[@]}" "${manifests[@]}" HY3000-DefaultWiFi-final.config upload/
+          sha256sum upload/* | tee upload/SHA256SUMS
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: HY3000-DefaultWiFi-${{ env.BUILD_DATE }}
+          name: HY3000 Default WiFi ${{ env.BUILD_DATE }}
+          files: openwrt/upload/*
+          body: |
+            Philips HY3000 / MT7981 / ported eMMC DTS for immortalwrt-24.10.
+            Includes iStore, QuickStart, Argon, TTYD, PassWall, PassWall2, HomeProxy, OpenClash and luci-app-nps.
+            Management: http://192.168.7.1, root password @password@. WiFi A-2.4G and A-5G, password a1111111.
+            NPS server: nps.jontao.top:8024; first boot writes the uppercase physical WAN MAC without colons to vkey.
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: HY3000-DefaultWiFi-${{ env.BUILD_DATE }}
+          path: openwrt/upload/*
+          if-no-files-found: error
+          retention-days: 30
