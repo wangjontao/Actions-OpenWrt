@@ -57,18 +57,22 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Verify NPS 0.26.24 and enable domain server
+      - name: Pin original ehang NPS client 0.26.10 and enable domain server
         working-directory: openwrt
         run: |
-          NPS_VERSION="$(sed -n 's/^PKG_VERSION:=//p' feeds/packages/net/nps/Makefile | head -n1)"
-          [ "$NPS_VERSION" = "0.26.24" ] || { echo "ERROR: expected NPS 0.26.24, got $NPS_VERSION"; exit 1; }
+          NPS_MAKEFILE=feeds/packages/net/nps/Makefile
+          sed -i 's/^PKG_VERSION:=.*/PKG_VERSION:=0.26.10/' "$NPS_MAKEFILE"
+          sed -i 's#^PKG_SOURCE_URL:=.*#PKG_SOURCE_URL:=https://codeload.github.com/ehang-io/nps/tar.gz/v$(PKG_VERSION)?#' "$NPS_MAKEFILE"
+          sed -i 's/^PKG_HASH:=.*/PKG_HASH:=1b2fe9d251f55105d65027a1cee464f65d2f6ab3bd4a20e4655e5135db68aee7/' "$NPS_MAKEFILE"
+          grep -q '^PKG_VERSION:=0.26.10$' "$NPS_MAKEFILE"
+          grep -q 'github.com/ehang-io/nps' "$NPS_MAKEFILE"
           for nps_lua in feeds/luci/applications/luci-app-nps/luasrc/model/cbi/nps.lua package/feeds/luci/luci-app-nps/luasrc/model/cbi/nps.lua; do
             [ -f "$nps_lua" ] || continue
             sed -i -E 's/server\.datatype[[:space:]]*=[[:space:]]*"ipaddr"/server.datatype="host"/' "$nps_lua"
             sed -i 's/Must an IPv4 address/IPv4 address or domain name/' "$nps_lua"
           done
           grep -q 'server.datatype="host"' feeds/luci/applications/luci-app-nps/luasrc/model/cbi/nps.lua
-          echo "NPS/NPC version: $NPS_VERSION; LuCI domain input enabled."
+          echo 'Pinned original ehang-io NPC 0.26.10 for server compatibility.'
 
       - name: Pin Passwall 26.3.6-1 and add Passwall2 26.3.5-1
         working-directory: openwrt
@@ -135,6 +139,7 @@ jobs:
           CONFIG_PACKAGE_kmod-nft-tproxy=y
           CONFIG_PACKAGE_kmod-inet-diag=y
           CONFIG_PACKAGE_luci-compat=y
+          CONFIG_CCACHE=y
           CONFIG
           make defconfig
           for sym in \
@@ -155,11 +160,11 @@ jobs:
         working-directory: openwrt
         run: |
           sed -i 's/192\.168\.[0-9]*\.[0-9]*/192.168.7.1/g' package/base-files/files/bin/config_generate
-          sed -i -e 's/^SSID1=.*/SSID1=A-2.4G/' \
+          sed -i -e 's/^SSID1=.*/SSID1=JuLiang-2.4G/' -e 's/^Channel=.*/Channel=9/' \
             -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
             -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' \
             package/mtk/drivers/wifi-profile/files/mt7981/mt7981.dbdc.b0.dat
-          sed -i -e 's/^SSID1=.*/SSID1=A-5G/' -e 's/^Channel=.*/Channel=48/' \
+          sed -i -e 's/^SSID1=.*/SSID1=JuLiang-5G/' -e 's/^Channel=.*/Channel=48/' \
             -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
             -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' \
             package/mtk/drivers/wifi-profile/files/mt7981/mt7981.dbdc.b1.dat
@@ -168,7 +173,44 @@ jobs:
           HASH="$(openssl passwd -1 '@password@')"
           sed -i "s#^root:[^:]*:#root:${HASH}:#" files/etc/shadow
           chmod 600 files/etc/shadow
+
+          cat > files/etc/openwrt_release <<'RELEASE'
+          DISTRIB_ID='JulLiangTK'
+          DISTRIB_RELEASE='24.10'
+          DISTRIB_REVISION='by:jontao'
+          DISTRIB_TARGET='mediatek/filogic'
+          DISTRIB_ARCH='aarch64_cortex-a53'
+          DISTRIB_DESCRIPTION='JuLiangTK OS by:jontao'
+          DISTRIB_TAINTS=''
+          RELEASE
+          cat > files/etc/os-release <<'OSRELEASE'
+          NAME="JulLiangTK"
+          VERSION="JuLiangTK OS by:jontao"
+          ID="juliangtk"
+          PRETTY_NAME="JuLiangTK OS by:jontao"
+          HOME_URL="https://github.com/wangjontao"
+          OSRELEASE
+
           mkdir -p files/etc/uci-defaults
+          cat > files/etc/uci-defaults/97-juliang-system-wifi <<'WIFIDEFAULT'
+          #!/bin/sh
+          uci -q set system.@system[0].hostname='JulLiangTK'
+          uci -q commit system
+          for f in /etc/wireless/mediatek/*b0.dat; do
+            [ -f "$f" ] || continue
+            sed -i -e 's/^SSID1=.*/SSID1=JuLiang-2.4G/' -e 's/^Channel=.*/Channel=9/' \
+              -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
+              -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' "$f"
+          done
+          for f in /etc/wireless/mediatek/*b1.dat; do
+            [ -f "$f" ] || continue
+            sed -i -e 's/^SSID1=.*/SSID1=JuLiang-5G/' -e 's/^Channel=.*/Channel=48/' \
+              -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
+              -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' "$f"
+          done
+          exit 0
+          WIFIDEFAULT
+          chmod 755 files/etc/uci-defaults/97-juliang-system-wifi
           cat > files/etc/uci-defaults/99-argon-theme <<'ARGON'
           #!/bin/sh
           uci -q set luci.main.mediaurlbase='/luci-static/argon'
@@ -180,7 +222,7 @@ jobs:
           mkdir -p files/etc/init.d
           cat > files/etc/init.d/nps-autokey <<'NPSAUTOKEY'
           #!/bin/sh /etc/rc.common
-          START=49
+          START=95
 
           get_wan_mac() {
             local dev mac
@@ -228,7 +270,36 @@ jobs:
           NPSDEFAULT
           chmod 755 files/etc/uci-defaults/98-nps-autokey
 
+          mkdir -p files/etc/hotplug.d/iface
+          cat > files/etc/hotplug.d/iface/99-nps-autokey <<'NPSHOTPLUG'
+          #!/bin/sh
+          [ "$ACTION" = "ifup" ] || exit 0
+          [ "$INTERFACE" = "wan" ] || exit 0
+          /etc/init.d/nps-autokey start
+          /etc/init.d/nps restart >/dev/null 2>&1 || true
+          NPSHOTPLUG
+          chmod 755 files/etc/hotplug.d/iface/99-nps-autokey
+
           ./scripts/diffconfig.sh | tee MT7981-MTWiFi-final.config
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: openwrt/.ccache
+          key: mt7981-mtwifi-ccache-${{ runner.os }}-${{ env.SOURCE_HASH }}-${{ github.run_id }}
+          restore-keys: |
+            mt7981-mtwifi-ccache-${{ runner.os }}-${{ env.SOURCE_HASH }}-
+            mt7981-mtwifi-ccache-${{ runner.os }}-
+
+      - name: Restore toolchain cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            openwrt/staging_dir/host
+            openwrt/staging_dir/toolchain-*
+            openwrt/build_dir/host
+            openwrt/build_dir/toolchain-*
+          key: mt7981-mtwifi-toolchain-${{ runner.os }}-${{ env.SOURCE_HASH }}-v1
 
       - name: Restore download cache
         id: downloads
@@ -242,6 +313,8 @@ jobs:
       - name: Download and compile
         working-directory: openwrt
         run: |
+          export CCACHE_DIR="$PWD/.ccache"
+          ccache -M 5G || true
           make download -j"$(nproc)"
           find dl -type f -size -1024c -print -delete
           df -h /
@@ -287,7 +360,9 @@ jobs:
             Experimental ImmortalWrt 24.10 kernel 6.6 closed MTWiFi build.
             Devices: Philips HY3000, CMCC RAX3000M NAND, CMCC RAX3000M eMMC, Qihoo 360T7.
             Driver: mt_wifi 7.6.6.1 with matching WARP. Management: 192.168.7.1, root password @password@.
-            WiFi: A-2.4G and A-5G, password a1111111, 5 GHz channel 48.\n            Plugins: Passwall 26.3.6-1, Passwall2 26.3.5-1, OpenClash, HomeProxy, NPS/NPC 0.26.24. Theme: Argon.
+            System: JulLiangTK; firmware description: JuLiangTK OS by:jontao.
+            WiFi: JuLiang-2.4G (channel 9) and JuLiang-5G (channel 48), password a1111111.
+            Plugins: Passwall 26.3.6-1, Passwall2 26.3.5-1, OpenClash, HomeProxy, original ehang NPS/NPC 0.26.10. Theme: Argon.
             NPS: nps.jontao.top:8024; every boot reads WAN MAC, removes colons, uppercases it, and writes it as vkey.
 
       - name: Upload artifact
