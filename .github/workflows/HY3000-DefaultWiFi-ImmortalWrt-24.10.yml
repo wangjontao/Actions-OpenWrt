@@ -229,6 +229,8 @@ jobs:
           # Build the host tools and cross toolchain before package-level builds.
           make tools/install -j"$(nproc)"
           make toolchain/install -j"$(nproc)"
+          # Prepare the target kernel before compiling kernel-module packages.
+          make target/linux/compile -j1 V=s
           # Stage mac80211 headers before mt76 to avoid their parallel dependency race.
           make package/kernel/mac80211/compile -j1 V=s
           make package/kernel/mt76/compile -j1 V=s
