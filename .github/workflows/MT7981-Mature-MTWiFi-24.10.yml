@@ -60,7 +60,23 @@ jobs:
       - name: Fix NPS 0.26.24 and enable domain server
         working-directory: openwrt
         run: |
-          grep -q '^PKG_VERSION:=0.26.24        working-directory: openwrt
+          NPS_VERSION="$(sed -n 's/^PKG_VERSION:=//p' feeds/packages/net/nps/Makefile | head -n1)"
+          [ "$NPS_VERSION" = "0.26.24" ] || {
+            echo "ERROR: NPS/NPC package version is $NPS_VERSION, expected 0.26.24"
+            exit 1
+          }
+          for nps_lua in \
+            feeds/luci/applications/luci-app-nps/luasrc/model/cbi/nps.lua \
+            package/feeds/luci/luci-app-nps/luasrc/model/cbi/nps.lua; do
+            [ -f "$nps_lua" ] || continue
+            sed -i -E 's/server\.datatype[[:space:]]*=[[:space:]]*"ipaddr"/server.datatype="host"/' "$nps_lua"
+            sed -i 's/Must an IPv4 address/IPv4 address or domain name/' "$nps_lua"
+          done
+          grep -q 'server.datatype="host"' feeds/luci/applications/luci-app-nps/luasrc/model/cbi/nps.lua
+          echo "Verified NPS/NPC 0.26.24 and LuCI domain support."
+
+      - name: Pin Passwall 26.3.6-1 and add Passwall2 26.3.5-1
+        working-directory: openwrt
         run: |
           rm -rf feeds/luci/applications/luci-app-passwall package/feeds/luci/luci-app-passwall
           rm -rf package/passwall-luci package/passwall2-luci
