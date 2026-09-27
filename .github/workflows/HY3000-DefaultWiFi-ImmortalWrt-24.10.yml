@@ -226,8 +226,10 @@ jobs:
           rm -rf dl/go-mod-cache
           mkdir -p dl/go-mod-cache
           df -h /
-          # mt76 needs the mac80211 backport headers to be staged first. Building
-          # these two packages sequentially avoids a parallel dependency race.
+          # Build the host tools and cross toolchain before package-level builds.
+          make tools/install -j"$(nproc)"
+          make toolchain/install -j"$(nproc)"
+          # Stage mac80211 headers before mt76 to avoid their parallel dependency race.
           make package/kernel/mac80211/compile -j1 V=s
           make package/kernel/mt76/compile -j1 V=s
           make -j"$(nproc)" || { df -h /; make -j1 V=s; }
