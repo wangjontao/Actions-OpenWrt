@@ -1,0 +1,177 @@
+name: MT7981 Final 10WiFi iStore Multi-Device Fixed
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - jontaoNpS-mt7981-final-10wifi-istore-multidevice
+
+permissions:
+  contents: write
+
+env:
+  SOURCE_REPO: https://github.com/padavanonly/immortalwrt-mt798x-24.10.git
+  SOURCE_BRANCH: openwrt-24.10-6.6
+  TZ: Asia/Shanghai
+  ORIGINAL_WORKFLOW: .github/workflows/MT7981-Final-10WiFi-iStore-MultiDevice.yml
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout Actions-OpenWrt
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install YAML parser
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-yaml
+
+      - name: Run original setup with libxcrypt fix
+        run: |
+          python3 - <<'PY'
+          import os, subprocess
+          from pathlib import Path
+          import yaml
+
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          wf = yaml.safe_load((root / os.environ["ORIGINAL_WORKFLOW"]).read_text())
+          steps = wf["jobs"]["build"]["steps"]
+          wanted = {
+              "Free disk and install dependencies",
+              "Clone ImmortalWrt 24.10 MTWiFi source",
+              "Add verified AGS21 and Newland device definitions",
+              "Verify closed WiFi and all device definitions",
+              "Update feeds and add iStore",
+              "Pin original ehang NPS client 0.26.10 and enable domain server",
+              "Pin Passwall 26.3.6-1 and add Passwall2 26.3.5-1",
+              "Configure all requested firmware images",
+              "Apply login and MTWiFi defaults",
+          }
+
+          for step in steps:
+              name = step.get("name")
+              if name not in wanted or "run" not in step:
+                  continue
+              print(f"::group::{name}", flush=True)
+              env = os.environ.copy()
+              for k, v in (step.get("env") or {}).items():
+                  env[str(k)] = str(v)
+              cwd = root / step.get("working-directory", ".")
+              subprocess.run(["bash", "-e", "-o", "pipefail", "-c", step["run"]],
+                             cwd=cwd, env=env, check=True)
+              print("::endgroup::", flush=True)
+
+              if name == "Update feeds and add iStore":
+                  mf = root / "openwrt/feeds/packages/libs/libxcrypt/Makefile"
+                  text = mf.read_text()
+                  flag = "TARGET_CFLAGS += -Wno-error=format-nonliteral"
+                  if flag not in text:
+                      needle = "include $(INCLUDE_DIR)/package.mk"
+                      if needle in text:
+                          text = text.replace(needle, flag + "\n" + needle, 1)
+                      else:
+                          text = flag + "\n" + text
+                      mf.write_text(text)
+                  print("libxcrypt patch:")
+                  subprocess.run(["grep", "-n", "Wno-error=format-nonliteral", str(mf)], check=True)
+          PY
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: openwrt/.ccache
+          key: mt7981-mtwifi-ccache-${{ runner.os }}-${{ env.SOURCE_HASH }}-${{ github.run_id }}
+          restore-keys: |
+            mt7981-mtwifi-ccache-${{ runner.os }}-${{ env.SOURCE_HASH }}-
+            mt7981-mtwifi-ccache-${{ runner.os }}-
+
+      - name: Restore toolchain cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            openwrt/staging_dir/host
+            openwrt/staging_dir/toolchain-*
+            openwrt/build_dir/host
+            openwrt/build_dir/toolchain-*
+          key: mt7981-mtwifi-toolchain-${{ runner.os }}-${{ env.SOURCE_HASH }}-v1
+
+      - name: Restore download cache
+        id: downloads
+        uses: actions/cache/restore@v4
+        with:
+          path: openwrt/dl
+          key: mt7981-mtwifi-2410-dl-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            mt7981-mtwifi-2410-dl-
+
+      - name: Run original compile
+        run: |
+          python3 - <<'PY'
+          import os, subprocess
+          from pathlib import Path
+          import yaml
+
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          wf = yaml.safe_load((root / os.environ["ORIGINAL_WORKFLOW"]).read_text())
+          step = next(s for s in wf["jobs"]["build"]["steps"] if s.get("name") == "Download and compile")
+          cwd = root / step.get("working-directory", ".")
+          subprocess.run(["bash", "-e", "-o", "pipefail", "-c", step["run"]],
+                         cwd=cwd, env=os.environ.copy(), check=True)
+          PY
+
+      - name: Save download cache
+        if: ${{ always() && steps.downloads.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: openwrt/dl
+          key: ${{ steps.downloads.outputs.cache-primary-key }}
+
+      - name: Preserve raw target output
+        if: ${{ success() }}
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: MT7981-Final-10WiFi-iStore-MultiDevice-Fixed-raw-${{ env.BUILD_DATE }}
+          path: openwrt/bin/targets/mediatek/filogic/*
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Run original collect step
+        run: |
+          python3 - <<'PY'
+          import os, subprocess
+          from pathlib import Path
+          import yaml
+
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          wf = yaml.safe_load((root / os.environ["ORIGINAL_WORKFLOW"]).read_text())
+          step = next(s for s in wf["jobs"]["build"]["steps"] if s.get("name") == "Verify and collect firmware")
+          cwd = root / step.get("working-directory", ".")
+          subprocess.run(["bash", "-e", "-o", "pipefail", "-c", step["run"]],
+                         cwd=cwd, env=os.environ.copy(), check=True)
+          PY
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: MT7981-Final-10WiFi-iStore-Fixed-24.10-${{ env.BUILD_DATE }}
+          name: MT7981 Final 10WiFi iStore Multi-Device Fixed ${{ env.BUILD_DATE }}
+          files: openwrt/upload/*
+          body: |
+            Fixed build of the existing MT7981 Final 10WiFi iStore Multi-Device workflow.
+            The original device, WiFi, NPS, Passwall/Passwall2 and iStore configuration is reused unchanged.
+            Build fix: libxcrypt keeps format-nonliteral warnings but they are no longer promoted to fatal errors by -Werror.
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: MT7981-Final-10WiFi-iStore-MultiDevice-Fixed-24.10-${{ env.BUILD_DATE }}
+          path: openwrt/upload/*
+          if-no-files-found: error
+          retention-days: 30
