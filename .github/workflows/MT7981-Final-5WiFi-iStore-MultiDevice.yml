@@ -58,10 +58,10 @@ jobs:
           grep -q 'PKG_VERSION:=7.6.6.1' package/mtk/drivers/mt_wifi/Makefile
           test -s package/mtk/drivers/warp/Makefile
           for dts in mt7981b-aigo-ags21 mt7981b-newland-nl-wr8103 mt7981b-newland-nl-wr9103; do test -s target/linux/mediatek/dts/${dts}.dts; done
-          for dev in aigo_ags21 cmcc_a10-ubootmod konka_komi-a31 newland_nl-wr8103 newland_nl-wr9103 abt_asr3000 jcg_q30-pro; do
+          for dev in philips_hy3000 cmcc_rax3000m-nand-mtk cmcc_rax3000m-emmc-mtk qihoo_360t7 aigo_ags21 cmcc_a10-ubootmod konka_komi-a31 newland_nl-wr8103 newland_nl-wr9103 abt_asr3000 jcg_q30-pro; do
             grep -q "TARGET_DEVICES += ${dev}" target/linux/mediatek/image/filogic.mk
           done
-          echo 'Verified kernel 6.6 MTWiFi 7.6.6.1, WARP and all seven build targets.'
+          echo 'Verified kernel 6.6 MTWiFi 7.6.6.1, WARP and all eleven build targets.'
 
       - name: Update feeds and add iStore
         working-directory: openwrt
@@ -118,6 +118,10 @@ jobs:
           cat >> .config <<'CONFIG'
           CONFIG_TARGET_mediatek=y
           CONFIG_TARGET_mediatek_filogic=y
+          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_philips_hy3000=y
+          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_cmcc_rax3000m-nand-mtk=y
+          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_cmcc_rax3000m-emmc-mtk=y
+          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_qihoo_360t7=y
           CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_aigo_ags21=y
           CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_cmcc_a10-ubootmod=y
           CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_konka_komi-a31=y
@@ -173,6 +177,10 @@ jobs:
           CONFIG
           make defconfig
           for sym in \
+            CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_philips_hy3000 \
+            CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_cmcc_rax3000m-nand-mtk \
+            CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_cmcc_rax3000m-emmc-mtk \
+            CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_qihoo_360t7 \
             CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_aigo_ags21 \
             CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_cmcc_a10-ubootmod \
             CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_konka_komi-a31 \
@@ -501,7 +509,7 @@ jobs:
         run: |
           mkdir -p upload
           find bin/targets/mediatek/filogic -maxdepth 1 -type f -printf '%f\n' | sort
-          for pattern in aigo_ags21 cmcc_a10-ubootmod konka_komi-a31 newland_nl-wr8103 newland_nl-wr9103 abt_asr3000 jcg_q30-pro; do
+          for pattern in philips_hy3000 cmcc_rax3000m-nand-mtk cmcc_rax3000m-emmc-mtk qihoo_360t7 aigo_ags21 cmcc_a10-ubootmod konka_komi-a31 newland_nl-wr8103 newland_nl-wr9103 abt_asr3000 jcg_q30-pro; do
             mapfile -t files < <(find bin/targets/mediatek/filogic -maxdepth 1 -type f -iname "*${pattern}*" \( -iname "*.bin" -o -iname "*.itb" \) -size +5M)
             [ "${#files[@]}" -gt 0 ] || { echo "ERROR: ${pattern} firmware missing"; exit 1; }
             cp -a "${files[@]}" upload/
@@ -522,7 +530,7 @@ jobs:
           files: openwrt/upload/*
           body: |
             Experimental ImmortalWrt 24.10 kernel 6.6 closed MTWiFi build.
-            Devices: AGS21, CMCC A10 U-Boot mod, ETR631-T/ETR635-U (KOMI A31), Newland 8103/9103, Ambit ASR3000 and JCG Q30 Pro.
+            Devices: Philips HY3000, CMCC RAX3000M NAND/eMMC, Qihoo 360T7, AGS21, CMCC A10 U-Boot mod, ETR631-T/ETR635-U (KOMI A31), Newland 8103/9103, Ambit ASR3000 and JCG Q30 Pro.
             Driver: mt_wifi 7.6.6.1 with matching WARP. Management: 192.168.7.1, root password @password@.
             System: JulLiangTK; firmware description: JuLiangTK OS by:jontao.
             WiFi: JuLiang-2.4G (channel 9) and JuLiang-5G (channel 48), password a1111111.
