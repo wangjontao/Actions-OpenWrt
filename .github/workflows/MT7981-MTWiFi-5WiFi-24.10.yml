@@ -303,6 +303,21 @@ jobs:
           [ -n "$radio5" ] || radio5='radio1'
           uci -q set wireless.$radio5.channel='48'
 
+          for iface in $(uci -q show wireless | sed -n "s/^wireless\.\([^.=]*\)=wifi-iface$/\1/p"); do
+            case "$iface" in juliang_a*) continue;; esac
+            dev="$(uci -q get wireless.$iface.device || true)"
+            if [ "$dev" = "$radio2" ]; then
+              uci set wireless.$iface.ssid='A-2.4G'
+            elif [ "$dev" = "$radio5" ]; then
+              uci set wireless.$iface.ssid='A-5G'
+            else
+              continue
+            fi
+            uci set wireless.$iface.encryption='psk2'
+            uci set wireless.$iface.key='a1111111'
+            uci set wireless.$iface.disabled='0'
+          done
+
           for i in 1 2 3 4 5; do
             net="a$i"
             iface="juliang_a$i"
