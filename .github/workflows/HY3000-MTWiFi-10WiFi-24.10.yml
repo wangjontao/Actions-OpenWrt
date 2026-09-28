@@ -424,19 +424,29 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: openwrt/dl
-          key: mt7981-mtwifi-2410-dl-${{ github.run_id }}-${{ github.run_attempt }}
+          key: hy3000-mtwifi-10wifi-2410-dl-v2-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            mt7981-mtwifi-2410-dl-
+            hy3000-mtwifi-10wifi-2410-dl-v2-
 
       - name: Download and compile
         working-directory: openwrt
         run: |
           export CCACHE_DIR="$PWD/.ccache"
           ccache -M 5G || true
+          echo "Resetting volatile Go module/build caches to avoid incomplete sing-box dependencies..."
+          rm -rf dl/go-mod-cache tmp/go-build
+          mkdir -p dl/go-mod-cache
           make download -j"$(nproc)"
           find dl -type f -size -1024c -print -delete
           df -h /
           make -j"$(nproc)" || { df -h /; make -j1 V=s; }
+
+      - name: Remove volatile Go module cache before saving downloads
+        if: ${{ always() }}
+        working-directory: openwrt
+        run: |
+          rm -rf dl/go-mod-cache tmp/go-build
+          echo "Removed Go module/build caches so an interrupted build cannot poison the next run."
 
       - name: Save download cache
         if: ${{ always() && steps.downloads.outcome == 'success' }}
@@ -447,12 +457,19 @@ jobs:
           key: ${{ steps.downloads.outputs.cache-primary-key }}
 
       - name: Preserve raw target output
-        if: ${{ success() }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
           name: Philips-HY3000-MTWiFi-10WiFi-raw-${{ env.BUILD_DATE }}
-          path: openwrt/bin/targets/mediatek/filogic/*
+          path: |
+            openwrt/bin/targets/mediatek/filogic/*.bin
+            openwrt/bin/targets/mediatek/filogic/*.itb
+            openwrt/bin/targets/mediatek/filogic/*.ubi
+            openwrt/bin/targets/mediatek/filogic/*.img*
+            openwrt/bin/targets/mediatek/filogic/sha256sums
+            openwrt/bin/targets/mediatek/filogic/profiles.json
+            openwrt/bin/targets/mediatek/filogic/config.buildinfo
           if-no-files-found: warn
           retention-days: 30
       - name: Verify and collect firmware
