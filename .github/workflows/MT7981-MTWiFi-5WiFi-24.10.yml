@@ -65,6 +65,16 @@ jobs:
           ./scripts/feeds install -d y -p nas_packages quickstart
           ./scripts/feeds install -d y -p nas_luci luci-app-quickstart
 
+      - name: Patch libxcrypt GCC13 fortify compatibility
+        working-directory: openwrt
+        run: |
+          LIBXCRYPT_MAKEFILE=feeds/packages/libs/libxcrypt/Makefile
+          test -s "$LIBXCRYPT_MAKEFILE"
+          grep -q 'Wno-error=format-nonliteral' "$LIBXCRYPT_MAKEFILE" || \
+            sed -i '/include $(INCLUDE_DIR)\/package.mk/a TARGET_CFLAGS += -Wno-error=format-nonliteral' "$LIBXCRYPT_MAKEFILE"
+          grep -n 'Wno-error=format-nonliteral' "$LIBXCRYPT_MAKEFILE"
+          echo 'Patched libxcrypt so GCC 13 fortify format-nonliteral warnings are not fatal.'
+
       - name: Pin original ehang NPS client 0.26.10 and enable domain server
         working-directory: openwrt
         run: |
@@ -449,12 +459,19 @@ jobs:
           key: ${{ steps.downloads.outputs.cache-primary-key }}
 
       - name: Preserve raw target output
-        if: ${{ success() }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
           name: MT7981-MTWiFi-5WiFi-raw-${{ env.BUILD_DATE }}
-          path: openwrt/bin/targets/mediatek/filogic/*
+          path: |
+            openwrt/bin/targets/mediatek/filogic/*.bin
+            openwrt/bin/targets/mediatek/filogic/*.itb
+            openwrt/bin/targets/mediatek/filogic/*.ubi
+            openwrt/bin/targets/mediatek/filogic/*.img*
+            openwrt/bin/targets/mediatek/filogic/sha256sums
+            openwrt/bin/targets/mediatek/filogic/profiles.json
+            openwrt/bin/targets/mediatek/filogic/config.buildinfo
           if-no-files-found: warn
           retention-days: 30
       - name: Verify and collect firmware
