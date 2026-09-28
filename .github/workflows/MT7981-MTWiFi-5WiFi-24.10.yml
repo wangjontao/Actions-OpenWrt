@@ -436,19 +436,29 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: openwrt/dl
-          key: mt7981-mtwifi-2410-dl-${{ github.run_id }}-${{ github.run_attempt }}
+          key: mt7981-mtwifi-istore-2410-dl-v2-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            mt7981-mtwifi-2410-dl-
+            mt7981-mtwifi-istore-2410-dl-v2-
 
       - name: Download and compile
         working-directory: openwrt
         run: |
           export CCACHE_DIR="$PWD/.ccache"
           ccache -M 5G || true
+          echo "Resetting volatile Go module/build caches to avoid incomplete sing-box dependencies..."
+          rm -rf dl/go-mod-cache tmp/go-build
+          mkdir -p dl/go-mod-cache
           make download -j"$(nproc)"
           find dl -type f -size -1024c -print -delete
           df -h /
           make -j"$(nproc)" || { df -h /; make -j1 V=s; }
+
+      - name: Remove volatile Go module cache before saving downloads
+        if: ${{ always() }}
+        working-directory: openwrt
+        run: |
+          rm -rf dl/go-mod-cache tmp/go-build
+          echo "Removed Go module/build caches so an interrupted build cannot poison the next run."
 
       - name: Save download cache
         if: ${{ always() && steps.downloads.outcome == 'success' }}
