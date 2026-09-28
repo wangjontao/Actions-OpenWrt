@@ -307,20 +307,20 @@ jobs:
             iface="juliang_a$i"
             radio="$radio5"
             [ "$i" -ge 9 ] && radio="$radio2"
-            uci -q delete network.$net
+            uci -q delete network.$net || true
             uci set network.$net='interface'
             uci set network.$net.proto='static'
             uci set network.$net.ipaddr="172.16.$i.1"
             uci set network.$net.netmask='255.255.255.0'
 
-            uci -q delete dhcp.$net
+            uci -q delete dhcp.$net || true
             uci set dhcp.$net='dhcp'
             uci set dhcp.$net.interface="$net"
             uci set dhcp.$net.start='100'
             uci set dhcp.$net.limit='150'
             uci set dhcp.$net.leasetime='12h'
 
-            uci -q delete wireless.$iface
+            uci -q delete wireless.$iface || true
             uci set wireless.$iface='wifi-iface'
             uci set wireless.$iface.device="$radio"
             uci set wireless.$iface.mode='ap'
@@ -330,7 +330,7 @@ jobs:
             uci set wireless.$iface.key='a1111111'
             uci set wireless.$iface.disabled='0'
 
-            uci -q delete firewall.$net
+            uci -q delete firewall.$net || true
             uci set firewall.$net='zone'
             uci set firewall.$net.name="$net"
             uci add_list firewall.$net.network="$net"
@@ -374,6 +374,11 @@ jobs:
           cat > files/etc/uci-defaults/99-juliang-10wifi-enable <<'TENDEFAULT'
           #!/bin/sh
           /etc/init.d/juliang-10wifi-firstboot enable
+          [ -e /etc/juliang-10wifi.done ] || (
+            sleep 60
+            /usr/libexec/juliang-10wifi-setup
+            /etc/init.d/juliang-10wifi-firstboot disable
+          ) &
           exit 0
           TENDEFAULT
           chmod 755 files/etc/uci-defaults/99-juliang-10wifi-enable
