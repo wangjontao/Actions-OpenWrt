@@ -105,8 +105,8 @@ jobs:
       - name: Apply package compiler compatibility fixes
         working-directory: openwrt
         run: |
-          echo 'TARGET_CFLAGS += -Wno-error=format-nonliteral' >> feeds/packages/libs/libxcrypt/Makefile
-          tail -n 3 feeds/packages/libs/libxcrypt/Makefile
+          sed -i '/$(eval $(call BuildPackage,libxcrypt))/i TARGET_CFLAGS += -Wno-error=format-nonliteral' feeds/packages/libs/libxcrypt/Makefile
+          grep -n -B1 -A1 'BuildPackage,libxcrypt' feeds/packages/libs/libxcrypt/Makefile
 
       - name: Configure all requested firmware images
         working-directory: openwrt
