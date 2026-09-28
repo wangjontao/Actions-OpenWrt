@@ -102,6 +102,12 @@ jobs:
           test "$(git -C package/passwall-luci describe --tags --exact-match)" = "26.3.6-1"
           test "$(git -C package/passwall2-luci describe --tags --exact-match)" = "26.3.5-1"
 
+      - name: Apply package compiler compatibility fixes
+        working-directory: openwrt
+        run: |
+          echo 'TARGET_CFLAGS += -Wno-error=format-nonliteral' >> feeds/packages/libs/libxcrypt/Makefile
+          tail -n 3 feeds/packages/libs/libxcrypt/Makefile
+
       - name: Configure all requested firmware images
         working-directory: openwrt
         run: |
@@ -466,6 +472,8 @@ jobs:
         run: |
           export CCACHE_DIR="$PWD/.ccache"
           ccache -M 5G || true
+          # Do not reuse partially populated Go module trees from an interrupted run.
+          rm -rf dl/go-mod-cache
           make download -j"$(nproc)"
           find dl -type f -size -1024c -print -delete
           df -h /
