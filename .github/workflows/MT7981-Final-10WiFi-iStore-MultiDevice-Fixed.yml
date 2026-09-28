@@ -1,10 +1,8 @@
 name: MT7981 Final 10WiFi iStore Multi-Device Fixed
 
 on:
+  workflow_call:
   workflow_dispatch:
-  push:
-    branches:
-      - jontaoNpS-mt7981-final-10wifi-istore-multidevice
 
 permissions:
   contents: write
@@ -13,7 +11,8 @@ env:
   SOURCE_REPO: https://github.com/padavanonly/immortalwrt-mt798x-24.10.git
   SOURCE_BRANCH: openwrt-24.10-6.6
   TZ: Asia/Shanghai
-  ORIGINAL_WORKFLOW: .github/workflows/MT7981-Final-10WiFi-iStore-MultiDevice.yml
+  LEGACY_COMMIT: e1870d716a2b72f97224d876d57c5e22a58e32b4
+  LEGACY_WORKFLOW: .github/workflows/MT7981-Final-10WiFi-iStore-MultiDevice.yml
 
 jobs:
   build:
@@ -38,7 +37,11 @@ jobs:
           import yaml
 
           root = Path(os.environ["GITHUB_WORKSPACE"])
-          wf = yaml.safe_load((root / os.environ["ORIGINAL_WORKFLOW"]).read_text())
+          raw = subprocess.check_output(
+              ["git", "show", f"{os.environ['LEGACY_COMMIT']}:{os.environ['LEGACY_WORKFLOW']}"],
+              cwd=root, text=True
+          )
+          wf = yaml.safe_load(raw)
           steps = wf["jobs"]["build"]["steps"]
           wanted = {
               "Free disk and install dependencies",
@@ -61,8 +64,10 @@ jobs:
               for k, v in (step.get("env") or {}).items():
                   env[str(k)] = str(v)
               cwd = root / step.get("working-directory", ".")
-              subprocess.run(["bash", "-e", "-o", "pipefail", "-c", step["run"]],
-                             cwd=cwd, env=env, check=True)
+              subprocess.run(
+                  ["bash", "-e", "-o", "pipefail", "-c", step["run"]],
+                  cwd=cwd, env=env, check=True
+              )
               print("::endgroup::", flush=True)
 
               if name == "Update feeds and add iStore":
@@ -77,7 +82,10 @@ jobs:
                           text = flag + "\n" + text
                       mf.write_text(text)
                   print("libxcrypt patch:")
-                  subprocess.run(["grep", "-n", "Wno-error=format-nonliteral", str(mf)], check=True)
+                  subprocess.run(
+                      ["grep", "-n", "Wno-error=format-nonliteral", str(mf)],
+                      check=True
+                  )
           PY
 
       - name: Restore compiler cache
@@ -116,11 +124,20 @@ jobs:
           import yaml
 
           root = Path(os.environ["GITHUB_WORKSPACE"])
-          wf = yaml.safe_load((root / os.environ["ORIGINAL_WORKFLOW"]).read_text())
-          step = next(s for s in wf["jobs"]["build"]["steps"] if s.get("name") == "Download and compile")
+          raw = subprocess.check_output(
+              ["git", "show", f"{os.environ['LEGACY_COMMIT']}:{os.environ['LEGACY_WORKFLOW']}"],
+              cwd=root, text=True
+          )
+          wf = yaml.safe_load(raw)
+          step = next(
+              s for s in wf["jobs"]["build"]["steps"]
+              if s.get("name") == "Download and compile"
+          )
           cwd = root / step.get("working-directory", ".")
-          subprocess.run(["bash", "-e", "-o", "pipefail", "-c", step["run"]],
-                         cwd=cwd, env=os.environ.copy(), check=True)
+          subprocess.run(
+              ["bash", "-e", "-o", "pipefail", "-c", step["run"]],
+              cwd=cwd, env=os.environ.copy(), check=True
+          )
           PY
 
       - name: Save download cache
@@ -149,11 +166,20 @@ jobs:
           import yaml
 
           root = Path(os.environ["GITHUB_WORKSPACE"])
-          wf = yaml.safe_load((root / os.environ["ORIGINAL_WORKFLOW"]).read_text())
-          step = next(s for s in wf["jobs"]["build"]["steps"] if s.get("name") == "Verify and collect firmware")
+          raw = subprocess.check_output(
+              ["git", "show", f"{os.environ['LEGACY_COMMIT']}:{os.environ['LEGACY_WORKFLOW']}"],
+              cwd=root, text=True
+          )
+          wf = yaml.safe_load(raw)
+          step = next(
+              s for s in wf["jobs"]["build"]["steps"]
+              if s.get("name") == "Verify and collect firmware"
+          )
           cwd = root / step.get("working-directory", ".")
-          subprocess.run(["bash", "-e", "-o", "pipefail", "-c", step["run"]],
-                         cwd=cwd, env=os.environ.copy(), check=True)
+          subprocess.run(
+              ["bash", "-e", "-o", "pipefail", "-c", step["run"]],
+              cwd=cwd, env=os.environ.copy(), check=True
+          )
           PY
 
       - name: Publish release
@@ -163,7 +189,7 @@ jobs:
           name: MT7981 Final 10WiFi iStore Multi-Device Fixed ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
           body: |
-            Fixed build of the existing MT7981 Final 10WiFi iStore Multi-Device workflow.
+            Fixed build of the MT7981 Final 10WiFi iStore Multi-Device workflow.
             The original device, WiFi, NPS, Passwall/Passwall2 and iStore configuration is reused unchanged.
             Build fix: libxcrypt keeps format-nonliteral warnings but they are no longer promoted to fatal errors by -Werror.
 
