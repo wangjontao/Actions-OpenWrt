@@ -51,6 +51,27 @@ jobs:
               sed -n "/^define Device\/${dev}$/,/^TARGET_DEVICES += ${dev}$/p" "$PATCH/custom-devices.mk" >> target/linux/mediatek/image/filogic.mk
             fi
           done
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('target/linux/mediatek/image/filogic.mk')
+          s = p.read_text()
+          a = s.index('define Device/jcg_q30-pro')
+          b = s.index('endef', a)
+          block = s[a:b]
+          if re.search(r'^  IMAGE_SIZE := .*$', block, re.M):
+              block = re.sub(r'^  IMAGE_SIZE := .*$', '  IMAGE_SIZE := 113152k', block, flags=re.M)
+          else:
+              block = block.replace('  PAGESIZE := 2048\n', '  PAGESIZE := 2048\n  IMAGE_SIZE := 113152k\n')
+          s = s[:a] + block + s[b:]
+          p.write_text(s)
+          PY
+          Q30_DTS=target/linux/mediatek/dts/mt7981b-jcg-q30-pro.dts
+          grep -q 'reg = <0x0580000 0x6e80000>;' "$Q30_DTS"
+          grep -q 'reg = <0xa0024 0x6>;' "$Q30_DTS"
+          grep -q 'reg = <0xa002a 0x6>;' "$Q30_DTS"
+          sed -n '/^define Device\/jcg_q30-pro$/,/^endef$/p' target/linux/mediatek/image/filogic.mk | grep -q 'IMAGE_SIZE := 113152k'
+          echo 'Applied verified Q30 Pro 110M UBI and Factory MAC layout.'
 
       - name: Verify closed WiFi and all device definitions
         working-directory: openwrt
