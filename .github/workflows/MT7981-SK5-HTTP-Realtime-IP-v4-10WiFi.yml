@@ -1,10 +1,10 @@
-name: MT7981 SK5 HTTP Realtime-IP-v5 Optimized 10WiFi Multi-Device
+name: MT7981 SK5 HTTP Realtime-IP-v5 Optimized 5WiFi Multi-Device
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - jontaoNpS-mt7981-sk5-http-realtime-ip-v4
+      - jontaoNpS-mt7981-sk5-http-realtime-ip-v5-5wifi
 
 permissions:
   contents: write
@@ -364,15 +364,15 @@ jobs:
           chmod 755 files/etc/hotplug.d/iface/99-nps-autokey
 
 
-          mkdir -p files/usr/libexec files/etc/init.d files/etc/juliang-10wifi
-          cp "$GITHUB_WORKSPACE/profiles/hy3000-10wifi/passwall" files/etc/juliang-10wifi/passwall
-          cp "$GITHUB_WORKSPACE/profiles/hy3000-10wifi/passwall2" files/etc/juliang-10wifi/passwall2
-          chmod 600 files/etc/juliang-10wifi/passwall files/etc/juliang-10wifi/passwall2
+          mkdir -p files/usr/libexec files/etc/init.d files/etc/juliang-5wifi
+          cp "$GITHUB_WORKSPACE/profiles/mt7981-final-5wifi/passwall" files/etc/juliang-5wifi/passwall
+          cp "$GITHUB_WORKSPACE/profiles/mt7981-final-5wifi/passwall2" files/etc/juliang-5wifi/passwall2
+          chmod 600 files/etc/juliang-5wifi/passwall files/etc/juliang-5wifi/passwall2
 
-          cat > files/usr/libexec/juliang-10wifi-setup <<'TENWIFI'
+          cat > files/usr/libexec/juliang-5wifi-setup <<'TENWIFI'
           #!/bin/sh
           set -eu
-          MARKER=/etc/juliang-10wifi.done
+          MARKER=/etc/juliang-5wifi.done
           [ -e "$MARKER" ] && exit 0
 
           radio2=''
@@ -406,11 +406,10 @@ jobs:
             uci set wireless.$iface.disabled='0'
           done
 
-          for i in 1 2 3 4 5 6 7 8 9 10; do
+          for i in 1 2 3 4 5; do
             net="a$i"
             iface="juliang_a$i"
             radio="$radio5"
-            [ "$i" -ge 9 ] && radio="$radio2"
             uci -q delete network.$net || true
             uci set network.$net='interface'
             uci set network.$net.proto='static'
@@ -454,8 +453,8 @@ jobs:
           uci commit dhcp
           uci commit wireless
           uci commit firewall
-          cp /etc/juliang-10wifi/passwall /etc/config/passwall
-          cp /etc/juliang-10wifi/passwall2 /etc/config/passwall2
+          cp /etc/juliang-5wifi/passwall /etc/config/passwall
+          cp /etc/juliang-5wifi/passwall2 /etc/config/passwall2
           chmod 600 /etc/config/passwall /etc/config/passwall2
           touch "$MARKER"
           /etc/init.d/network reload >/dev/null 2>&1 || true
@@ -466,30 +465,30 @@ jobs:
           /etc/init.d/passwall2 enable >/dev/null 2>&1 || true
           /etc/init.d/passwall restart >/dev/null 2>&1 || true
           /etc/init.d/passwall2 restart >/dev/null 2>&1 || true
-          logger -t juliang-10wifi 'A1-A10 and supplied PassWall/PassWall2 templates applied after 60 seconds'
+          logger -t juliang-5wifi 'A1-A5 and supplied PassWall/PassWall2 five-ACL templates applied after 60 seconds'
           TENWIFI
-          chmod 755 files/usr/libexec/juliang-10wifi-setup
+          chmod 755 files/usr/libexec/juliang-5wifi-setup
 
-          cat > files/etc/init.d/juliang-10wifi-firstboot <<'TENINIT'
+          cat > files/etc/init.d/juliang-5wifi-firstboot <<'TENINIT'
           #!/bin/sh /etc/rc.common
           START=99
           start() {
-            [ -e /etc/juliang-10wifi.done ] && return 0
-            ( sleep 60; /usr/libexec/juliang-10wifi-setup; /etc/init.d/juliang-10wifi-firstboot disable ) &
+            [ -e /etc/juliang-5wifi.done ] && return 0
+            ( sleep 60; /usr/libexec/juliang-5wifi-setup; /etc/init.d/juliang-5wifi-firstboot disable ) &
           }
           TENINIT
-          chmod 755 files/etc/init.d/juliang-10wifi-firstboot
-          cat > files/etc/uci-defaults/99-juliang-10wifi-enable <<'TENDEFAULT'
+          chmod 755 files/etc/init.d/juliang-5wifi-firstboot
+          cat > files/etc/uci-defaults/99-juliang-5wifi-enable <<'TENDEFAULT'
           #!/bin/sh
-          /etc/init.d/juliang-10wifi-firstboot enable
-          [ -e /etc/juliang-10wifi.done ] || (
+          /etc/init.d/juliang-5wifi-firstboot enable
+          [ -e /etc/juliang-5wifi.done ] || (
             sleep 60
-            /usr/libexec/juliang-10wifi-setup
-            /etc/init.d/juliang-10wifi-firstboot disable
+            /usr/libexec/juliang-5wifi-setup
+            /etc/init.d/juliang-5wifi-firstboot disable
           ) &
           exit 0
           TENDEFAULT
-          chmod 755 files/etc/uci-defaults/99-juliang-10wifi-enable
+          chmod 755 files/etc/uci-defaults/99-juliang-5wifi-enable
 
           ./scripts/diffconfig.sh | tee MT7981-MTWiFi-final.config
 
@@ -557,7 +556,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7981-SK5-HTTP-Realtime-IP-v5-Optimized-10WiFi-raw-${{ env.BUILD_DATE }}
+          name: MT7981-SK5-HTTP-Realtime-IP-v5-Optimized-5WiFi-raw-${{ env.BUILD_DATE }}
           path: openwrt/bin/targets/mediatek/filogic/*
           if-no-files-found: warn
           retention-days: 30
@@ -582,8 +581,8 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: MT7981-SK5-HTTP-Realtime-IP-v5-Optimized-10WiFi-24.10-${{ env.BUILD_DATE }}
-          name: MT7981 SK5 HTTP Realtime-IP-v5 Optimized 10WiFi ${{ env.BUILD_DATE }}
+          tag_name: MT7981-SK5-HTTP-Realtime-IP-v5-Optimized-5WiFi-24.10-${{ env.BUILD_DATE }}
+          name: MT7981 SK5 HTTP Realtime-IP-v5 Optimized 5WiFi ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
           body: |
             Experimental ImmortalWrt 24.10 kernel 6.6 closed MTWiFi build.
@@ -592,11 +591,11 @@ jobs:
             Driver: mt_wifi 7.6.6.1 with matching WARP. Management: 192.168.7.1, root password @password@.
             System: JulLiangTK; firmware description: JuLiangTK OS by:jontao.
             WiFi: JuLiang-2.4G (channel 9) and JuLiang-5G (channel 48), password a1111111.
-            10WiFi: A1-A8 on 5GHz, A9-A10 on 2.4GHz; password a1111111; subnets 172.16.1.0/24 through 172.16.10.0/24.
-            Wireless, DHCP and the supplied PassWall/PassWall2 10-ACL templates run once, 60 seconds after first boot.
+            5WiFi: A1-A5 on 5GHz; password a1111111; isolated subnets 172.16.1.0/24 through 172.16.5.0/24.
+            Wireless, DHCP and the supplied PassWall/PassWall2 five-ACL templates run once, 60 seconds after first boot.
             Import: PassWall and PassWall2 both support SOCKS5/SOCKS/HTTP URI plus multiline host:port:username:password SK5 shorthand.
             Realtime IP: Argon Realtime-IP v4 glass panel retained, with ISP, region and refreshed public IPv4 display.
-            DNS: removed the custom forced-DNS/DoT/bootstrap layer that caused node-timeout interactions; standard PassWall/PassWall2 DNS behavior is retained. IPv6 DHCP/RA remains disabled on A1-A10.
+            DNS: removed the custom forced-DNS/DoT/bootstrap layer that caused node-timeout interactions; standard PassWall/PassWall2 DNS behavior is retained. IPv6 DHCP/RA remains disabled on A1-A5.
             Plugins: iStore, QuickStart, Passwall 26.3.6-1, Passwall2 26.3.5-1, OpenClash, HomeProxy, original ehang NPS/NPC 0.26.10. Theme: Argon.
             NPS: nps.jontao.top:8024; every boot reads WAN MAC, removes colons, uppercases it, and writes it as vkey.
 
@@ -604,7 +603,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7981-SK5-HTTP-Realtime-IP-v5-Optimized-10WiFi-MultiDevice-24.10-${{ env.BUILD_DATE }}
+          name: MT7981-SK5-HTTP-Realtime-IP-v5-Optimized-5WiFi-MultiDevice-24.10-${{ env.BUILD_DATE }}
           path: openwrt/upload/*
           if-no-files-found: error
           retention-days: 30
