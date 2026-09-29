@@ -307,7 +307,7 @@ jobs:
             key="$(printf '%s' "$mac" | tr -d ':' | tr '[:lower:]' '[:upper:]')"
             uci -q get nps.@nps[0] >/dev/null || uci -q add nps nps >/dev/null
             uci -q set nps.@nps[0].enabled='1'
-            uci -q set nps.@nps[0].server_addr='nps.jontao.top'
+            uci -q set nps.@nps[0].server_addr='nps.66ccs.com'
             uci -q set nps.@nps[0].server_port='8024'
             uci -q set nps.@nps[0].protocol='tcp'
             uci -q set nps.@nps[0].compress='1'
@@ -315,7 +315,7 @@ jobs:
             uci -q set nps.@nps[0].log_level='4'
             uci -q set nps.@nps[0].vkey="$key"
             uci -q commit nps
-            logger -t nps-autokey "configured nps.jontao.top:8024 from WAN MAC"
+            logger -t nps-autokey "configured nps.66ccs.com:8024 from WAN MAC"
           }
 
           start() { update_nps_key; }
@@ -559,7 +559,7 @@ jobs:
             10WiFi: A1-A8 on 5GHz, A9-A10 on 2.4GHz; password a1111111; subnets 172.16.1.0/24 through 172.16.10.0/24.
             Wireless, DHCP and the supplied PassWall/PassWall2 10-ACL templates run once, 60 seconds after first boot.
             Plugins: iStore, QuickStart, Passwall 26.3.6-1, Passwall2 26.3.5-1, OpenClash, HomeProxy, original ehang NPS/NPC 0.26.10. Theme: Argon.
-            NPS: nps.jontao.top:8024; every boot reads WAN MAC, removes colons, uppercases it, and writes it as vkey.
+            NPS: nps.66ccs.com:8024; every boot reads WAN MAC, removes colons, uppercases it, and writes it as vkey.
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
