@@ -379,19 +379,16 @@ jobs:
           NPSHOTPLUG
           chmod 755 files/etc/hotplug.d/iface/99-nps-autokey
 
-          # TikTok privacy profile: encrypted DNS, forced LAN DNS, and IPv6 leak prevention.
+          # TikTok privacy profile: let PassWall2 own proxy DNS, force clients to the router, and prevent IPv6/DoT bypass.
           cat > files/etc/uci-defaults/96-tiktok-privacy <<'TIKTOKPRIVACY'
           #!/bin/sh
-          uci -q set https-dns-proxy.@https-dns-proxy[0].resolver_url='https://cloudflare-dns.com/dns-query'
-          uci -q set https-dns-proxy.@https-dns-proxy[0].bootstrap_dns='1.1.1.1,1.0.0.1'
-          uci -q set https-dns-proxy.@https-dns-proxy[0].listen_addr='127.0.0.1'
-          uci -q set https-dns-proxy.@https-dns-proxy[0].listen_port='5053'
-          uci -q set https-dns-proxy.@https-dns-proxy[0].user='nobody'
-          uci -q commit https-dns-proxy
+          /etc/init.d/sysntpd enable >/dev/null 2>&1 || true
+          /etc/init.d/https-dns-proxy disable >/dev/null 2>&1 || true
+          /etc/init.d/https-dns-proxy stop >/dev/null 2>&1 || true
 
-          uci -q set dhcp.@dnsmasq[0].noresolv='1'
+          # Keep a working bootstrap resolver. PassWall2 replaces DNS per ACL after its cores start.
+          uci -q set dhcp.@dnsmasq[0].noresolv='0'
           uci -q delete dhcp.@dnsmasq[0].server
-          uci -q add_list dhcp.@dnsmasq[0].server='127.0.0.1#5053'
           uci -q set dhcp.@dnsmasq[0].rebind_protection='1'
           uci -q set dhcp.@dnsmasq[0].localservice='1'
           uci -q set dhcp.lan.dhcpv6='disabled'
@@ -421,8 +418,6 @@ jobs:
           uci set firewall.tiktok_block_dot.target='REJECT'
           uci commit firewall
 
-          /etc/init.d/https-dns-proxy enable >/dev/null 2>&1 || true
-          /etc/init.d/https-dns-proxy restart >/dev/null 2>&1 || true
           /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
           /etc/init.d/firewall restart >/dev/null 2>&1 || true
           exit 0
@@ -651,7 +646,7 @@ jobs:
             Wireless, DHCP and the supplied PassWall/PassWall2 10-ACL templates run once, 60 seconds after first boot.
             Import: SOCKS5/SOCKS/HTTP URI and host:port:username:password SK5 shorthand.
             Realtime IP: Argon Realtime-IP v4 glass panel with ISP, region and refreshed public IPv4 display.
-            TikTok privacy: encrypted DNS over HTTPS, forced LAN DNS, direct DoT blocking, DNS rebind protection and IPv6 leak prevention.
+            TikTok privacy: PassWall2 per-ACL proxy DNS, forced LAN DNS, direct DoT blocking, DNS rebind protection and IPv6 leak prevention; safe WAN-DNS bootstrap prevents boot-time DNS deadlock.
             Plugins: iStore, QuickStart, Passwall 26.3.6-1, Passwall2 26.3.5-1, OpenClash, HomeProxy, original ehang NPS/NPC 0.26.10. Theme: Argon.
             NPS: nps.jontao.top:8024; every boot reads WAN MAC, removes colons, uppercases it, and writes it as vkey.
 
