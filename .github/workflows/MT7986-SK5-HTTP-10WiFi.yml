@@ -118,10 +118,7 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          candidates = [
-              Path('feeds/passwall/luci-app-passwall/root/usr/share/passwall/subscribe.lua'),
-              Path('package/feeds/passwall/luci-app-passwall/root/usr/share/passwall/subscribe.lua'),
-          ]
+          candidates = list(Path('.').glob('**/luci-app-passwall/root/usr/share/passwall/subscribe.lua'))
           p = next((x for x in candidates if x.is_file()), None)
           if not p:
               raise SystemExit('PassWall subscribe.lua not found')
@@ -166,8 +163,10 @@ jobs:
           p.write_text(s)
           print('Patched', p)
           PY
-          grep -q "JuLiangTK: import SOCKS5/SOCKS/HTTP" feeds/passwall/luci-app-passwall/root/usr/share/passwall/subscribe.lua
-          grep -q "provider shorthand" feeds/passwall/luci-app-passwall/root/usr/share/passwall/subscribe.lua
+          PW_SUB=$(find . -path '*/luci-app-passwall/root/usr/share/passwall/subscribe.lua' -type f | head -n1)
+          test -n "$PW_SUB"
+          grep -q "JuLiangTK: import SOCKS5/SOCKS/HTTP" "$PW_SUB"
+          grep -q "provider shorthand" "$PW_SUB"
 
       - name: Apply package compiler compatibility fixes
         working-directory: openwrt
