@@ -45,7 +45,12 @@ def patch_frontend(path: Path) -> None:
 \t\t\t// JuLiangTK: allow multiline SOCKS5 shorthand: host:port:username:password
 \t\t\tconst lines = nodes_link.split("\\n").map(function(v) { return v.trim(); }).filter(Boolean);
 \t\t\tconst valid = lines.length > 0 && lines.every(function(v) {
-\t\t\t\treturn v.indexOf("://") !== -1 || /^[^:\\\\s]+:\\\\d+:[^:\\\\s]+:.+$/.test(v);
+\t\t\t\tif (v.indexOf("://") !== -1) return true;
+\t\t\t\t// Avoid regex escaping mistakes: validate host:port:username:password by fields.
+\t\t\t\tconst p = v.split(":");
+\t\t\t\treturn p.length >= 4 && p[0].trim() !== "" && /^[0-9]+$/.test(p[1]) &&
+\t\t\t\t\tNumber(p[1]) >= 1 && Number(p[1]) <= 65535 &&
+\t\t\t\t\tp[2].trim() !== "" && p.slice(3).join(":") !== "";
 \t\t\t});
 \t\t\tif (valid) {
 \t\t\t\tajax_add_node(nodes_link, group);
