@@ -1,10 +1,10 @@
-name: MT7986 AX6000 S20L Baili Final 5WiFi iStore
+name: MT7986 AX6000 S20L Baili 5WiFi iStore SK5 Fix
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - jontaoNpS-mt7986-ax6000-s20l-baili-final-5wifi-istore
+      - jontaoNpS-ax6000-5wifi-istore-sk5-passwall-fix
 
 permissions:
   contents: write
@@ -112,6 +112,18 @@ jobs:
           git clone --depth=1 --single-branch --branch 26.3.5-1 https://github.com/Openwrt-Passwall/openwrt-passwall2.git package/passwall2-luci
           test "$(git -C package/passwall-luci describe --tags --exact-match)" = "26.3.6-1"
           test "$(git -C package/passwall2-luci describe --tags --exact-match)" = "26.3.5-1"
+
+      - name: Patch PassWall and PassWall2 SK5 node-list import
+        working-directory: openwrt
+        run: |
+          python3 "$GITHUB_WORKSPACE/scripts/patch-passwall-sk5.py"
+          grep -q 'JuLiangTK: allow multiline SOCKS5 shorthand' package/passwall-luci/luci-app-passwall/luasrc/view/passwall/node_list/link_add_node.htm
+          grep -q 'JuLiangTK: allow multiline SOCKS5 shorthand' package/passwall2-luci/luci-app-passwall2/luasrc/view/passwall2/node_list/link_add_node.htm
+          grep -q 'JuLiangTK: import SOCKS5/SOCKS provider shorthand' package/passwall-luci/luci-app-passwall/root/usr/share/passwall/subscribe.lua
+          grep -q 'JuLiangTK: import SOCKS5/SOCKS provider shorthand' package/passwall2-luci/luci-app-passwall2/root/usr/share/passwall2/subscribe.lua
+          grep -q 'mark = (node.protocol ~= "socks") and 255 or nil,' package/passwall-luci/luci-app-passwall/luasrc/passwall/util_xray.lua
+          grep -q 'mark = (node.protocol ~= "socks") and 255 or nil,' package/passwall2-luci/luci-app-passwall2/luasrc/passwall2/util_xray.lua
+          echo 'PassWall + PassWall2 SK5 importer and Xray SOCKS mark fix verified.'
 
       - name: Apply package compiler compatibility fixes
         working-directory: openwrt
