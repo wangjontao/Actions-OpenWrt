@@ -128,38 +128,38 @@ jobs:
           s = p.read_text()
           process_anchor = "\t--ssr://base64(host:port:protocol:method:obfs:base64pass/?obfsparam=base64param&protoparam=base64param&remarks=base64remarks&group=base64group&udpport=0&uot=0)\n\tif szType == 'ssr' then"
           process_patch = '''\t-- JuLiangTK: import SOCKS5/SOCKS/HTTP links as sing-box nodes.
-\tif szType == 'socks5' or szType == 'socks5h' or szType == 'socks' or szType == 'http' then
-\t\tif not has_singbox then
-\t\t\tlog("跳过 SOCKS/HTTP 节点，因未安装 sing-box。")
-\t\t\treturn nil
-\t\tend
-\t\tlocal link, fragment = content:match("^(.-)#(.*)$")
-\t\tlink = link or content
-\t\tlocal parsed = api.parseURL(szType .. "://" .. link)
-\t\tlocal function pct_decode(v)
-\t\t\treturn (v or ""):gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end)
-\t\tend
-\t\tresult.type = "sing-box"
-\t\tresult.protocol = (szType == "http") and "http" or "socks"
-\t\tresult.address = parsed.hostname
-\t\tresult.port = parsed.port
-\t\tresult.username = pct_decode(parsed.username)
-\t\tresult.password = pct_decode(parsed.password)
-\t\tresult.remarks = pct_decode(fragment or (string.upper(result.protocol) .. "-" .. (result.address or "node") .. "-" .. tostring(result.port or "")))
-\t\treturn result
-\t--ssr://base64(host:port:protocol:method:obfs:base64pass/?obfsparam=base64param&protoparam=base64param&remarks=base64remarks&group=base64group&udpport=0&uot=0)
-\telseif szType == 'ssr' then'''
+          \tif szType == 'socks5' or szType == 'socks5h' or szType == 'socks' or szType == 'http' then
+          \t\tif not has_singbox then
+          \t\t\tlog("跳过 SOCKS/HTTP 节点，因未安装 sing-box。")
+          \t\t\treturn nil
+          \t\tend
+          \t\tlocal link, fragment = content:match("^(.-)#(.*)$")
+          \t\tlink = link or content
+          \t\tlocal parsed = api.parseURL(szType .. "://" .. link)
+          \t\tlocal function pct_decode(v)
+          \t\t\treturn (v or ""):gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end)
+          \t\tend
+          \t\tresult.type = "sing-box"
+          \t\tresult.protocol = (szType == "http") and "http" or "socks"
+          \t\tresult.address = parsed.hostname
+          \t\tresult.port = parsed.port
+          \t\tresult.username = pct_decode(parsed.username)
+          \t\tresult.password = pct_decode(parsed.password)
+          \t\tresult.remarks = pct_decode(fragment or (string.upper(result.protocol) .. "-" .. (result.address or "node") .. "-" .. tostring(result.port or "")))
+          \t\treturn result
+          \t--ssr://base64(host:port:protocol:method:obfs:base64pass/?obfsparam=base64param&protoparam=base64param&remarks=base64remarks&group=base64group&udpport=0&uot=0)
+          \telseif szType == 'ssr' then'''
           if process_anchor not in s:
               raise SystemExit('PassWall processData anchor not found')
           s = s.replace(process_anchor, process_patch, 1)
           link_anchor = '\t\t\t\t\t\tlocal node = api.trim(v)\n\t\t\t\t\t\tlocal dat = split(node, "://")'
           link_patch = '''\t\t\t\t\t\tlocal node = api.trim(v)
-\t\t\t\t\t\t-- Accept provider shorthand: host:port:username:password
-\t\t\t\t\t\tlocal h, p, u, pw = node:match("^([^:]+):(%d+):([^:]+):(.+)$")
-\t\t\t\t\t\tif h and p and u and pw then
-\t\t\t\t\t\t\tnode = "socks5://" .. u .. ":" .. pw .. "@" .. h .. ":" .. p .. "#SK5-" .. h .. "-" .. p
-\t\t\t\t\t\tend
-\t\t\t\t\t\tlocal dat = split(node, "://")'''
+          \t\t\t\t\t\t-- Accept provider shorthand: host:port:username:password
+          \t\t\t\t\t\tlocal h, p, u, pw = node:match("^([^:]+):(%d+):([^:]+):(.+)$")
+          \t\t\t\t\t\tif h and p and u and pw then
+          \t\t\t\t\t\t\tnode = "socks5://" .. u .. ":" .. pw .. "@" .. h .. ":" .. p .. "#SK5-" .. h .. "-" .. p
+          \t\t\t\t\t\tend
+          \t\t\t\t\t\tlocal dat = split(node, "://")'''
           if link_anchor not in s:
               raise SystemExit('PassWall parse_link anchor not found')
           s = s.replace(link_anchor, link_patch, 1)
