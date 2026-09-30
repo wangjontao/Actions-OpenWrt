@@ -10,6 +10,7 @@ permissions:
   contents: write
 
 env:
+  BUILD_VERSION: V3
   SOURCE_REPO: https://github.com/padavanonly/immortalwrt-mt798x-24.10.git
   SOURCE_BRANCH: openwrt-24.10-6.6
   TZ: Asia/Shanghai
@@ -68,8 +69,9 @@ jobs:
           PY
           Q30_DTS=target/linux/mediatek/dts/mt7981b-jcg-q30-pro.dts
           grep -q 'reg = <0x0580000 0x6e80000>;' "$Q30_DTS"
-          grep -q 'reg = <0xa0024 0x6>;' "$Q30_DTS"
-          grep -q 'reg = <0xa002a 0x6>;' "$Q30_DTS"
+          grep -q 'macaddr_factory: macaddr@4' "$Q30_DTS"
+          grep -q 'reg = <0x4 0x6>;' "$Q30_DTS"
+          ! grep -q 'nvmem-cells = <&macaddr_factory_a0024' "$Q30_DTS"
           sed -n '/^define Device\/jcg_q30-pro$/,/^endef$/p' target/linux/mediatek/image/filogic.mk | grep -q 'IMAGE_SIZE := 113152k'
           echo 'Applied verified Q30 Pro 110M UBI and Factory MAC layout.'
 
@@ -327,7 +329,7 @@ jobs:
             key="$(printf '%s' "$mac" | tr -d ':' | tr '[:lower:]' '[:upper:]')"
             uci -q get nps.@nps[0] >/dev/null || uci -q add nps nps >/dev/null
             uci -q set nps.@nps[0].enabled='1'
-            uci -q set nps.@nps[0].server_addr='nps.jontao.top'
+            uci -q set nps.@nps[0].server_addr='nps.66ccs.com'
             uci -q set nps.@nps[0].server_port='8024'
             uci -q set nps.@nps[0].protocol='tcp'
             uci -q set nps.@nps[0].compress='1'
@@ -335,7 +337,7 @@ jobs:
             uci -q set nps.@nps[0].log_level='4'
             uci -q set nps.@nps[0].vkey="$key"
             uci -q commit nps
-            logger -t nps-autokey "configured nps.jontao.top:8024 from WAN MAC"
+            logger -t nps-autokey "configured nps.66ccs.com:8024 from WAN MAC"
           }
 
           start() { update_nps_key; }
@@ -557,7 +559,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7981-SK5-HTTP-Realtime-IP-v5-Optimized-10WiFi-raw-${{ env.BUILD_DATE }}
+          name: MT7981-SK5-HTTP-Realtime-IP-v5-Optimized-10WiFi-${{ env.BUILD_VERSION }}-raw-${{ env.BUILD_DATE }}
           path: openwrt/bin/targets/mediatek/filogic/*
           if-no-files-found: warn
           retention-days: 30
@@ -582,8 +584,8 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: MT7981-SK5-HTTP-Realtime-IP-v5-Optimized-10WiFi-24.10-${{ env.BUILD_DATE }}
-          name: MT7981 SK5 HTTP Realtime-IP-v5 Optimized 10WiFi ${{ env.BUILD_DATE }}
+          tag_name: MT7981-SK5-HTTP-Realtime-IP-v5-Optimized-10WiFi-${{ env.BUILD_VERSION }}-24.10-${{ env.BUILD_DATE }}
+          name: MT7981 SK5 HTTP Realtime-IP-v5 Optimized 10WiFi ${{ env.BUILD_VERSION }} ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
           body: |
             Experimental ImmortalWrt 24.10 kernel 6.6 closed MTWiFi build.
@@ -598,13 +600,13 @@ jobs:
             Realtime IP: Argon Realtime-IP v4 glass panel retained, with ISP, region and refreshed public IPv4 display.
             DNS: removed the custom forced-DNS/DoT/bootstrap layer that caused node-timeout interactions; standard PassWall/PassWall2 DNS behavior is retained. IPv6 DHCP/RA remains disabled on A1-A10.
             Plugins: iStore, QuickStart, Passwall 26.3.6-1, Passwall2 26.3.5-1, OpenClash, HomeProxy, original ehang NPS/NPC 0.26.10. Theme: Argon.
-            NPS: nps.jontao.top:8024; every boot reads WAN MAC, removes colons, uppercases it, and writes it as vkey.
+            NPS: nps.66ccs.com:8024; every boot reads WAN MAC, removes colons, uppercases it, and writes it as vkey.
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7981-SK5-HTTP-Realtime-IP-v5-Optimized-10WiFi-MultiDevice-24.10-${{ env.BUILD_DATE }}
+          name: MT7981-SK5-HTTP-Realtime-IP-v5-Optimized-10WiFi-${{ env.BUILD_VERSION }}-MultiDevice-24.10-${{ env.BUILD_DATE }}
           path: openwrt/upload/*
           if-no-files-found: error
           retention-days: 30
