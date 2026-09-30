@@ -1,0 +1,52 @@
+#!/bin/sh
+NODE="$1"
+PORT="$2"
+[ -n "$NODE" ] && [ -n "$PORT" ] || { echo "STATUS=BAD_ARGS"; exit 1; }
+
+FLAG="pw2_ip_probe_$PORT-$$"
+TMP="/tmp/etc/passwall2"
+CFG="$TMP/$FLAG.json"
+LOG="/tmp/$FLAG.log"
+PID=""
+cleanup(){ [ -n "$PID" ] && kill "$PID" >/dev/null 2>&1 || true; rm -f "$CFG" "$LOG"; }
+trap cleanup EXIT INT TERM
+
+/usr/share/passwall2/app.sh run_socks flag="$FLAG" node="$NODE" bind=127.0.0.1 socks_port="$PORT" config_file="$FLAG.json" log_file=/dev/null no_run=1 >/dev/null 2>&1 || true
+[ -s "$CFG" ] || { echo "STATUS=CONFIG_FAILED"; exit 2; }
+
+TYPE="$(uci -q get passwall2.$NODE.type 2>/dev/null | tr 'A-Z' 'a-z')"
+case "$TYPE" in
+  xray)
+    BIN="$(uci -q get passwall2.@global_app[0].xray_file 2>/dev/null)"
+    [ -x "$BIN" ] || BIN="$(command -v xray 2>/dev/null || true)"
+    [ -n "$BIN" ] || { echo "STATUS=NO_XRAY"; exit 3; }
+    "$BIN" run -c "$CFG" >"$LOG" 2>&1 & PID=$!
+    ;;
+  sing-box|singbox)
+    BIN="$(uci -q get passwall2.@global_app[0].sing_box_file 2>/dev/null)"
+    [ -x "$BIN" ] || BIN="$(command -v sing-box 2>/dev/null || true)"
+    [ -n "$BIN" ] || { echo "STATUS=NO_SINGBOX"; exit 3; }
+    "$BIN" run -c "$CFG" >"$LOG" 2>&1 & PID=$!
+    ;;
+  *)
+    echo "STATUS=UNSUPPORTED_TYPE"
+    echo "TYPE=$TYPE"
+    exit 4
+    ;;
+esac
+
+i=0
+while [ "$i" -lt 8 ]; do
+  if command -v ss >/dev/null 2>&1; then ss -lnt 2>/dev/null | grep -q ":$PORT " && break
+  else netstat -lnt 2>/dev/null | grep -q ":$PORT " && break; fi
+  sleep 1
+  i=$((i+1))
+done
+
+if command -v ss >/dev/null 2>&1; then
+  ss -lnt 2>/dev/null | grep -q ":$PORT " || { echo "STATUS=CORE_START_FAILED"; tail -n 15 "$LOG" 2>/dev/null | sed 's/^/ERROR=/'; exit 5; }
+else
+  netstat -lnt 2>/dev/null | grep -q ":$PORT " || { echo "STATUS=CORE_START_FAILED"; tail -n 15 "$LOG" 2>/dev/null | sed 's/^/ERROR=/'; exit 5; }
+fi
+
+exec /usr/bin/proxy-socks-ip-probe "$PORT"
