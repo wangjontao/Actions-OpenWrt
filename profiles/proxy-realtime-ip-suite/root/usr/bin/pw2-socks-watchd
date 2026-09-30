@@ -1,0 +1,25 @@
+#!/bin/sh
+MISS=0
+LAST_RESTART=0
+while true; do
+  sleep 30
+  [ "$(uci -q get passwall2.@global[0].enabled)" = "1" ] || { MISS=0; continue; }
+  NODE="$(uci -q get passwall2.@global[0].node)"
+  [ -n "$NODE" ] || { MISS=0; continue; }
+  PORT="$(uci -q get passwall2.@global[0].node_socks_port)"
+  if [ -z "$PORT" ]; then
+    uci -q set passwall2.@global[0].node_socks_port='1070'
+    uci -q commit passwall2
+    PORT=1070
+  fi
+  if command -v ss >/dev/null 2>&1; then ss -lnt 2>/dev/null | grep -q ":$PORT " && { MISS=0; continue; }
+  else netstat -lnt 2>/dev/null | grep -q ":$PORT " && { MISS=0; continue; }; fi
+  MISS=$((MISS+1))
+  [ "$MISS" -ge 2 ] || continue
+  NOW="$(date +%s)"
+  [ $((NOW-LAST_RESTART)) -ge 120 ] || continue
+  LAST_RESTART="$NOW"
+  MISS=0
+  logger -t pw2-socks-watch "global SOCKS $PORT missing twice, restarting passwall2"
+  /etc/init.d/passwall2 restart >/dev/null 2>&1 || true
+done
