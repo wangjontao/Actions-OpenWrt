@@ -1,0 +1,34 @@
+<div class="cbi-section">
+<h3>代理出口 IP</h3>
+<div style="line-height:1.9">
+状态：<strong id="passwall2_ip_status">检测中...</strong><br>
+当前节点：<strong id="passwall2_ip_node">--</strong><br>
+SOCKS：<span id="passwall2_ip_socks">--</span><br>
+出口 IP：<strong id="passwall2_ip_addr">--</strong><br>
+国家/地区：<span id="passwall2_ip_country">--</span><br>
+城市：<span id="passwall2_ip_city">--</span><br>
+ISP：<span id="passwall2_ip_isp">--</span><br>
+ASN：<span id="passwall2_ip_asn">--</span>
+</div>
+<p><input type="button" class="cbi-button cbi-button-action" value="重新检测" onclick="passwall2GlobalIp();" /></p>
+</div>
+<script type="text/javascript">
+//<![CDATA[
+function passwall2GlobalIp(){
+  XHR.get('<%=luci.dispatcher.build_url("admin","services","passwall2","exit_ip_status")%>',null,function(x,d){
+    var o=d;
+    try{if(typeof o==='string')o=JSON.parse(o);if((!o||typeof o!=='object')&&x&&x.responseText)o=JSON.parse(x.responseText);}catch(e){o=null;}
+    if(!o)return;
+    document.getElementById('passwall2_ip_status').innerHTML=o.status==='OK'?'<span style="color:#159957">● 正常</span>':'<span style="color:#e43f3b">● '+(o.status||'失败')+'</span>';
+    document.getElementById('passwall2_ip_node').textContent=o.remarks||o.node||'--';
+    document.getElementById('passwall2_ip_socks').textContent='127.0.0.1:'+(o.socks_port||1070);
+    document.getElementById('passwall2_ip_addr').textContent=o.ip||'--';
+    document.getElementById('passwall2_ip_country').textContent=(o.country||'--')+(o.country_code?' ('+o.country_code+')':'');
+    document.getElementById('passwall2_ip_city').textContent=o.city||'--';
+    document.getElementById('passwall2_ip_isp').textContent=o.isp||'--';
+    document.getElementById('passwall2_ip_asn').textContent=o.asn?'AS'+o.asn:'--';
+  });
+}
+passwall2GlobalIp();
+//]]>
+</script>
