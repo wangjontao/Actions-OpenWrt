@@ -1,10 +1,10 @@
-name: MT7986 S20L AX6000 Realtime-IP-v5 V4 5WiFi DHCP-MAC-Fix
+name: MT7986 S20L AX6000 V5 OpenWiFi 5WiFi Stable mt76
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - jontaoNpS-mt7986-s20l-ax6000-v4-5wifi
+      - jontaoNpS-mt7986-s20l-ax6000-v5-openwifi-5wifi
 
 permissions:
   contents: write
@@ -34,45 +34,22 @@ jobs:
           sudo apt-get clean
           df -h /
 
-      - name: Clone ImmortalWrt 24.10 MTWiFi source
+      - name: Clone ImmortalWrt 24.10 stable open-source WiFi source
         run: |
           git clone --depth=1 --branch "$SOURCE_BRANCH" "$SOURCE_REPO" openwrt
           echo "BUILD_DATE=$(date +'%Y.%m.%d-%H.%M.%S')" >> "$GITHUB_ENV"
           echo "SOURCE_HASH=$(git -C openwrt rev-parse --short HEAD)" >> "$GITHUB_ENV"
 
-      - name: Adapt mature MT7986 devices for closed MTWiFi
-        working-directory: openwrt
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('target/linux/mediatek/image/filogic.mk')
-          s = p.read_text()
-          for dev in ('supergateway_s20l', 'xiaomi_redmi-router-ax6000-stock', 'xiaomi_redmi-router-ax6000-ubootmod', 'zbtlink_zbt-z8103ax'):
-              start = s.index(f'define Device/{dev}')
-              end = s.index('endef', start)
-              block = s[start:end]
-              for pkg in ('kmod-mt7915e', 'kmod-mt7986-firmware', 'mt7986-wo-firmware', 'kmod-mt7981-firmware', 'mt7981-wo-firmware'):
-                  block = block.replace(pkg, '')
-              s = s[:start] + block + s[end:]
-          p.write_text(s)
-          PY
-          echo 'Removed open-source MT7915 firmware packages from the MT7986 device profiles.'
 
-      - name: Verify closed WiFi and MT7986 device definitions
+      - name: Verify stable open-source MT7986 WiFi
         working-directory: openwrt
         run: |
-          grep -q 'PKG_VERSION:=7.6.6.1' package/mtk/drivers/mt_wifi/Makefile
-          test -s package/mtk/drivers/warp/Makefile
-          for dev in supergateway_s20l xiaomi_redmi-router-ax6000-stock xiaomi_redmi-router-ax6000-ubootmod jdcloud_re-cp-03 zbtlink_zbt-z8103ax; do
-            grep -q "TARGET_DEVICES += ${dev}" target/linux/mediatek/image/filogic.mk
-            block=$(sed -n "/^define Device\/${dev}$/,/^endef$/p" target/linux/mediatek/image/filogic.mk)
-            case "$dev" in
-              supergateway_s20l|xiaomi_redmi-router-ax6000-*|zbtlink_zbt-z8103ax)
-                ! grep -Eq 'kmod-mt7915e|kmod-mt7986-firmware|mt7986-wo-firmware|kmod-mt7981-firmware|mt7981-wo-firmware' <<<"$block"
-                ;;
-            esac
+          common=$(sed -n '/^define Device\/supergateway_s20-common$/,/^endef$/p' target/linux/mediatek/image/filogic.mk)
+          for pkg in kmod-mt7915e kmod-mt7986-firmware mt7986-wo-firmware; do
+            grep -q "$pkg" <<<"$common" || exit 1
           done
-          echo 'Verified S20L, Redmi AX6000 stock/U-Boot, JDCloud AX6000 Baili and ZBT Z8103AX targets.'
+          echo 'Using source-native mt76/mt7915e wireless.'
+
 
       - name: Update feeds and add iStore
         working-directory: openwrt
@@ -136,22 +113,25 @@ jobs:
       - name: Configure all requested firmware images
         working-directory: openwrt
         run: |
-          cp defconfig/mt7986-ax6000.config .config
+          rm -f .config
           sed -i '/^CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_/d' .config
           sed -i '/^CONFIG_TARGET_DEVICE_PACKAGES_mediatek_filogic_DEVICE_/d' .config
           sed -i '/^CONFIG_PACKAGE_dnsmasq=/d;/^CONFIG_PACKAGE_dnsmasq-full=/d' .config
           cat >> .config <<'CONFIG'
           CONFIG_TARGET_mediatek=y
           CONFIG_TARGET_mediatek_filogic=y
+          CONFIG_TARGET_MULTI_PROFILE=y
+          CONFIG_TARGET_PER_DEVICE_ROOTFS=y
           CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_supergateway_s20l=y
           CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_xiaomi_redmi-router-ax6000-stock=y
           CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_xiaomi_redmi-router-ax6000-ubootmod=y
           CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_jdcloud_re-cp-03=y
           CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_zbtlink_zbt-z8103ax=y
-          CONFIG_PACKAGE_kmod-mt_wifi=y
-          CONFIG_PACKAGE_kmod-warp=y
-          CONFIG_PACKAGE_luci-app-mtwifi-cfg=y
-          CONFIG_PACKAGE_luci-i18n-mtwifi-cfg-zh-cn=y
+          CONFIG_PACKAGE_kmod-mt7915e=y
+          CONFIG_PACKAGE_kmod-mt7986-firmware=y
+          CONFIG_PACKAGE_mt7986-wo-firmware=y
+          # CONFIG_PACKAGE_kmod-mt_wifi is not set
+          # CONFIG_PACKAGE_kmod-warp is not set
           CONFIG_PACKAGE_luci=y
           CONFIG_PACKAGE_luci-app-store=y
           CONFIG_PACKAGE_luci-app-quickstart=y
@@ -201,7 +181,6 @@ jobs:
             CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_xiaomi_redmi-router-ax6000-ubootmod \
             CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_jdcloud_re-cp-03 \
             CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_zbtlink_zbt-z8103ax \
-            CONFIG_PACKAGE_kmod-mt_wifi CONFIG_PACKAGE_kmod-warp \
             CONFIG_PACKAGE_luci-app-store CONFIG_PACKAGE_luci-app-quickstart CONFIG_PACKAGE_quickstart \
             CONFIG_PACKAGE_luci-app-passwall CONFIG_PACKAGE_luci-app-passwall2 \
             CONFIG_PACKAGE_luci-app-openclash CONFIG_PACKAGE_luci-app-homeproxy \
@@ -211,18 +190,10 @@ jobs:
             grep -qx "$sym=y" .config || { echo "ERROR: $sym unavailable"; exit 1; }
           done
 
-      - name: Apply login and MTWiFi defaults
+      - name: Apply login and stable mt76 WiFi defaults
         working-directory: openwrt
         run: |
           sed -i 's/192\.168\.[0-9]*\.[0-9]*/192.168.7.1/g' package/base-files/files/bin/config_generate
-          sed -i -e 's/^SSID1=.*/SSID1=JuLiang-2.4G/' -e 's/^Channel=.*/Channel=9/' \
-            -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
-            -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' \
-            package/mtk/drivers/wifi-profile/files/mt7986/mt7986-ax6000.dbdc.b0.dat
-          sed -i -e 's/^SSID1=.*/SSID1=JuLiang-5G/' -e 's/^Channel=.*/Channel=48/' \
-            -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
-            -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' \
-            package/mtk/drivers/wifi-profile/files/mt7986/mt7986-ax6000.dbdc.b1.dat
           mkdir -p files/etc
           cp package/base-files/files/etc/shadow files/etc/shadow
           HASH="$(openssl passwd -1 '@password@')"
@@ -232,17 +203,17 @@ jobs:
           cat > files/etc/openwrt_release <<'RELEASE'
           DISTRIB_ID='JulLiangTK'
           DISTRIB_RELEASE='24.10'
-          DISTRIB_REVISION='V4-5WiFi-DHCP-MAC-Fix-by-jontao'
+          DISTRIB_REVISION='V5-OpenWiFi-5WiFi-DHCP-MAC-Fix-by-jontao'
           DISTRIB_TARGET='mediatek/filogic'
           DISTRIB_ARCH='aarch64_cortex-a53'
-          DISTRIB_DESCRIPTION='JuLiangTK OS V4 5WiFi DHCP-MAC-Fix by:jontao'
+          DISTRIB_DESCRIPTION='JuLiangTK OS V5 OpenWiFi 5WiFi DHCP-MAC-Fix by:jontao'
           DISTRIB_TAINTS=''
           RELEASE
           cat > files/etc/os-release <<'OSRELEASE'
           NAME="JulLiangTK"
-          VERSION="JuLiangTK OS V4 5WiFi DHCP-MAC-Fix by:jontao"
+          VERSION="JuLiangTK OS V5 OpenWiFi 5WiFi DHCP-MAC-Fix by:jontao"
           ID="juliangtk"
-          PRETTY_NAME="JuLiangTK OS V4 5WiFi DHCP-MAC-Fix by:jontao"
+          PRETTY_NAME="JuLiangTK OS V5 OpenWiFi 5WiFi DHCP-MAC-Fix by:jontao"
           HOME_URL="https://github.com/wangjontao"
           OSRELEASE
 
@@ -251,18 +222,6 @@ jobs:
           #!/bin/sh
           uci -q set system.@system[0].hostname='JulLiangTK'
           uci -q commit system
-          for f in /etc/wireless/mediatek/*b0.dat; do
-            [ -f "$f" ] || continue
-            sed -i -e 's/^SSID1=.*/SSID1=JuLiang-2.4G/' -e 's/^Channel=.*/Channel=9/' \
-              -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
-              -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' "$f"
-          done
-          for f in /etc/wireless/mediatek/*b1.dat; do
-            [ -f "$f" ] || continue
-            sed -i -e 's/^SSID1=.*/SSID1=JuLiang-5G/' -e 's/^Channel=.*/Channel=48/' \
-              -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
-              -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' "$f"
-          done
           exit 0
           WIFIDEFAULT
           chmod 755 files/etc/uci-defaults/97-juliang-system-wifi
@@ -345,6 +304,7 @@ jobs:
           set -eu
           MARKER=/etc/juliang-5wifi.done
           [ -e "$MARKER" ] && exit 0
+          [ -s /etc/config/wireless ] || wifi config >/dev/null 2>&1 || true
 
           radio2=''
           radio5=''
@@ -359,6 +319,8 @@ jobs:
           done
           [ -n "$radio2" ] || radio2='radio0'
           [ -n "$radio5" ] || radio5='radio1'
+          uci -q set wireless.$radio2.disabled='0'
+          uci -q set wireless.$radio5.disabled='0'
           uci -q set wireless.$radio2.channel='9'
           uci -q set wireless.$radio5.channel='48'
 
@@ -469,10 +431,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: openwrt/.ccache
-          key: mt7986-mtwifi-ccache-${{ runner.os }}-${{ env.SOURCE_HASH }}-${{ github.run_id }}
+          key: mt7986-openwifi-ccache-${{ runner.os }}-${{ env.SOURCE_HASH }}-${{ github.run_id }}
           restore-keys: |
-            mt7986-mtwifi-ccache-${{ runner.os }}-${{ env.SOURCE_HASH }}-
-            mt7986-mtwifi-ccache-${{ runner.os }}-
+            mt7986-openwifi-ccache-${{ runner.os }}-${{ env.SOURCE_HASH }}-
+            mt7986-openwifi-ccache-${{ runner.os }}-
 
       - name: Restore toolchain cache
         uses: actions/cache@v4
@@ -482,7 +444,7 @@ jobs:
             openwrt/staging_dir/toolchain-*
             openwrt/build_dir/host
             openwrt/build_dir/toolchain-*
-          key: mt7986-mtwifi-toolchain-${{ runner.os }}-${{ env.SOURCE_HASH }}-v1
+          key: mt7986-openwifi-toolchain-${{ runner.os }}-${{ env.SOURCE_HASH }}-v1
 
       - name: Preinstall Argon Realtime-IP v4
         working-directory: openwrt
@@ -500,9 +462,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: openwrt/dl
-          key: mt7986-mtwifi-2410-dl-${{ github.run_id }}-${{ github.run_attempt }}
+          key: mt7986-openwifi-2410-dl-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            mt7986-mtwifi-2410-dl-
+            mt7986-openwifi-2410-dl-
 
       - name: Download and compile
         working-directory: openwrt
@@ -529,7 +491,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7986-S20L-AX6000-Realtime-IP-v5-V4-5WiFi-DHCP-MAC-Fix-raw-${{ env.BUILD_DATE }}
+          name: MT7986-S20L-AX6000-Realtime-IP-v5-V5-OpenWiFi-5WiFi-DHCP-MAC-Fix-raw-${{ env.BUILD_DATE }}
           path: openwrt/bin/targets/mediatek/filogic/*
           if-no-files-found: warn
           retention-days: 30
@@ -549,15 +511,15 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: MT7986-S20L-AX6000-Realtime-IP-v5-V4-5WiFi-DHCP-MAC-Fix-24.10-${{ env.BUILD_DATE }}
-          name: MT7986 S20L AX6000 Realtime-IP-v5 V4 5WiFi DHCP-MAC-Fix ${{ env.BUILD_DATE }}
+          tag_name: MT7986-S20L-AX6000-Realtime-IP-v5-V5-OpenWiFi-5WiFi-DHCP-MAC-Fix-24.10-${{ env.BUILD_DATE }}
+          name: MT7986 S20L AX6000 Realtime-IP-v5 V5 OpenWiFi 5WiFi DHCP-MAC-Fix ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
           body: |
             Build revision: V4 DHCP/MAC Lease Fix. Clean rebuild from V2; V3 is preserved as a failed workflow-parser attempt. Adds stable WAN MAC pinning, DHCP broadcast compatibility, automatic DHCP renew, WAN-only restart and physical WAN-link recovery with a 180-second cooldown.
-            Experimental ImmortalWrt 24.10 kernel 6.6 closed MTWiFi build.
+            ImmortalWrt 24.10 kernel 6.6 stable source-native mt76/mt7915e wireless build.
             Devices: Super Gateway S20L, Redmi AX6000 stock/OpenWrt U-Boot layouts, JDCloud AX6000 Baili (RE-CP-03), plus the existing ZBT Z8103AX MT7986 target from this workflow.
-            Driver: mt_wifi 7.6.6.1 with matching WARP. Management: 192.168.7.1, root password @password@.
-            Firmware identity: JuLiangTK OS V4 5WiFi DHCP-MAC-Fix by:jontao.
+            Driver: source-native mt76/mt7915e with MT7986 firmware/WO firmware; closed mt_wifi and WARP are not used. Management: 192.168.7.1, root password @password@.
+            Firmware identity: JuLiangTK OS V5 OpenWiFi 5WiFi DHCP-MAC-Fix by:jontao.
             WiFi password: a1111111. 5WiFi: A1-A5 on 5GHz; isolated clients; subnets 172.16.1.0/24 through 172.16.5.0/24; IPv6 DHCP/RA/NDP disabled.
             Wireless, DHCP and matching PassWall/PassWall2 5-ACL templates apply once, 60 seconds after first boot.
             Import: PassWall and PassWall2 both support SOCKS5/SOCKS/HTTP URI plus multiline host:port:username:password SK5 shorthand.
@@ -571,7 +533,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7986-S20L-AX6000-Realtime-IP-v5-V4-5WiFi-DHCP-MAC-Fix-24.10-${{ env.BUILD_DATE }}
+          name: MT7986-S20L-AX6000-Realtime-IP-v5-V5-OpenWiFi-5WiFi-DHCP-MAC-Fix-24.10-${{ env.BUILD_DATE }}
           path: openwrt/upload/*
           if-no-files-found: error
           retention-days: 30
