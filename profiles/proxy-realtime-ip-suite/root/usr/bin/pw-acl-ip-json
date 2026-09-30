@@ -1,0 +1,184 @@
+#!/usr/bin/lua
+local sys=require "luci.sys"
+local jsonc=require "luci.jsonc"
+local uci=require("luci.model.uci").cursor()
+local fs=require "nixio.fs"
+
+local force=arg[1]=="--refresh"
+local CACHE="/tmp/pw-acl-ip-cache.json"
+local JOBDIR="/tmp/pw-acl-ip-jobs"
+
+local function rf(p)
+  local f=io.open(p,"r")
+  if not f then return nil end
+  local d=f:read("*a")
+  f:close()
+  return d
+end
+
+local function wf(p,d)
+  local f=io.open(p,"w")
+  if f then f:write(d); f:close() end
+end
+
+local function q(s)
+  return "'"..tostring(s or ""):gsub("'","'\\''").."'"
+end
+
+local function parse(t)
+  local r={status="FAILED",ip="",country="",country_code="",city="",isp="",asn="",port=""}
+  for line in (t or ""):gmatch("[^\r\n]+") do
+    local k,v=line:match("^([A-Z_]+)=(.*)$")
+    if k=="STATUS" then r.status=v
+    elseif k=="PORT" then r.port=v
+    elseif k=="IP" then r.ip=v
+    elseif k=="COUNTRY" then r.country=v
+    elseif k=="COUNTRY_CODE" then r.country_code=v
+    elseif k=="CITY" then r.city=v
+    elseif k=="ISP" then r.isp=v
+    elseif k=="ASN" then r.asn=v end
+  end
+  return r
+end
+
+local function valid(id)
+  if not id or id=="" or id=="tcp" or id=="udp" or id=="default" or id=="direct" then return false end
+  local t=uci:get("passwall",id)
+  return t=="nodes" or t=="socks"
+end
+
+local var=rf("/tmp/etc/passwall/var") or ""
+local acl_enabled=uci:get("passwall","@global[0]","acl_enable") or "0"
+local rows={}
+local base="/tmp/etc/passwall/acl"
+
+if fs.stat(base) then
+  for sid in fs.dir(base) do
+    if sid~="." and sid~=".." and sid~="default" and sid~="acl_default" then
+      local src=rf(base.."/"..sid.."/source_list")
+      local idx=src and tonumber(src:match("172%.16%.(%d+)%.0/24"))
+      if idx and idx>=1 and idx<=10 then
+        local tcp=var:match('ACL_'..sid..'_tcp_node="([^"]+)"') or ""
+        local udp=var:match('ACL_'..sid..'_udp_node="([^"]+)"') or ""
+        local old=var:match('ACL_'..sid..'_node="([^"]+)"') or ""
+        if not valid(tcp) then tcp=old end
+        if not valid(udp) then udp=old end
+        if not valid(tcp) then tcp=uci:get("passwall",sid,"node") or "" end
+        if not valid(udp) then udp=tcp end
+        if not valid(tcp) then tcp="" end
+        if not valid(udp) then udp="" end
+        rows[#rows+1]={index=idx,name="A"..idx,section=sid,network="172.16."..idx..".0/24",tcp_node=tcp,udp_node=udp,node=tcp~="" and tcp or udp}
+      end
+    end
+  end
+end
+
+table.sort(rows,function(a,b)return a.index<b.index end)
+
+local sig={}
+for _,r in ipairs(rows) do sig[#sig+1]=r.name..":TCP="..(r.tcp_node or "")..":UDP="..(r.udp_node or "") end
+local signature=table.concat(sig,";")
+
+local oldraw=rf(CACHE)
+local old,oldres=nil,{}
+if oldraw then
+  local ok,d=pcall(jsonc.parse,oldraw)
+  if ok and type(d)=="table" then old=d end
+end
+if old and type(old.node_results)=="table" then oldres=old.node_results end
+
+if not force and old and old.signature==signature and tonumber(old.generated or 0)>0 and os.time()-tonumber(old.generated)<180 then
+  io.write(oldraw)
+  os.exit(0)
+end
+
+local unique={}
+for _,r in ipairs(rows) do
+  if valid(r.tcp_node) then unique[r.tcp_node]=true end
+  if valid(r.udp_node) then unique[r.udp_node]=true end
+end
+
+local results,jobs={},{}
+sys.call("rm -rf "..q(JOBDIR))
+sys.call("mkdir -p "..q(JOBDIR))
+
+for node,_ in pairs(unique) do
+  if not force and oldres[node] and oldres[node].status=="OK" then
+    results[node]=oldres[node]
+  else
+    local port=tonumber(var:match('node_'..node..'_socks_port="(%d+)"') or "")
+    if port then
+      jobs[#jobs+1]={node=node,port=port,out=JOBDIR.."/"..node..".out"}
+    else
+      results[node]={status="SOCKS_PORT_NOT_FOUND",port="",ip="",country="",country_code="",city="",isp="",asn=""}
+    end
+  end
+end
+
+if #jobs>0 then
+  local cmds={}
+  for _,j in ipairs(jobs) do cmds[#cmds+1]=string.format("/usr/bin/proxy-socks-ip-probe %d > %s 2>&1 &",j.port,q(j.out)) end
+  cmds[#cmds+1]="wait"
+  sys.call("sh -c "..q(table.concat(cmds,"\n")))
+  for _,j in ipairs(jobs) do results[j.node]=parse(rf(j.out) or "") end
+end
+
+for node,r in pairs(results) do r.remarks=uci:get("passwall",node,"remarks") or node end
+
+for _,r in ipairs(rows) do
+  local en=uci:get("passwall",r.section,"enabled") or "0"
+  if acl_enabled~="1" then
+    r.status="ACL_DISABLED"
+  elseif en~="1" then
+    r.status="DISABLED"
+  elseif r.tcp_node=="" and r.udp_node=="" then
+    r.status="NO_NODE"
+  else
+    local t=results[r.tcp_node] or {}
+    local u=results[r.udp_node] or {}
+    r.tcp_status=t.status or "NO_NODE"
+    r.udp_status=u.status or "NO_NODE"
+    r.tcp_port=t.port or ""
+    r.udp_port=u.port or ""
+    r.tcp_ip=t.ip or ""
+    r.udp_ip=u.ip or ""
+    r.tcp_remarks=t.remarks or r.tcp_node or ""
+    r.udp_remarks=u.remarks or r.udp_node or ""
+
+    if r.tcp_node~="" and r.tcp_node==r.udp_node then
+      r.status=t.status or "FAILED"
+      r.port=t.port or ""
+      r.ip=t.ip or ""
+      r.country=t.country or ""
+      r.country_code=t.country_code or ""
+      r.city=t.city or ""
+      r.isp=t.isp or ""
+      r.asn=t.asn or ""
+      r.remarks=t.remarks or r.tcp_node
+    else
+      r.status=(r.tcp_status=="OK" and r.udp_status=="OK") and "OK" or "PARTIAL"
+      r.port="TCP:"..(r.tcp_port~="" and r.tcp_port or "--").." UDP:"..(r.udp_port~="" and r.udp_port or "--")
+      r.ip="TCP: "..(r.tcp_ip~="" and r.tcp_ip or "--").." / UDP: "..(r.udp_ip~="" and r.udp_ip or "--")
+      r.remarks="TCP: "..(r.tcp_remarks~="" and r.tcp_remarks or "--").." / UDP: "..(r.udp_remarks~="" and r.udp_remarks or "--")
+      r.country=t.country or ""
+      r.country_code=t.country_code or ""
+      r.city=t.city or ""
+      r.isp=t.isp or ""
+      r.asn=t.asn or ""
+    end
+  end
+  r.ip=r.ip or ""
+  r.remarks=r.remarks or "--"
+  r.port=r.port or ""
+  r.country=r.country or ""
+  r.country_code=r.country_code or ""
+  r.city=r.city or ""
+  r.isp=r.isp or ""
+  r.asn=r.asn or ""
+end
+
+local out={status="OK",count=#rows,generated=os.time(),signature=signature,detected_nodes=#jobs,acl_enabled=acl_enabled,node_results=results,rows=rows}
+local enc=jsonc.stringify(out)
+wf(CACHE,enc)
+sys.call("rm -rf "..q(JOBDIR))
+io.write(enc)
