@@ -1,0 +1,190 @@
+#!/bin/sh
+set -e
+
+patch_controller() {
+  APP="$1"
+  FILE="/usr/lib/lua/luci/controller/$APP.lua"
+  [ -f "$FILE" ] || return 0
+
+  if ! grep -q 'PROXY_REALTIME_IP_API_BEGIN' "$FILE"; then
+    LINE="$(grep -n 'connect_status.*call("connect_status")' "$FILE" | head -1 | cut -d: -f1)"
+    [ -n "$LINE" ] || LINE="$(grep -n 'index_status.*call("index_status")' "$FILE" | head -1 | cut -d: -f1)"
+    [ -n "$LINE" ] || { echo "controller insert point missing: $APP"; return 1; }
+
+    {
+      head -n "$LINE" "$FILE"
+      printf '\tentry({"admin", "services", "%s", "exit_ip_status"}, call("exit_ip_status")).leaf = true\n' "$APP"
+      printf '\tentry({"admin", "services", "%s", "acl_exit_ip_status"}, call("acl_exit_ip_status")).leaf = true\n' "$APP"
+      tail -n +$((LINE+1)) "$FILE"
+    } >"$FILE.new"
+    mv "$FILE.new" "$FILE"
+
+    [ "$APP" = "passwall2" ] && ACL_CMD="/usr/bin/pw2-acl-ip-json" || ACL_CMD="/usr/bin/pw-acl-ip-json"
+
+    cat >>"$FILE" <<EOF
+
+-- PROXY_REALTIME_IP_API_BEGIN
+function exit_ip_status()
+  local http=require "luci.http"
+  local sys=require "luci.sys"
+  local result=sys.exec("/usr/bin/proxy-global-ip-json $APP 2>/dev/null")
+  http.prepare_content("application/json")
+  http.write((result and result ~= "") and result or '{"status":"ERROR"}')
+end
+
+function acl_exit_ip_status()
+  local http=require "luci.http"
+  local sys=require "luci.sys"
+  local cmd="$ACL_CMD"
+  if http.formvalue("refresh")=="1" then cmd=cmd.." --refresh" end
+  local result=sys.exec(cmd.." 2>/dev/null")
+  http.prepare_content("application/json")
+  http.write((result and result ~= "") and result or '{"status":"ERROR","rows":[]}')
+end
+-- PROXY_REALTIME_IP_API_END
+EOF
+  fi
+
+  lua -e "assert(loadfile('$FILE'))"
+}
+
+patch_global() {
+  APP="$1"
+  FILE="/usr/lib/lua/luci/model/cbi/$APP/client/global.lua"
+  [ -f "$FILE" ] || return 0
+  grep -q 'PROXY_REALTIME_IP_VIEW_BEGIN' "$FILE" && return 0
+
+  LINE="$(grep -n '^[[:space:]]*return[[:space:]]' "$FILE" | tail -1 | cut -d: -f1)"
+  [ -n "$LINE" ] || { echo "global return missing: $APP"; return 1; }
+  BEFORE=$((LINE-1))
+
+  {
+    [ "$BEFORE" -gt 0 ] && head -n "$BEFORE" "$FILE"
+    cat <<EOF
+
+-- PROXY_REALTIME_IP_VIEW_BEGIN
+local proxy_exit_ip_view=m:section(SimpleSection)
+proxy_exit_ip_view.template="$APP/exit_ip_status"
+
+local proxy_acl_exit_ip_view=m:section(SimpleSection)
+proxy_acl_exit_ip_view.template="$APP/acl_exit_ip_status"
+-- PROXY_REALTIME_IP_VIEW_END
+
+EOF
+    tail -n +"$LINE" "$FILE"
+  } >"$FILE.new"
+
+  lua -e "assert(loadfile('$FILE.new'))"
+  mv "$FILE.new" "$FILE"
+}
+
+patch_acl() {
+  APP="$1"
+  FILE="/usr/lib/lua/luci/model/cbi/$APP/client/acl.lua"
+  [ -f "$FILE" ] || return 0
+
+  if ! grep -q 'PROXY_ACL_REFRESH_BUTTON_BEGIN' "$FILE"; then
+    LINE="$(grep -n '\[\[ ACLs Settings \]\]' "$FILE" | head -1 | cut -d: -f1)"
+    [ -n "$LINE" ] || LINE="$(grep -n 's = m:section(TypedSection, "acl_rule")' "$FILE" | head -1 | cut -d: -f1)"
+    [ -n "$LINE" ] || { echo "ACL table marker missing: $APP"; return 1; }
+    BEFORE=$((LINE-1))
+    {
+      [ "$BEFORE" -gt 0 ] && head -n "$BEFORE" "$FILE"
+      cat <<EOF
+
+-- PROXY_ACL_REFRESH_BUTTON_BEGIN
+local proxy_acl_refresh_section=m:section(SimpleSection)
+proxy_acl_refresh_section.template="$APP/acl_ip_refresh"
+-- PROXY_ACL_REFRESH_BUTTON_END
+
+EOF
+      tail -n +"$LINE" "$FILE"
+    } >"$FILE.new"
+    mv "$FILE.new" "$FILE"
+  fi
+
+  if ! grep -q 'PROXY_ACL_EXIT_IP_COLUMN_BEGIN' "$FILE"; then
+    LINE="$(grep -n 'm:appendTemplate' "$FILE" | head -1 | cut -d: -f1)"
+    [ -n "$LINE" ] || LINE="$(grep -n '^[[:space:]]*return[[:space:]]' "$FILE" | tail -1 | cut -d: -f1)"
+    [ -n "$LINE" ] || { echo "ACL column marker missing: $APP"; return 1; }
+    BEFORE=$((LINE-1))
+    [ "$APP" = "passwall2" ] && CACHE="/tmp/pw2-acl-ip-cache.json" || CACHE="/tmp/pw-acl-ip-cache.json"
+
+    {
+      [ "$BEFORE" -gt 0 ] && head -n "$BEFORE" "$FILE"
+      cat <<EOF
+
+-- PROXY_ACL_EXIT_IP_COLUMN_BEGIN
+local proxy_jsonc=require "luci.jsonc"
+local proxy_util=require "luci.util"
+local function proxy_rf(path)
+  local f=io.open(path,"r")
+  if not f then return nil end
+  local d=f:read("*a")
+  f:close()
+  return d
+end
+local proxy_cache_map={}
+local proxy_raw=proxy_rf("$CACHE")
+local proxy_runtime=proxy_rf("/tmp/etc/$APP/var") or ""
+if proxy_raw and proxy_raw ~= "" then
+  local ok,data=pcall(proxy_jsonc.parse,proxy_raw)
+  if ok and type(data)=="table" and type(data.rows)=="table" then
+    for _,r in ipairs(data.rows) do if r.section then proxy_cache_map[r.section]=r end end
+  end
+end
+
+o=s:option(DummyValue,"_actual_exit_ip","实际出口 IP")
+o.rawhtml=true
+o.cfgvalue=function(self,section)
+  local r=proxy_cache_map[section]
+  if not r then return "<span style='color:#e6a23c'>待检测</span>" end
+
+  if "$APP"=="passwall2" then
+    local rt=proxy_runtime:match('ACL_'..section..'_node="([^"]+)"')
+    if rt and r.node and r.node~="" and rt~=r.node then return "<span style='color:#e6a23c;font-weight:600'>⚠ 待重新检测</span>" end
+  else
+    local rt=proxy_runtime:match('ACL_'..section..'_tcp_node="([^"]+)"')
+    if rt and r.tcp_node and r.tcp_node~="" and rt~=r.tcp_node then return "<span style='color:#e6a23c;font-weight:600'>⚠ 待重新检测</span>" end
+  end
+
+  if r.status=="OK" and r.ip and r.ip~="" then
+    return string.format("<strong style='color:#159957;font-size:15px' title='%s'>%s</strong>",proxy_util.pcdata((r.country or "").." / "..(r.city or "").." / "..(r.isp or "")),proxy_util.pcdata(r.ip))
+  end
+  if r.status=="NO_NODE" then return "<span style='color:#999'>未配置节点</span>" end
+  if r.status=="DISABLED" then return "<span style='color:#999'>已禁用</span>" end
+  if r.status=="ACL_DISABLED" then return "<span style='color:#999'>ACL未开启</span>" end
+  if r.status=="SOCKS_PORT_NOT_FOUND" then return "<span style='color:#e6a23c'>等待代理启动</span>" end
+  return "<span style='color:#e43f3b'>检测失败</span>"
+end
+-- PROXY_ACL_EXIT_IP_COLUMN_END
+
+EOF
+      tail -n +"$LINE" "$FILE"
+    } >"$FILE.new"
+    mv "$FILE.new" "$FILE"
+  fi
+
+  lua -e "assert(loadfile('$FILE'))"
+}
+
+patch_controller passwall2
+patch_controller passwall
+patch_global passwall2
+patch_global passwall
+patch_acl passwall2
+patch_acl passwall
+
+if [ -f /usr/share/passwall2/app.sh ] && [ ! -f /usr/share/passwall2/app_acl.lua ]; then
+  echo "ERROR: /usr/share/passwall2/app_acl.lua missing"
+  exit 1
+fi
+
+chmod 755 /usr/bin/proxy-socks-ip-probe /usr/bin/proxy-global-ip-json /usr/bin/pw2-node-ip-probe /usr/bin/pw2-acl-ip-json /usr/bin/pw-acl-ip-json /usr/bin/pw2-socks-watchd /etc/init.d/pw2-socks-watch
+/etc/init.d/pw2-socks-watch enable >/dev/null 2>&1 || true
+/etc/init.d/pw2-socks-watch restart >/dev/null 2>&1 || true
+
+rm -f /tmp/pw2-acl-ip-cache.json /tmp/pw-acl-ip-cache.json
+rm -rf /tmp/luci-*
+/etc/init.d/uhttpd restart >/dev/null 2>&1 || true
+echo "[OK] proxy realtime-IP suite installed"
