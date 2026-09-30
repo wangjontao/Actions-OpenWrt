@@ -1,0 +1,145 @@
+#!/usr/bin/lua
+local sys=require "luci.sys"
+local jsonc=require "luci.jsonc"
+local uci=require("luci.model.uci").cursor()
+local fs=require "nixio.fs"
+
+local force=arg[1]=="--refresh"
+local CACHE="/tmp/pw2-acl-ip-cache.json"
+local JOBDIR="/tmp/pw2-acl-ip-jobs"
+
+local function rf(p)
+  local f=io.open(p,"r")
+  if not f then return nil end
+  local d=f:read("*a")
+  f:close()
+  return d
+end
+
+local function wf(p,d)
+  local f=io.open(p,"w")
+  if f then f:write(d); f:close() end
+end
+
+local function q(s)
+  return "'"..tostring(s or ""):gsub("'","'\\''").."'"
+end
+
+local function parse(t)
+  local r={status="FAILED",ip="",country="",country_code="",city="",isp="",asn="",port=""}
+  for line in (t or ""):gmatch("[^\r\n]+") do
+    local k,v=line:match("^([A-Z_]+)=(.*)$")
+    if k=="STATUS" then r.status=v
+    elseif k=="PORT" then r.port=v
+    elseif k=="IP" then r.ip=v
+    elseif k=="COUNTRY" then r.country=v
+    elseif k=="COUNTRY_CODE" then r.country_code=v
+    elseif k=="CITY" then r.city=v
+    elseif k=="ISP" then r.isp=v
+    elseif k=="ASN" then r.asn=v end
+  end
+  return r
+end
+
+local function valid(id)
+  return id and id~="" and id~="default" and id~="tcp" and id~="udp" and uci:get("passwall2",id)=="nodes"
+end
+
+local var=rf("/tmp/etc/passwall2/var") or ""
+local global=var:match('ACL_GLOBAL_node="([^"]+)"') or uci:get("passwall2","@global[0]","node") or ""
+local rows={}
+local base="/tmp/etc/passwall2/acl"
+
+if fs.stat(base) then
+  for sid in fs.dir(base) do
+    if sid~="." and sid~=".." and sid~="default" and sid~="acl_default" then
+      local src=rf(base.."/"..sid.."/source_list")
+      local idx=src and tonumber(src:match("172%.16%.(%d+)%.0/24"))
+      if idx and idx>=1 and idx<=10 then
+        local node=var:match('ACL_'..sid..'_node="([^"]+)"') or ""
+        if not valid(node) then node=uci:get("passwall2",sid,"node") or "" end
+        if (node=="" or node=="default") and (uci:get("passwall2",sid,"mode") or "")=="2" then node=global end
+        if not valid(node) then node="" end
+        rows[#rows+1]={index=idx,name="A"..idx,section=sid,network="172.16."..idx..".0/24",node=node}
+      end
+    end
+  end
+end
+
+table.sort(rows,function(a,b)return a.index<b.index end)
+
+local sig={}
+for _,r in ipairs(rows) do sig[#sig+1]=r.name..":"..(r.node or "") end
+local signature=table.concat(sig,";")
+
+local oldraw=rf(CACHE)
+local old,oldres=nil,{}
+if oldraw then
+  local ok,d=pcall(jsonc.parse,oldraw)
+  if ok and type(d)=="table" then old=d end
+end
+
+if old and type(old.rows)=="table" then
+  for _,r in ipairs(old.rows) do
+    if r.node and r.status=="OK" and r.ip and r.ip~="" then
+      oldres[r.node]={status=r.status,ip=r.ip,country=r.country or "",country_code=r.country_code or "",city=r.city or "",isp=r.isp or "",asn=r.asn or "",port=r.port or ""}
+    end
+  end
+end
+
+if not force and old and old.signature==signature and tonumber(old.generated or 0)>0 and os.time()-tonumber(old.generated)<180 then
+  io.write(oldraw)
+  os.exit(0)
+end
+
+local unique={}
+for _,r in ipairs(rows) do if valid(r.node) then unique[r.node]=true end end
+
+local results,jobs={},{}
+sys.call("rm -rf "..q(JOBDIR))
+sys.call("mkdir -p "..q(JOBDIR))
+
+local n=0
+for node,_ in pairs(unique) do
+  if not force and oldres[node] then
+    results[node]=oldres[node]
+  else
+    n=n+1
+    jobs[#jobs+1]={node=node,port=11880+n,out=JOBDIR.."/"..node..".out"}
+  end
+end
+
+if #jobs>0 then
+  local cmds={}
+  for _,j in ipairs(jobs) do
+    cmds[#cmds+1]=string.format("/usr/bin/pw2-node-ip-probe %s %d > %s 2>&1 &",q(j.node),j.port,q(j.out))
+  end
+  cmds[#cmds+1]="wait"
+  sys.call("sh -c "..q(table.concat(cmds,"\n")))
+  for _,j in ipairs(jobs) do results[j.node]=parse(rf(j.out) or "") end
+end
+
+for node,r in pairs(results) do r.remarks=uci:get("passwall2",node,"remarks") or node end
+
+for _,r in ipairs(rows) do
+  if not valid(r.node) then
+    r.status="NO_NODE"; r.remarks="--"; r.ip=""; r.country=""; r.country_code=""; r.city=""; r.isp=""; r.asn=""; r.port=""
+  else
+    local x=results[r.node] or {}
+    r.status=x.status or "FAILED"
+    r.remarks=x.remarks or r.node
+    r.ip=x.ip or ""
+    r.country=x.country or ""
+    r.country_code=x.country_code or ""
+    r.city=x.city or ""
+    r.isp=x.isp or ""
+    r.asn=x.asn or ""
+    r.port=x.port or ""
+  end
+end
+
+local out={status="OK",count=#rows,generated=os.time(),signature=signature,detected_nodes=#jobs,rows=rows}
+local enc=jsonc.stringify(out)
+wf(CACHE,enc)
+sys.call("rm -rf "..q(JOBDIR))
+io.write(enc)
