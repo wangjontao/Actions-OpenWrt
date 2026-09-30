@@ -144,8 +144,10 @@ jobs:
       - name: Preinstall tested PassWall and PassWall2 realtime IP suite
         working-directory: openwrt
         run: |
-          test -f package/passwall2-luci/luci-app-passwall2/root/usr/share/passwall2/app_acl.lua
-          grep -q 'acl_enable' package/passwall2-luci/luci-app-passwall2/root/usr/share/passwall2/app_acl.lua
+          # PassWall2 26.3.5-1 keeps ACL startup logic inside app.sh and does not ship app_acl.lua.
+          # Validate the actual pinned-version backend instead of requiring a file from newer layouts.
+          test -f package/passwall2-luci/luci-app-passwall2/root/usr/share/passwall2/app.sh
+          grep -q 'acl_enable' package/passwall2-luci/luci-app-passwall2/root/usr/share/passwall2/0_default_config
           mkdir -p files
           cp -a "$GITHUB_WORKSPACE/profiles/proxy-realtime-ip-suite/root/." files/
           chmod 0755 files/usr/bin/proxy-socks-ip-probe \
@@ -161,7 +163,7 @@ jobs:
           sh -n files/usr/bin/pw2-node-ip-probe
           sh -n files/usr/bin/pw2-socks-watchd
           sh -n files/usr/bin/install-proxy-realtime-ip-suite
-          echo 'Verified PassWall2 app_acl.lua and installed tested realtime-IP suite.'
+          echo 'Verified PassWall2 26.3.5-1 ACL backend and installed tested realtime-IP suite.'
 
       - name: Apply package compiler compatibility fixes
         working-directory: openwrt

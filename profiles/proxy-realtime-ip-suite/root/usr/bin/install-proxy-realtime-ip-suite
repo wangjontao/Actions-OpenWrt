@@ -175,9 +175,13 @@ patch_global passwall
 patch_acl passwall2
 patch_acl passwall
 
-if [ -f /usr/share/passwall2/app.sh ] && [ ! -f /usr/share/passwall2/app_acl.lua ]; then
-  echo "ERROR: /usr/share/passwall2/app_acl.lua missing"
-  exit 1
+# PassWall2 26.3.5-1 does not ship app_acl.lua; its ACL startup logic is in app.sh.
+# Do not treat the absence of app_acl.lua as an installation failure.
+if [ -f /usr/share/passwall2/app.sh ]; then
+  grep -q 'acl_enable' /usr/share/passwall2/0_default_config 2>/dev/null || {
+    echo "ERROR: PassWall2 ACL configuration backend is incomplete"
+    exit 1
+  }
 fi
 
 chmod 755 /usr/bin/proxy-socks-ip-probe /usr/bin/proxy-global-ip-json /usr/bin/pw2-node-ip-probe /usr/bin/pw2-acl-ip-json /usr/bin/pw-acl-ip-json /usr/bin/pw2-socks-watchd /etc/init.d/pw2-socks-watch
