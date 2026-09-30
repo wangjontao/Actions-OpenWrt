@@ -1,10 +1,10 @@
-name: MT7981 V8 Tested Fixes 10WiFi PassWall-PassWall2 Realtime-IP
+name: MT7981 V8 DefaultWiFi IPv6-Off NPS nps.jontao.top
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - jontaoNpS-mt7981-passwall-pw2-realtime-ip-5wifi-10wifi-20260930
+      - jontaoNpS-mt7981-v8-defaultwifi-nps-jontao-top-20260930
     paths:
       - .github/workflows/MT7981-Today-Fixes-V8-10WiFi-Fixed.yml
 
@@ -271,11 +271,11 @@ jobs:
         working-directory: openwrt
         run: |
           sed -i 's/192\.168\.[0-9]*\.[0-9]*/192.168.7.1/g' package/base-files/files/bin/config_generate
-          sed -i -e 's/^SSID1=.*/SSID1=JuLiang-2.4G/' -e 's/^Channel=.*/Channel=9/' \
+          sed -i -e 's/^SSID1=.*/SSID1=JuliangTK-2.4G/' -e 's/^BssidNum=.*/BssidNum=1/' -e 's/^Channel=.*/Channel=9/' \
             -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
             -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' \
             package/mtk/drivers/wifi-profile/files/mt7981/mt7981.dbdc.b0.dat
-          sed -i -e 's/^SSID1=.*/SSID1=JuLiang-5G/' -e 's/^Channel=.*/Channel=48/' \
+          sed -i -e 's/^SSID1=.*/SSID1=JuliangTK-5G/' -e 's/^BssidNum=.*/BssidNum=1/' -e 's/^Channel=.*/Channel=48/' \
             -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
             -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' \
             package/mtk/drivers/wifi-profile/files/mt7981/mt7981.dbdc.b1.dat
@@ -288,17 +288,17 @@ jobs:
           cat > files/etc/openwrt_release <<'RELEASE'
           DISTRIB_ID='JulLiangTK'
           DISTRIB_RELEASE='24.10'
-          DISTRIB_REVISION='V8-10WiFi-DHCP-MAC-Fix-by-jontao'
+          DISTRIB_REVISION='V8-DefaultWiFi-IPv6-Off-DHCP-MAC-Fix-by-jontao'
           DISTRIB_TARGET='mediatek/filogic'
           DISTRIB_ARCH='aarch64_cortex-a53'
-          DISTRIB_DESCRIPTION='JuLiangTK OS V8 10WiFi DHCP-MAC-Fix by:jontao'
+          DISTRIB_DESCRIPTION='JuLiangTK OS V8 DefaultWiFi IPv6-Off DHCP-MAC-Fix by:jontao'
           DISTRIB_TAINTS=''
           RELEASE
           cat > files/etc/os-release <<'OSRELEASE'
           NAME="JulLiangTK"
-          VERSION="JuLiangTK OS V8 10WiFi DHCP-MAC-Fix by:jontao"
+          VERSION="JuLiangTK OS V8 DefaultWiFi IPv6-Off DHCP-MAC-Fix by:jontao"
           ID="juliangtk"
-          PRETTY_NAME="JuLiangTK OS V8 10WiFi DHCP-MAC-Fix by:jontao"
+          PRETTY_NAME="JuLiangTK OS V8 DefaultWiFi IPv6-Off DHCP-MAC-Fix by:jontao"
           HOME_URL="https://github.com/wangjontao"
           OSRELEASE
 
@@ -309,13 +309,13 @@ jobs:
           uci -q commit system
           for f in /etc/wireless/mediatek/*b0.dat; do
             [ -f "$f" ] || continue
-            sed -i -e 's/^SSID1=.*/SSID1=JuLiang-2.4G/' -e 's/^Channel=.*/Channel=9/' \
+            sed -i -e 's/^SSID1=.*/SSID1=JuliangTK-2.4G/' -e 's/^BssidNum=.*/BssidNum=1/' -e 's/^Channel=.*/Channel=9/' \
               -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
               -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' "$f"
           done
           for f in /etc/wireless/mediatek/*b1.dat; do
             [ -f "$f" ] || continue
-            sed -i -e 's/^SSID1=.*/SSID1=JuLiang-5G/' -e 's/^Channel=.*/Channel=48/' \
+            sed -i -e 's/^SSID1=.*/SSID1=JuliangTK-5G/' -e 's/^BssidNum=.*/BssidNum=1/' -e 's/^Channel=.*/Channel=48/' \
               -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
               -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' "$f"
           done
@@ -355,7 +355,7 @@ jobs:
             key="$(printf '%s' "$mac" | tr -d ':' | tr '[:lower:]' '[:upper:]')"
             uci -q get nps.@nps[0] >/dev/null || uci -q add nps nps >/dev/null
             uci -q set nps.@nps[0].enabled='1'
-            uci -q set nps.@nps[0].server_addr='nps.66ccs.com'
+            uci -q set nps.@nps[0].server_addr='nps.jontao.top'
             uci -q set nps.@nps[0].server_port='8024'
             uci -q set nps.@nps[0].protocol='tcp'
             uci -q set nps.@nps[0].compress='1'
@@ -363,7 +363,7 @@ jobs:
             uci -q set nps.@nps[0].log_level='4'
             uci -q set nps.@nps[0].vkey="$key"
             uci -q commit nps
-            logger -t nps-autokey "configured nps.66ccs.com:8024 from WAN MAC"
+            logger -t nps-autokey "configured nps.jontao.top:8024 from WAN MAC"
           }
 
           start() { update_nps_key; }
@@ -392,132 +392,30 @@ jobs:
           chmod 755 files/etc/hotplug.d/iface/99-nps-autokey
 
 
-          mkdir -p files/usr/libexec files/etc/init.d files/etc/juliang-5wifi
-          cp "$GITHUB_WORKSPACE/profiles/hy3000-10wifi/passwall" files/etc/juliang-5wifi/passwall
-          cp "$GITHUB_WORKSPACE/profiles/hy3000-10wifi/passwall2" files/etc/juliang-5wifi/passwall2
-          chmod 600 files/etc/juliang-5wifi/passwall files/etc/juliang-5wifi/passwall2
-
-          cat > files/usr/libexec/juliang-5wifi-setup <<'TENWIFI'
+          # Default WiFi only: no A1-A10 VAPs are created.
+          # Disable IPv6 globally and disable DHCPv6/RA/NDP on LAN.
+          mkdir -p files/etc/uci-defaults files/etc/sysctl.d
+          cat > files/etc/uci-defaults/94-disable-ipv6 <<'IPV6OFF'
           #!/bin/sh
-          set -eu
-          MARKER=/etc/juliang-5wifi.done
-          [ -e "$MARKER" ] && exit 0
-
-          radio2=''
-          radio5=''
-          for dev in $(uci -q show wireless | sed -n "s/^wireless\.\([^.=]*\)=wifi-device$/\1/p"); do
-            band="$(uci -q get wireless.$dev.band || true)"
-            hwmode="$(uci -q get wireless.$dev.hwmode || true)"
-            if [ "$band" = '5g' ] || [ "$hwmode" = '11a' ]; then
-              [ -n "$radio5" ] || radio5="$dev"
-            else
-              [ -n "$radio2" ] || radio2="$dev"
-            fi
-          done
-          [ -n "$radio2" ] || radio2='radio0'
-          [ -n "$radio5" ] || radio5='radio1'
-          uci -q set wireless.$radio2.channel='9'
-          uci -q set wireless.$radio5.channel='48'
-
-          for iface in $(uci -q show wireless | sed -n "s/^wireless\.\([^.=]*\)=wifi-iface$/\1/p"); do
-            case "$iface" in juliang_a*) continue;; esac
-            dev="$(uci -q get wireless.$iface.device || true)"
-            if [ "$dev" = "$radio2" ]; then
-              uci set wireless.$iface.ssid='A-2.4G'
-            elif [ "$dev" = "$radio5" ]; then
-              uci set wireless.$iface.ssid='A-5G'
-            else
-              continue
-            fi
-            uci set wireless.$iface.encryption='psk2'
-            uci set wireless.$iface.key='a1111111'
-            uci set wireless.$iface.disabled='0'
-          done
-
-          for i in 1 2 3 4 5 6 7 8 9 10; do
-            net="a$i"
-            iface="juliang_a$i"
-            radio="$radio5"
-            [ "$i" -ge 9 ] && radio="$radio2"
-            uci -q delete network.$net || true
-            uci set network.$net='interface'
-            uci set network.$net.proto='static'
-            uci set network.$net.ipaddr="172.16.$i.1"
-            uci set network.$net.netmask='255.255.255.0'
-
-            uci -q delete dhcp.$net || true
-            uci set dhcp.$net='dhcp'
-            uci set dhcp.$net.interface="$net"
-            uci set dhcp.$net.start='100'
-            uci set dhcp.$net.limit='150'
-            uci set dhcp.$net.leasetime='12h'
-            uci set dhcp.$net.dhcpv6='disabled'
-            uci set dhcp.$net.ra='disabled'
-            uci set dhcp.$net.ndp='disabled'
-
-            uci -q delete wireless.$iface || true
-            uci set wireless.$iface='wifi-iface'
-            uci set wireless.$iface.device="$radio"
-            uci set wireless.$iface.mode='ap'
-            uci set wireless.$iface.network="$net"
-            uci set wireless.$iface.ssid="A$i"
-            uci set wireless.$iface.encryption='psk2'
-            uci set wireless.$iface.key='a1111111'
-            uci set wireless.$iface.disabled='0'
-            uci set wireless.$iface.isolate='1'
-
-            uci -q delete firewall.$net || true
-            uci set firewall.$net='zone'
-            uci set firewall.$net.name="$net"
-            uci add_list firewall.$net.network="$net"
-            uci set firewall.$net.input='ACCEPT'
-            uci set firewall.$net.output='ACCEPT'
-            uci set firewall.$net.forward='REJECT'
-            uci set firewall.${net}_wan='forwarding'
-            uci set firewall.${net}_wan.src="$net"
-            uci set firewall.${net}_wan.dest='wan'
-          done
-
-          uci commit network
-          uci commit dhcp
-          uci commit wireless
-          uci commit firewall
-          cp /etc/juliang-5wifi/passwall /etc/config/passwall
-          cp /etc/juliang-5wifi/passwall2 /etc/config/passwall2
-          chmod 600 /etc/config/passwall /etc/config/passwall2
-          touch "$MARKER"
-          /etc/init.d/network reload >/dev/null 2>&1 || true
-          wifi reload >/dev/null 2>&1 || true
-          /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
-          /etc/init.d/firewall restart >/dev/null 2>&1 || true
-          /etc/init.d/passwall enable >/dev/null 2>&1 || true
-          /etc/init.d/passwall2 enable >/dev/null 2>&1 || true
-          /etc/init.d/passwall restart >/dev/null 2>&1 || true
-          /etc/init.d/passwall2 restart >/dev/null 2>&1 || true
-          logger -t juliang-5wifi 'A1-A10 and supplied PassWall/PassWall2 five-ACL templates applied after 60 seconds'
-          TENWIFI
-          chmod 755 files/usr/libexec/juliang-5wifi-setup
-
-          cat > files/etc/init.d/juliang-5wifi-firstboot <<'TENINIT'
-          #!/bin/sh /etc/rc.common
-          START=99
-          start() {
-            [ -e /etc/juliang-5wifi.done ] && return 0
-            ( sleep 60; /usr/libexec/juliang-5wifi-setup; /etc/init.d/juliang-5wifi-firstboot disable ) &
-          }
-          TENINIT
-          chmod 755 files/etc/init.d/juliang-5wifi-firstboot
-          cat > files/etc/uci-defaults/99-juliang-5wifi-enable <<'TENDEFAULT'
-          #!/bin/sh
-          /etc/init.d/juliang-5wifi-firstboot enable
-          [ -e /etc/juliang-5wifi.done ] || (
-            sleep 60
-            /usr/libexec/juliang-5wifi-setup
-            /etc/init.d/juliang-5wifi-firstboot disable
-          ) &
+          uci -q delete network.wan6 || true
+          uci -q delete network.globals.ula_prefix || true
+          uci -q delete network.lan.ip6assign || true
+          uci -q set dhcp.lan.dhcpv6='disabled'
+          uci -q set dhcp.lan.ra='disabled'
+          uci -q set dhcp.lan.ndp='disabled'
+          uci -q commit network
+          uci -q commit dhcp
+          sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null 2>&1 || true
+          sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null 2>&1 || true
+          sysctl -w net.ipv6.conf.lo.disable_ipv6=1 >/dev/null 2>&1 || true
           exit 0
-          TENDEFAULT
-          chmod 755 files/etc/uci-defaults/99-juliang-5wifi-enable
+          IPV6OFF
+          chmod 755 files/etc/uci-defaults/94-disable-ipv6
+          cat > files/etc/sysctl.d/99-disable-ipv6.conf <<'IPV6SYSCTL'
+          net.ipv6.conf.all.disable_ipv6=1
+          net.ipv6.conf.default.disable_ipv6=1
+          net.ipv6.conf.lo.disable_ipv6=1
+          IPV6SYSCTL
 
           bash "$GITHUB_WORKSPACE/scripts/install-wan-dhcp-mac-fix.sh" "$PWD/files"
 
@@ -587,7 +485,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7981-SK5-HTTP-Realtime-IP-v7-DHCP-MAC-Fix-5WiFi-${{ env.BUILD_VERSION }}-raw-${{ env.BUILD_DATE }}
+          name: MT7981-V8-DefaultWiFi-IPv6Off-NPS-jontao-top-raw-${{ env.BUILD_DATE }}
           path: openwrt/bin/targets/mediatek/filogic/*
           if-no-files-found: warn
           retention-days: 30
@@ -612,30 +510,30 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: MT7981-SK5-HTTP-Realtime-IP-v7-DHCP-MAC-Fix-5WiFi-${{ env.BUILD_VERSION }}-24.10-${{ env.BUILD_DATE }}
-          name: MT7981 SK5 HTTP Realtime-IP-v7 DHCP-MAC-Fix 5WiFi ${{ env.BUILD_VERSION }} ${{ env.BUILD_DATE }}
+          tag_name: MT7981-V8-DefaultWiFi-IPv6Off-NPS-jontao-top-24.10-${{ env.BUILD_DATE }}
+          name: MT7981 V8 DefaultWiFi IPv6-Off NPS nps.jontao.top ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
           body: |
             Experimental ImmortalWrt 24.10 kernel 6.6 closed MTWiFi build.
             Devices (MT7981 group only): Philips HY3000, CMCC RAX3000M NAND/eMMC, Qihoo 360T7, AGS21, CMCC A10 U-Boot mod, ETR631-T/ETR635-U (KOMI A31), Newland 8103/9103, Ambit ASR3000, JCG Q30 Pro, and ZBT-Z8103AX-C/D family (standard, NMBM and OpenWrt U-Boot layouts).
             Z8103AX-C/D: compiled only in this MT7981 workflow; the NMBM image is included for NAND layouts that require NMBM, and the OpenWrt U-Boot layout is supplied separately.
             Driver: mt_wifi 7.6.6.1 with matching WARP. Management: 192.168.7.1, root password @password@.
-            System: JulLiangTK; firmware description: JuLiangTK OS V8 10WiFi DHCP-MAC-Fix by:jontao.
+            System: JulLiangTK; firmware description: JuLiangTK OS V8 DefaultWiFi IPv6-Off DHCP-MAC-Fix by:jontao.
             DHCP/MAC Lease Fix: clean rebuild from successful V5; V6 is preserved as a failed workflow-parser attempt. Pins the first-seen WAN MAC, enables DHCP broadcast mode, renews DHCP automatically, restarts WAN only when needed, and performs WAN-link recovery with a 180-second cooldown.
-            WiFi: JuLiang-2.4G (channel 9) and JuLiang-5G (channel 48), password a1111111.
-            5WiFi: A1-A10 on 5GHz; password a1111111; isolated subnets 172.16.1.0/24 through 172.16.5.0/24.
-            Wireless, DHCP and the supplied PassWall/PassWall2 five-ACL templates run once, 60 seconds after first boot.
+            WiFi: only the two default radios are enabled: JuliangTK-2.4G (channel 9) and JuliangTK-5G (channel 48), password a1111111. No A1-A10 extra SSIDs are created.
+            IPv6: globally disabled; WAN6 removed; LAN DHCPv6/RA/NDP disabled.
+            Wireless keeps the tested V8 MTWiFi/WARP driver stack and all other V8 fixes/plugins unchanged.
             Import: PassWall and PassWall2 both support SOCKS5/SOCKS/HTTP URI plus multiline host:port:username:password SK5 shorthand.
             Realtime IP: Argon Realtime-IP v4 glass panel retained, with ISP, region and refreshed public IPv4 display.
             DNS: removed the custom forced-DNS/DoT/bootstrap layer that caused node-timeout interactions; standard PassWall/PassWall2 DNS behavior is retained. IPv6 DHCP/RA remains disabled on A1-A10.
             Plugins: iStore, QuickStart, Passwall 26.3.6-1, Passwall2 26.3.5-1, OpenClash, HomeProxy, original ehang NPS/NPC 0.26.10. Theme: Argon.
-            NPS: nps.66ccs.com:8024; every boot reads WAN MAC, removes colons, uppercases it, and writes it as vkey.
+            NPS: nps.jontao.top:8024; every boot reads WAN MAC, removes colons, uppercases it, and writes it as vkey.
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7981-SK5-HTTP-Realtime-IP-v7-DHCP-MAC-Fix-5WiFi-${{ env.BUILD_VERSION }}-MultiDevice-24.10-${{ env.BUILD_DATE }}
+          name: MT7981-V8-DefaultWiFi-IPv6Off-NPS-jontao-top-MultiDevice-24.10-${{ env.BUILD_DATE }}
           path: openwrt/upload/*
           if-no-files-found: error
           retention-days: 30
