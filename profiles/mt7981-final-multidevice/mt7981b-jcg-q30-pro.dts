@@ -69,7 +69,7 @@
 		reg = <0>;
 		phy-mode = "2500base-x";
 
-		nvmem-cells = <&macaddr_factory_a002a 0>;
+		nvmem-cells = <&macaddr_factory>;
 		nvmem-cell-names = "mac-address";
 
 		fixed-link {
@@ -132,22 +132,17 @@
 				read-only;
 
 				compatible = "nvmem-cells";
-				nvmem-layout {
-					compatible = "fixed-layout";
-					#address-cells = <1>;
-					#size-cells = <1>;
+				#address-cells = <1>;
+				#size-cells = <1>;
 
-					macaddr_factory_a002a: macaddr@a002a {
-						compatible = "mac-base";
-						reg = <0xa002a 0x6>;
-						#nvmem-cell-cells = <1>;
-					};
-
-					macaddr_factory_a0024: macaddr@a0024 {
-						compatible = "mac-base";
-						reg = <0xa0024 0x6>;
-						#nvmem-cell-cells = <1>;
-					};
+				/*
+				 * The legacy offsets below are intentionally not used:
+				 * reg = <0xa0024 0x6>;
+				 * reg = <0xa002a 0x6>;
+				 * Q30 Pro stores the base/WAN MAC at Factory + 0x4.
+				 */
+				macaddr_factory: macaddr@4 {
+					reg = <0x4 0x6>;
 				};
 			};
 
@@ -173,9 +168,6 @@
 		port@0 {
 			reg = <0>;
 			label = "wan";
-
-			nvmem-cells = <&macaddr_factory_a0024 0>;
-			nvmem-cell-names = "mac-address";
 		};
 
 		port@1 {
