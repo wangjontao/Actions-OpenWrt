@@ -1,16 +1,16 @@
-name: MT7981 SK5 HTTP Realtime-IP-v5 Optimized SingleWiFi Multi-Device
+name: MT7981 SK5 HTTP Realtime-IP-v7 DHCP-MAC-Fix SingleWiFi Multi-Device
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - jontaoNpS-mt7981-sk5-http-realtime-ip-v5-singlewifi
+      - jontaoNpS-mt7981-sk5-http-realtime-ip-v7-singlewifi
 
 permissions:
   contents: write
 
 env:
-  BUILD_VERSION: V1
+  BUILD_VERSION: V7
   SOURCE_REPO: https://github.com/padavanonly/immortalwrt-mt798x-24.10.git
   SOURCE_BRANCH: openwrt-24.10-6.6
   TZ: Asia/Shanghai
@@ -262,17 +262,17 @@ jobs:
           cat > files/etc/openwrt_release <<'RELEASE'
           DISTRIB_ID='JulLiangTK'
           DISTRIB_RELEASE='24.10'
-          DISTRIB_REVISION='by:jontao'
+          DISTRIB_REVISION='V7-SingleWiFi-DHCP-MAC-Fix-by-jontao'
           DISTRIB_TARGET='mediatek/filogic'
           DISTRIB_ARCH='aarch64_cortex-a53'
-          DISTRIB_DESCRIPTION='JuLiangTK OS by:jontao'
+          DISTRIB_DESCRIPTION='JuLiangTK OS V7 SingleWiFi DHCP-MAC-Fix by:jontao'
           DISTRIB_TAINTS=''
           RELEASE
           cat > files/etc/os-release <<'OSRELEASE'
           NAME="JulLiangTK"
-          VERSION="JuLiangTK OS by:jontao"
+          VERSION="JuLiangTK OS V7 SingleWiFi DHCP-MAC-Fix by:jontao"
           ID="juliangtk"
-          PRETTY_NAME="JuLiangTK OS by:jontao"
+          PRETTY_NAME="JuLiangTK OS V7 SingleWiFi DHCP-MAC-Fix by:jontao"
           HOME_URL="https://github.com/wangjontao"
           OSRELEASE
 
@@ -367,6 +367,8 @@ jobs:
 
 
 
+          bash "$GITHUB_WORKSPACE/scripts/install-wan-dhcp-mac-fix.sh" "$PWD/files"
+
           ./scripts/diffconfig.sh | tee MT7981-MTWiFi-final.config
 
       - name: Restore compiler cache
@@ -433,7 +435,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7981-SK5-HTTP-Realtime-IP-v5-Optimized-SingleWiFi-${{ env.BUILD_VERSION }}-raw-${{ env.BUILD_DATE }}
+          name: MT7981-SK5-HTTP-Realtime-IP-v7-DHCP-MAC-Fix-SingleWiFi-${{ env.BUILD_VERSION }}-raw-${{ env.BUILD_DATE }}
           path: openwrt/bin/targets/mediatek/filogic/*
           if-no-files-found: warn
           retention-days: 30
@@ -458,15 +460,16 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: MT7981-SK5-HTTP-Realtime-IP-v5-Optimized-SingleWiFi-${{ env.BUILD_VERSION }}-24.10-${{ env.BUILD_DATE }}
-          name: MT7981 SK5 HTTP Realtime-IP-v5 Optimized SingleWiFi ${{ env.BUILD_VERSION }} ${{ env.BUILD_DATE }}
+          tag_name: MT7981-SK5-HTTP-Realtime-IP-v7-DHCP-MAC-Fix-SingleWiFi-${{ env.BUILD_VERSION }}-24.10-${{ env.BUILD_DATE }}
+          name: MT7981 SK5 HTTP Realtime-IP-v7 DHCP-MAC-Fix SingleWiFi ${{ env.BUILD_VERSION }} ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
           body: |
             Experimental ImmortalWrt 24.10 kernel 6.6 closed MTWiFi build.
             Devices (MT7981 group only): Philips HY3000, CMCC RAX3000M NAND/eMMC, Qihoo 360T7, AGS21, CMCC A10 U-Boot mod, ETR631-T/ETR635-U (KOMI A31), Newland 8103/9103, Ambit ASR3000, JCG Q30 Pro, and ZBT-Z8103AX-C/D family (standard, NMBM and OpenWrt U-Boot layouts).
             Z8103AX-C/D: compiled only in this MT7981 workflow; the NMBM image is included for NAND layouts that require NMBM, and the OpenWrt U-Boot layout is supplied separately.
             Driver: mt_wifi 7.6.6.1 with matching WARP. Management: 192.168.7.1, root password @password@.
-            System: JulLiangTK; firmware description: JuLiangTK OS by:jontao.
+            System: JulLiangTK; firmware description: JuLiangTK OS V7 SingleWiFi DHCP-MAC-Fix by:jontao.
+            DHCP/MAC Lease Fix: clean rebuild from successful V5; V6 is preserved as a failed workflow-parser attempt. Pins the first-seen WAN MAC, enables DHCP broadcast mode, renews DHCP automatically, restarts WAN only when needed, and performs WAN-link recovery with a 180-second cooldown.
             WiFi: JuLiang-2.4G (channel 9) and JuLiang-5G (channel 48), password a1111111.
             SingleWiFi: only JuLiang-2.4G and JuLiang-5G are enabled; password a1111111; no A1-A10 extra SSIDs are created.
             Import: PassWall and PassWall2 both support SOCKS5/SOCKS/HTTP URI plus multiline host:port:username:password SK5 shorthand.
@@ -479,7 +482,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7981-SK5-HTTP-Realtime-IP-v5-Optimized-SingleWiFi-${{ env.BUILD_VERSION }}-MultiDevice-24.10-${{ env.BUILD_DATE }}
+          name: MT7981-SK5-HTTP-Realtime-IP-v7-DHCP-MAC-Fix-SingleWiFi-${{ env.BUILD_VERSION }}-MultiDevice-24.10-${{ env.BUILD_DATE }}
           path: openwrt/upload/*
           if-no-files-found: error
           retention-days: 30
