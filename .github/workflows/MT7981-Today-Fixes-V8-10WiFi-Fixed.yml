@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - jontaoNpS-mt7981-v8-defaultwifi-nps-66ccs-20260930
+      - jontaoNpS-mt7981-v8-dulwifi-nps-66ccs-20261001
     paths:
       - .github/workflows/MT7981-Today-Fixes-V8-10WiFi-Fixed.yml
 
@@ -271,11 +271,11 @@ jobs:
         working-directory: openwrt
         run: |
           sed -i 's/192\.168\.[0-9]*\.[0-9]*/192.168.7.1/g' package/base-files/files/bin/config_generate
-          sed -i -e 's/^SSID1=.*/SSID1=JuLiangTK 2.4G/' -e 's/^BssidNum=.*/BssidNum=1/' -e 's/^Channel=.*/Channel=9/' \
+          sed -i -e 's/^SSID1=.*/SSID1=DulWiFi 2.4G/' -e 's/^BssidNum=.*/BssidNum=1/' -e 's/^Channel=.*/Channel=9/' \
             -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
             -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' \
             package/mtk/drivers/wifi-profile/files/mt7981/mt7981.dbdc.b0.dat
-          sed -i -e 's/^SSID1=.*/SSID1=JuLiangTK 5G/' -e 's/^BssidNum=.*/BssidNum=1/' -e 's/^Channel=.*/Channel=48/' \
+          sed -i -e 's/^SSID1=.*/SSID1=DulWiFi 5G/' -e 's/^BssidNum=.*/BssidNum=1/' -e 's/^Channel=.*/Channel=48/' \
             -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
             -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' \
             package/mtk/drivers/wifi-profile/files/mt7981/mt7981.dbdc.b1.dat
@@ -309,13 +309,13 @@ jobs:
           uci -q commit system
           for f in /etc/wireless/mediatek/*b0.dat; do
             [ -f "$f" ] || continue
-            sed -i -e 's/^SSID1=.*/SSID1=JuLiangTK 2.4G/' -e 's/^BssidNum=.*/BssidNum=1/' -e 's/^Channel=.*/Channel=9/' \
+            sed -i -e 's/^SSID1=.*/SSID1=DulWiFi 2.4G/' -e 's/^BssidNum=.*/BssidNum=1/' -e 's/^Channel=.*/Channel=9/' \
               -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
               -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' "$f"
           done
           for f in /etc/wireless/mediatek/*b1.dat; do
             [ -f "$f" ] || continue
-            sed -i -e 's/^SSID1=.*/SSID1=JuLiangTK 5G/' -e 's/^BssidNum=.*/BssidNum=1/' -e 's/^Channel=.*/Channel=48/' \
+            sed -i -e 's/^SSID1=.*/SSID1=DulWiFi 5G/' -e 's/^BssidNum=.*/BssidNum=1/' -e 's/^Channel=.*/Channel=48/' \
               -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
               -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' "$f"
           done
@@ -520,7 +520,7 @@ jobs:
             Driver: mt_wifi 7.6.6.1 with matching WARP. Management: 192.168.7.1, root password @password@.
             System: JulLiangTK; firmware description: JuLiangTK OS V8 DefaultWiFi IPv6-Off DHCP-MAC-Fix by:jontao.
             DHCP/MAC Lease Fix: clean rebuild from successful V5; V6 is preserved as a failed workflow-parser attempt. Pins the first-seen WAN MAC, enables DHCP broadcast mode, renews DHCP automatically, restarts WAN only when needed, and performs WAN-link recovery with a 180-second cooldown.
-            WiFi: only the two default radios are enabled: JuLiangTK 2.4G (channel 9) and JuLiangTK 5G (channel 48), password a1111111. No A1-A10 extra SSIDs are created.
+            WiFi: only the two default radios are enabled: DulWiFi 2.4G (channel 9) and DulWiFi 5G (channel 48), password a1111111. No A1-A10 extra SSIDs are created.
             IPv6: globally disabled; WAN6 removed; LAN DHCPv6/RA/NDP disabled.
             Wireless keeps the tested V8 MTWiFi/WARP driver stack and all other V8 fixes/plugins unchanged.
             Import: PassWall and PassWall2 both support SOCKS5/SOCKS/HTTP URI plus multiline host:port:username:password SK5 shorthand.
