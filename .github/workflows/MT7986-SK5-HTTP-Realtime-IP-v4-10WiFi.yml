@@ -1,10 +1,10 @@
-name: MT7986 S20L AX6000 Realtime-IP-v5 V2 SingleWiFi
+name: MT7986 S20L AX6000 Realtime-IP-v5 V4 SingleWiFi DHCP-MAC-Fix
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - jontaoNpS-mt7986-s20l-ax6000-v2-singlewifi
+      - jontaoNpS-mt7986-s20l-ax6000-v4-singlewifi
 
 permissions:
   contents: write
@@ -232,17 +232,17 @@ jobs:
           cat > files/etc/openwrt_release <<'RELEASE'
           DISTRIB_ID='JulLiangTK'
           DISTRIB_RELEASE='24.10'
-          DISTRIB_REVISION='V2-SingleWiFi-by-jontao'
+          DISTRIB_REVISION='V4-SingleWiFi-DHCP-MAC-Fix-by-jontao'
           DISTRIB_TARGET='mediatek/filogic'
           DISTRIB_ARCH='aarch64_cortex-a53'
-          DISTRIB_DESCRIPTION='JuLiangTK OS V2 SingleWiFi by:jontao'
+          DISTRIB_DESCRIPTION='JuLiangTK OS V4 SingleWiFi DHCP-MAC-Fix by:jontao'
           DISTRIB_TAINTS=''
           RELEASE
           cat > files/etc/os-release <<'OSRELEASE'
           NAME="JulLiangTK"
-          VERSION="JuLiangTK OS V2 SingleWiFi by:jontao"
+          VERSION="JuLiangTK OS V4 SingleWiFi DHCP-MAC-Fix by:jontao"
           ID="juliangtk"
-          PRETTY_NAME="JuLiangTK OS V2 SingleWiFi by:jontao"
+          PRETTY_NAME="JuLiangTK OS V4 SingleWiFi DHCP-MAC-Fix by:jontao"
           HOME_URL="https://github.com/wangjontao"
           OSRELEASE
 
@@ -337,6 +337,8 @@ jobs:
 
 
 
+          bash "$GITHUB_WORKSPACE/scripts/install-wan-dhcp-mac-fix.sh" "$PWD/files"
+
           ./scripts/diffconfig.sh | tee MT7986-AX6000-S20L-Baili-final.config
 
       - name: Restore compiler cache
@@ -403,7 +405,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7986-S20L-AX6000-Realtime-IP-v5-V2-SingleWiFi-raw-${{ env.BUILD_DATE }}
+          name: MT7986-S20L-AX6000-Realtime-IP-v5-V4-SingleWiFi-DHCP-MAC-Fix-raw-${{ env.BUILD_DATE }}
           path: openwrt/bin/targets/mediatek/filogic/*
           if-no-files-found: warn
           retention-days: 30
@@ -423,15 +425,15 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: MT7986-S20L-AX6000-Realtime-IP-v5-V2-SingleWiFi-24.10-${{ env.BUILD_DATE }}
-          name: MT7986 S20L AX6000 Realtime-IP-v5 V2 SingleWiFi ${{ env.BUILD_DATE }}
+          tag_name: MT7986-S20L-AX6000-Realtime-IP-v5-V4-SingleWiFi-DHCP-MAC-Fix-24.10-${{ env.BUILD_DATE }}
+          name: MT7986 S20L AX6000 Realtime-IP-v5 V4 SingleWiFi DHCP-MAC-Fix ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
           body: |
-            Build revision: V2. Fixes the V1 shell syntax error in the firmware symbol verification loop; feature set remains based on the verified MT7981 Realtime-IP-v5 settings.
+            Build revision: V4 DHCP/MAC Lease Fix. Clean rebuild from V2; V3 is preserved as a failed workflow-parser attempt. Adds stable WAN MAC pinning, DHCP broadcast compatibility, automatic DHCP renew, WAN-only restart and physical WAN-link recovery with a 180-second cooldown.
             Experimental ImmortalWrt 24.10 kernel 6.6 closed MTWiFi build.
             Devices: Super Gateway S20L, Redmi AX6000 stock/OpenWrt U-Boot layouts, JDCloud AX6000 Baili (RE-CP-03), plus the existing ZBT Z8103AX MT7986 target from this workflow.
             Driver: mt_wifi 7.6.6.1 with matching WARP. Management: 192.168.7.1, root password @password@.
-            Firmware identity: JuLiangTK OS V2 SingleWiFi by:jontao.
+            Firmware identity: JuLiangTK OS V4 SingleWiFi DHCP-MAC-Fix by:jontao.
             WiFi password: a1111111. SingleWiFi: only JuLiang-2.4G and JuLiang-5G are enabled; no A1-A20 extra SSIDs are created.
             No extra multi-SSID first-boot template is applied.
             Import: PassWall and PassWall2 both support SOCKS5/SOCKS/HTTP URI plus multiline host:port:username:password SK5 shorthand.
@@ -445,7 +447,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7986-S20L-AX6000-Realtime-IP-v5-V2-SingleWiFi-24.10-${{ env.BUILD_DATE }}
+          name: MT7986-S20L-AX6000-Realtime-IP-v5-V4-SingleWiFi-DHCP-MAC-Fix-24.10-${{ env.BUILD_DATE }}
           path: openwrt/upload/*
           if-no-files-found: error
           retention-days: 30
