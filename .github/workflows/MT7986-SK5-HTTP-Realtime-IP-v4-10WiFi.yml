@@ -1,10 +1,10 @@
-name: MT7986 S20L AX6000 Realtime-IP-v5 V1 20WiFi
+name: MT7986 S20L AX6000 Realtime-IP-v5 V2 20WiFi
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - jontaoNpS-mt7986-s20l-ax6000-v1-20wifi
+      - jontaoNpS-mt7986-s20l-ax6000-v2-20wifi
 
 permissions:
   contents: write
@@ -207,7 +207,7 @@ jobs:
             CONFIG_PACKAGE_luci-app-openclash CONFIG_PACKAGE_luci-app-homeproxy \
             CONFIG_PACKAGE_luci-app-nps CONFIG_PACKAGE_npc \
             CONFIG_PACKAGE_luci-theme-argon CONFIG_PACKAGE_dnsmasq-full \
-            CONFIG_PACKAGE_xray-core CONFIG_PACKAGE_sing-box \
+            CONFIG_PACKAGE_xray-core CONFIG_PACKAGE_sing-box; do
             grep -qx "$sym=y" .config || { echo "ERROR: $sym unavailable"; exit 1; }
           done
 
@@ -232,17 +232,17 @@ jobs:
           cat > files/etc/openwrt_release <<'RELEASE'
           DISTRIB_ID='JulLiangTK'
           DISTRIB_RELEASE='24.10'
-          DISTRIB_REVISION='V1-20WiFi-by-jontao'
+          DISTRIB_REVISION='V2-20WiFi-by-jontao'
           DISTRIB_TARGET='mediatek/filogic'
           DISTRIB_ARCH='aarch64_cortex-a53'
-          DISTRIB_DESCRIPTION='JuLiangTK OS V1 20WiFi by:jontao'
+          DISTRIB_DESCRIPTION='JuLiangTK OS V2 20WiFi by:jontao'
           DISTRIB_TAINTS=''
           RELEASE
           cat > files/etc/os-release <<'OSRELEASE'
           NAME="JulLiangTK"
-          VERSION="JuLiangTK OS V1 20WiFi by:jontao"
+          VERSION="JuLiangTK OS V2 20WiFi by:jontao"
           ID="juliangtk"
-          PRETTY_NAME="JuLiangTK OS V1 20WiFi by:jontao"
+          PRETTY_NAME="JuLiangTK OS V2 20WiFi by:jontao"
           HOME_URL="https://github.com/wangjontao"
           OSRELEASE
 
@@ -528,7 +528,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7986-S20L-AX6000-Realtime-IP-v5-V1-20WiFi-raw-${{ env.BUILD_DATE }}
+          name: MT7986-S20L-AX6000-Realtime-IP-v5-V2-20WiFi-raw-${{ env.BUILD_DATE }}
           path: openwrt/bin/targets/mediatek/filogic/*
           if-no-files-found: warn
           retention-days: 30
@@ -548,15 +548,15 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: MT7986-S20L-AX6000-Realtime-IP-v5-V1-20WiFi-24.10-${{ env.BUILD_DATE }}
-          name: MT7986 S20L AX6000 Realtime-IP-v5 V1 20WiFi ${{ env.BUILD_DATE }}
+          tag_name: MT7986-S20L-AX6000-Realtime-IP-v5-V2-20WiFi-24.10-${{ env.BUILD_DATE }}
+          name: MT7986 S20L AX6000 Realtime-IP-v5 V2 20WiFi ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
           body: |
-            Build revision: V1. First MT7986 port based on the verified MT7981 Realtime-IP-v5 settings.
+            Build revision: V2. Fixes the V1 shell syntax error in the firmware symbol verification loop; feature set remains based on the verified MT7981 Realtime-IP-v5 settings.
             Experimental ImmortalWrt 24.10 kernel 6.6 closed MTWiFi build.
             Devices: Super Gateway S20L, Redmi AX6000 stock/OpenWrt U-Boot layouts, JDCloud AX6000 Baili (RE-CP-03), plus the existing ZBT Z8103AX MT7986 target from this workflow.
             Driver: mt_wifi 7.6.6.1 with matching WARP. Management: 192.168.7.1, root password @password@.
-            Firmware identity: JuLiangTK OS V1 20WiFi by:jontao.
+            Firmware identity: JuLiangTK OS V2 20WiFi by:jontao.
             WiFi password: a1111111. 20WiFi: A1-A14 on 5GHz, A15-A20 on 2.4GHz; isolated clients; subnets 172.16.1.0/24 through 172.16.20.0/24; IPv6 DHCP/RA/NDP disabled.
             Wireless, DHCP and matching PassWall/PassWall2 20-ACL templates apply once, 60 seconds after first boot.
             Import: PassWall and PassWall2 both support SOCKS5/SOCKS/HTTP URI plus multiline host:port:username:password SK5 shorthand.
@@ -570,7 +570,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7986-S20L-AX6000-Realtime-IP-v5-V1-20WiFi-24.10-${{ env.BUILD_DATE }}
+          name: MT7986-S20L-AX6000-Realtime-IP-v5-V2-20WiFi-24.10-${{ env.BUILD_DATE }}
           path: openwrt/upload/*
           if-no-files-found: error
           retention-days: 30
