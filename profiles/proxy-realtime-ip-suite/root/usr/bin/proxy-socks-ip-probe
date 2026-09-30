@@ -1,0 +1,39 @@
+#!/bin/sh
+PORT="$1"
+[ -n "$PORT" ] || { echo "STATUS=NO_PORT"; exit 1; }
+
+port_ok() {
+  if command -v ss >/dev/null 2>&1; then
+    ss -lnt 2>/dev/null | grep -qE "127\\.0\\.0\\.1:$PORT[[:space:]]|0\\.0\\.0\\.0:$PORT[[:space:]]|:$PORT[[:space:]]"
+  else
+    netstat -lnt 2>/dev/null | grep -qE "127\\.0\\.0\\.1:$PORT[[:space:]]|0\\.0\\.0\\.0:$PORT[[:space:]]|:$PORT[[:space:]]"
+  fi
+}
+port_ok || { echo "STATUS=SOCKS_NOT_RUNNING"; echo "PORT=$PORT"; exit 2; }
+
+DATA="$(curl -4 -fsSk --connect-timeout 3 --max-time 6 --socks5-hostname "127.0.0.1:$PORT" 'https://ipwho.is/' 2>/dev/null || true)"
+IP=""; COUNTRY=""; CC=""; CITY=""; ISP=""; ASN=""
+if [ -n "$DATA" ] && command -v jsonfilter >/dev/null 2>&1; then
+  IP="$(printf '%s' "$DATA" | jsonfilter -e '@.ip' 2>/dev/null || true)"
+  COUNTRY="$(printf '%s' "$DATA" | jsonfilter -e '@.country' 2>/dev/null || true)"
+  CC="$(printf '%s' "$DATA" | jsonfilter -e '@.country_code' 2>/dev/null || true)"
+  CITY="$(printf '%s' "$DATA" | jsonfilter -e '@.city' 2>/dev/null || true)"
+  ISP="$(printf '%s' "$DATA" | jsonfilter -e '@.connection.isp' 2>/dev/null || true)"
+  ASN="$(printf '%s' "$DATA" | jsonfilter -e '@.connection.asn' 2>/dev/null || true)"
+fi
+[ -n "$IP" ] || IP="$(curl -4 -fsSk --connect-timeout 3 --max-time 6 --socks5-hostname "127.0.0.1:$PORT" 'https://api.ipify.org' 2>/dev/null || true)"
+
+if [ -n "$IP" ]; then
+  echo "STATUS=OK"
+  echo "PORT=$PORT"
+  echo "IP=$IP"
+  echo "COUNTRY=$COUNTRY"
+  echo "COUNTRY_CODE=$CC"
+  echo "CITY=$CITY"
+  echo "ISP=$ISP"
+  echo "ASN=$ASN"
+else
+  echo "STATUS=IP_CHECK_FAILED"
+  echo "PORT=$PORT"
+  exit 3
+fi
