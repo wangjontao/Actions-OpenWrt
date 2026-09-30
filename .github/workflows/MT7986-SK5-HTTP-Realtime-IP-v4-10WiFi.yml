@@ -1,10 +1,10 @@
-name: MT7986 S20L AX6000 Realtime-IP-v5 V2 10WiFi
+name: MT7986 S20L AX6000 Realtime-IP-v5 V3 10WiFi
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - jontaoNpS-mt7986-s20l-ax6000-v2-10wifi
+      - jontaoNpS-mt7986-s20l-ax6000-v3-10wifi
 
 permissions:
   contents: write
@@ -232,17 +232,17 @@ jobs:
           cat > files/etc/openwrt_release <<'RELEASE'
           DISTRIB_ID='JulLiangTK'
           DISTRIB_RELEASE='24.10'
-          DISTRIB_REVISION='V2-10WiFi-by-jontao'
+          DISTRIB_REVISION='V3-10WiFi-DHCP-MAC-Fix-by-jontao'
           DISTRIB_TARGET='mediatek/filogic'
           DISTRIB_ARCH='aarch64_cortex-a53'
-          DISTRIB_DESCRIPTION='JuLiangTK OS V2 10WiFi by:jontao'
+          DISTRIB_DESCRIPTION='JuLiangTK OS V3 10WiFi DHCP-MAC-Fix by:jontao'
           DISTRIB_TAINTS=''
           RELEASE
           cat > files/etc/os-release <<'OSRELEASE'
           NAME="JulLiangTK"
-          VERSION="JuLiangTK OS V2 10WiFi by:jontao"
+          VERSION="JuLiangTK OS V3 10WiFi DHCP-MAC-Fix by:jontao"
           ID="juliangtk"
-          PRETTY_NAME="JuLiangTK OS V2 10WiFi by:jontao"
+          PRETTY_NAME="JuLiangTK OS V3 10WiFi DHCP-MAC-Fix by:jontao"
           HOME_URL="https://github.com/wangjontao"
           OSRELEASE
 
@@ -462,6 +462,300 @@ jobs:
           TENDEFAULT
           chmod 755 files/etc/uci-defaults/99-juliang-10wifi-enable
 
+
+          # DHCP/MAC lease recovery: keep WAN identity stable and recover stuck upstream DHCP without rebooting the router.
+          mkdir -p files/usr/sbin files/etc/init.d files/etc/uci-defaults
+          cat > files/usr/sbin/wan-dhcp-heal <<'WANHEAL'
+          #!/bin/sh
+          TAG='wan-dhcp-heal'
+          LOCK='/var/run/wan-dhcp-heal.lock'
+          MAC_FILE='/etc/wan-dhcp-heal.mac'
+          LAST_AGGR='/tmp/wan-dhcp-heal.last_aggressive'
+
+          log_msg() { logger -t "$TAG" "$*"; }
+          wan_proto() { uci -q get network.wan.proto; }
+          wan_status() { ubus call network.interface.wan status 2>/dev/null; }
+          wan_ip() {
+            wan_status | jsonfilter -e '@["ipv4-address"][0].address' 2>/dev/null
+          }
+          wan_dev() {
+            local st dev
+            st="$(wan_status)"
+            dev="$(printf '%s' "$st" | jsonfilter -e '@.l3_device' 2>/dev/null)"
+            [ -n "$dev" ] || dev="$(printf '%s' "$st" | jsonfilter -e '@.device' 2>/dev/null)"
+            [ -n "$dev" ] || dev="$(uci -q get network.wan.device)"
+            [ -n "$dev" ] || dev="$(uci -q get network.wan.ifname)"
+            printf '%s\n' "$dev"
+          }
+          valid_mac() {
+            printf '%s\n' "$1" | grep -Eq '^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: openwrt/.ccache
+          key: mt7986-mtwifi-ccache-${{ runner.os }}-${{ env.SOURCE_HASH }}-${{ github.run_id }}
+          restore-keys: |
+            mt7986-mtwifi-ccache-${{ runner.os }}-${{ env.SOURCE_HASH }}-
+            mt7986-mtwifi-ccache-${{ runner.os }}-
+
+      - name: Restore toolchain cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            openwrt/staging_dir/host
+            openwrt/staging_dir/toolchain-*
+            openwrt/build_dir/host
+            openwrt/build_dir/toolchain-*
+          key: mt7986-mtwifi-toolchain-${{ runner.os }}-${{ env.SOURCE_HASH }}-v1
+
+      - name: Preinstall Argon Realtime-IP v4
+        working-directory: openwrt
+        run: |
+          install -D -m0755 "$GITHUB_WORKSPACE/profiles/realtime-ip-v4/install-argon-realtime-ip-v4.sh" files/usr/bin/install-argon-realtime-ip-v4
+          cat > files/etc/uci-defaults/95-argon-realtime-ip-v4 <<'REALTIMEIP'
+          #!/bin/sh
+          /usr/bin/install-argon-realtime-ip-v4 >/tmp/install-argon-realtime-ip-v4.log 2>&1 || exit 1
+          exit 0
+          REALTIMEIP
+          chmod 0755 files/etc/uci-defaults/95-argon-realtime-ip-v4
+
+      - name: Restore download cache
+        id: downloads
+        uses: actions/cache/restore@v4
+        with:
+          path: openwrt/dl
+          key: mt7986-mtwifi-2410-dl-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            mt7986-mtwifi-2410-dl-
+
+      - name: Download and compile
+        working-directory: openwrt
+        run: |
+          export CCACHE_DIR="$PWD/.ccache"
+          ccache -M 5G || true
+          # Do not reuse partially populated Go module trees from an interrupted run.
+          rm -rf dl/go-mod-cache
+          make download -j"$(nproc)"
+          find dl -type f -size -1024c -print -delete
+          df -h /
+          make -j"$(nproc)" || { df -h /; make -j1 V=s; }
+
+      - name: Save download cache
+        if: ${{ always() && steps.downloads.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: openwrt/dl
+          key: ${{ steps.downloads.outputs.cache-primary-key }}
+
+      - name: Preserve raw target output
+        if: ${{ success() }}
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: MT7986-S20L-AX6000-Realtime-IP-v5-V3-10WiFi-DHCP-MAC-Fix-raw-${{ env.BUILD_DATE }}
+          path: openwrt/bin/targets/mediatek/filogic/*
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Verify and collect firmware
+        working-directory: openwrt
+        run: |
+          mkdir -p upload
+          find bin/targets/mediatek/filogic -maxdepth 1 -type f -printf '%f\n' | sort
+          for pattern in supergateway_s20l xiaomi_redmi-router-ax6000-stock xiaomi_redmi-router-ax6000-ubootmod jdcloud_re-cp-03 zbtlink_zbt-z8103ax; do
+            mapfile -t files < <(find bin/targets/mediatek/filogic -maxdepth 1 -type f -iname "*${pattern}*" \( -iname "*.bin" -o -iname "*.itb" \) -size +5M)
+            [ "${#files[@]}" -gt 0 ] || { echo "ERROR: ${pattern} firmware missing"; exit 1; }
+            cp -a "${files[@]}" upload/
+          done
+          cp MT7986-AX6000-S20L-Baili-final.config upload/
+          sha256sum upload/* | tee upload/SHA256SUMS
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: MT7986-S20L-AX6000-Realtime-IP-v5-V3-10WiFi-DHCP-MAC-Fix-24.10-${{ env.BUILD_DATE }}
+          name: MT7986 S20L AX6000 Realtime-IP-v5 V3 10WiFi ${{ env.BUILD_DATE }}
+          files: openwrt/upload/*
+          body: |
+            Build revision: V3 DHCP/MAC Lease Fix. Adds stable WAN MAC pinning, DHCP broadcast compatibility, automatic renew, WAN-only restart and WAN link recovery with cooldown; V2 remains untouched.
+            Experimental ImmortalWrt 24.10 kernel 6.6 closed MTWiFi build.
+            Devices: Super Gateway S20L, Redmi AX6000 stock/OpenWrt U-Boot layouts, JDCloud AX6000 Baili (RE-CP-03), plus the existing ZBT Z8103AX MT7986 target from this workflow.
+            Driver: mt_wifi 7.6.6.1 with matching WARP. Management: 192.168.7.1, root password @password@.
+            Firmware identity: JuLiangTK OS V3 10WiFi DHCP-MAC-Fix by:jontao.
+            WiFi password: a1111111. 10WiFi: A1-A8 on 5GHz, A9-A10 on 2.4GHz; isolated clients; subnets 172.16.1.0/24 through 172.16.10.0/24; IPv6 DHCP/RA/NDP disabled.
+            Wireless, DHCP and matching PassWall/PassWall2 10-ACL templates apply once, 60 seconds after first boot.
+            Import: PassWall and PassWall2 both support SOCKS5/SOCKS/HTTP URI plus multiline host:port:username:password SK5 shorthand.
+            Xray: SOCKS outbound does not receive the invalid mark=255 setting; the verified MT7981 V5 importer fix is reused.
+            Realtime IP: Argon Realtime-IP v4 glass panel retained, including ISP, region and refreshed public IPv4 display.
+            DNS: the old custom forced-DNS/DoT/bootstrap layer is removed; standard PassWall/PassWall2 DNS behavior is retained.
+            Plugins: iStore, QuickStart, Passwall 26.3.6-1, Passwall2 26.3.5-1, OpenClash, HomeProxy, original ehang NPS/NPC 0.26.10. Theme: Argon.
+            NPS: nps.jontao.top:8024; every boot reads WAN MAC, removes colons, uppercases it, and writes it as vkey.
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: MT7986-S20L-AX6000-Realtime-IP-v5-V3-10WiFi-DHCP-MAC-Fix-24.10-${{ env.BUILD_DATE }}
+          path: openwrt/upload/*
+          if-no-files-found: error
+          retention-days: 30
+
+          }
+          pin_or_restore_mac() {
+            local dev cur saved
+            dev="$(wan_dev)"
+            [ -n "$dev" ] || return 0
+            [ -r "/sys/class/net/$dev/address" ] || return 0
+            cur="$(tr '[:upper:]' '[:lower:]' < "/sys/class/net/$dev/address" 2>/dev/null)"
+            valid_mac "$cur" || return 0
+
+            if [ ! -s "$MAC_FILE" ]; then
+              printf '%s\n' "$cur" > "$MAC_FILE"
+              chmod 600 "$MAC_FILE"
+              log_msg "Pinned initial WAN MAC $cur on $dev"
+              return 0
+            fi
+
+            saved="$(head -n1 "$MAC_FILE" 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+            valid_mac "$saved" || return 0
+            [ "$cur" = "$saved" ] && return 0
+
+            log_msg "WAN MAC changed $cur -> $saved on $dev; restoring pinned MAC"
+            ip link set dev "$dev" down >/dev/null 2>&1 || return 1
+            ip link set dev "$dev" address "$saved" >/dev/null 2>&1 || {
+              ip link set dev "$dev" up >/dev/null 2>&1 || true
+              return 1
+            }
+            ip link set dev "$dev" up >/dev/null 2>&1 || true
+            return 2
+          }
+          restore_saved_mac() {
+            local dev saved
+            dev="$1"
+            [ -n "$dev" ] || return 0
+            [ -r "/sys/class/net/$dev/address" ] || return 0
+            [ -s "$MAC_FILE" ] || return 0
+            saved="$(head -n1 "$MAC_FILE" 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+            valid_mac "$saved" || return 0
+            ip link set dev "$dev" down >/dev/null 2>&1 || true
+            ip link set dev "$dev" address "$saved" >/dev/null 2>&1 || true
+            ip link set dev "$dev" up >/dev/null 2>&1 || true
+          }
+          check_once() {
+            local ip dev now last rc
+            [ "$(wan_proto)" = 'dhcp' ] || return 0
+            mkdir "$LOCK" 2>/dev/null || return 0
+            trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT INT TERM
+
+            pin_or_restore_mac
+            rc=$?
+            if [ "$rc" -eq 2 ]; then
+              dev="$(wan_dev)"
+              ifdown wan >/dev/null 2>&1 || true
+              sleep 2
+              restore_saved_mac "$dev"
+              ifup wan >/dev/null 2>&1 || true
+              sleep 12
+            fi
+
+            ip="$(wan_ip)"
+            [ -n "$ip" ] && return 0
+
+            log_msg 'WAN has no IPv4 address; requesting DHCP renew'
+            ubus call network.interface.wan renew >/dev/null 2>&1 || true
+            sleep 8
+            ip="$(wan_ip)"
+            if [ -n "$ip" ]; then
+              log_msg "DHCP renew recovered WAN: $ip"
+              return 0
+            fi
+
+            now="$(date +%s)"
+            last="$(cat "$LAST_AGGR" 2>/dev/null || echo 0)"
+            case "$last" in ''|*[!0-9]*) last=0;; esac
+            if [ $((now - last)) -lt 180 ]; then
+              log_msg 'WAN still has no IPv4; aggressive recovery is in 180s cooldown'
+              return 0
+            fi
+            printf '%s\n' "$now" > "$LAST_AGGR"
+
+            dev="$(wan_dev)"
+            log_msg 'DHCP renew failed; restarting WAN only'
+            ifdown wan >/dev/null 2>&1 || true
+            sleep 3
+            restore_saved_mac "$dev"
+            ifup wan >/dev/null 2>&1 || true
+            sleep 15
+            ip="$(wan_ip)"
+            if [ -n "$ip" ]; then
+              log_msg "WAN restart recovered DHCP: $ip"
+              return 0
+            fi
+
+            log_msg 'WAN restart failed; resetting WAN link and retrying DHCP'
+            if [ -n "$dev" ] && ip link show "$dev" >/dev/null 2>&1; then
+              ip link set dev "$dev" down >/dev/null 2>&1 || true
+              sleep 4
+              restore_saved_mac "$dev"
+            fi
+            ifup wan >/dev/null 2>&1 || true
+            sleep 15
+            ip="$(wan_ip)"
+            if [ -n "$ip" ]; then
+              log_msg "WAN link reset recovered DHCP: $ip"
+            else
+              log_msg 'Recovery exhausted; upstream DHCP/optical modem may be holding a stale lease'
+            fi
+          }
+
+          case "$1" in
+            daemon)
+              sleep 30
+              while :; do
+                "$0" check
+                sleep 60
+              done
+              ;;
+            check|'')
+              check_once
+              ;;
+          esac
+          WANHEAL
+          chmod 755 files/usr/sbin/wan-dhcp-heal
+
+          cat > files/etc/init.d/wan-dhcp-heal <<'WANINIT'
+          #!/bin/sh /etc/rc.common
+          USE_PROCD=1
+          START=96
+          STOP=10
+
+          start_service() {
+            [ "$(uci -q get network.wan.proto)" = 'dhcp' ] || return 0
+            procd_open_instance
+            procd_set_param command /usr/sbin/wan-dhcp-heal daemon
+            procd_set_param respawn 3600 5 5
+            procd_close_instance
+          }
+
+          service_triggers() {
+            procd_add_reload_trigger network
+          }
+          WANINIT
+          chmod 755 files/etc/init.d/wan-dhcp-heal
+
+          cat > files/etc/uci-defaults/96-wan-dhcp-mac-lease-fix <<'WANDEFAULT'
+          #!/bin/sh
+          if [ "$(uci -q get network.wan.proto)" = 'dhcp' ]; then
+            uci -q set network.wan.broadcast='1'
+            uci -q commit network
+          fi
+          /etc/init.d/wan-dhcp-heal enable
+          /etc/init.d/wan-dhcp-heal start >/dev/null 2>&1 || true
+          exit 0
+          WANDEFAULT
+          chmod 755 files/etc/uci-defaults/96-wan-dhcp-mac-lease-fix
+
           ./scripts/diffconfig.sh | tee MT7986-AX6000-S20L-Baili-final.config
 
       - name: Restore compiler cache
@@ -528,7 +822,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7986-S20L-AX6000-Realtime-IP-v5-V2-10WiFi-raw-${{ env.BUILD_DATE }}
+          name: MT7986-S20L-AX6000-Realtime-IP-v5-V3-10WiFi-DHCP-MAC-Fix-raw-${{ env.BUILD_DATE }}
           path: openwrt/bin/targets/mediatek/filogic/*
           if-no-files-found: warn
           retention-days: 30
@@ -548,15 +842,15 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: MT7986-S20L-AX6000-Realtime-IP-v5-V2-10WiFi-24.10-${{ env.BUILD_DATE }}
-          name: MT7986 S20L AX6000 Realtime-IP-v5 V2 10WiFi ${{ env.BUILD_DATE }}
+          tag_name: MT7986-S20L-AX6000-Realtime-IP-v5-V3-10WiFi-DHCP-MAC-Fix-24.10-${{ env.BUILD_DATE }}
+          name: MT7986 S20L AX6000 Realtime-IP-v5 V3 10WiFi ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
           body: |
-            Build revision: V2. Fixes the V1 shell syntax error in the firmware symbol verification loop; feature set remains based on the verified MT7981 Realtime-IP-v5 settings.
+            Build revision: V3 DHCP/MAC Lease Fix. Adds stable WAN MAC pinning, DHCP broadcast compatibility, automatic renew, WAN-only restart and WAN link recovery with cooldown; V2 remains untouched.
             Experimental ImmortalWrt 24.10 kernel 6.6 closed MTWiFi build.
             Devices: Super Gateway S20L, Redmi AX6000 stock/OpenWrt U-Boot layouts, JDCloud AX6000 Baili (RE-CP-03), plus the existing ZBT Z8103AX MT7986 target from this workflow.
             Driver: mt_wifi 7.6.6.1 with matching WARP. Management: 192.168.7.1, root password @password@.
-            Firmware identity: JuLiangTK OS V2 10WiFi by:jontao.
+            Firmware identity: JuLiangTK OS V3 10WiFi DHCP-MAC-Fix by:jontao.
             WiFi password: a1111111. 10WiFi: A1-A8 on 5GHz, A9-A10 on 2.4GHz; isolated clients; subnets 172.16.1.0/24 through 172.16.10.0/24; IPv6 DHCP/RA/NDP disabled.
             Wireless, DHCP and matching PassWall/PassWall2 10-ACL templates apply once, 60 seconds after first boot.
             Import: PassWall and PassWall2 both support SOCKS5/SOCKS/HTTP URI plus multiline host:port:username:password SK5 shorthand.
@@ -570,7 +864,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7986-S20L-AX6000-Realtime-IP-v5-V2-10WiFi-24.10-${{ env.BUILD_DATE }}
+          name: MT7986-S20L-AX6000-Realtime-IP-v5-V3-10WiFi-DHCP-MAC-Fix-24.10-${{ env.BUILD_DATE }}
           path: openwrt/upload/*
           if-no-files-found: error
           retention-days: 30
