@@ -1,0 +1,38 @@
+<div class="cbi-section">
+<h3>ACL A1-A10 实际出口 IP</h3>
+<p>
+<input id="passwall_acl_refresh" type="button" class="cbi-button cbi-button-action" value="重新检测 A1-A10" onclick="passwallAclLoad(true);" />
+<span id="passwall_acl_msg" style="margin-left:12px"></span>
+</p>
+<div style="overflow-x:auto">
+<table class="table cbi-section-table">
+<thead><tr><th>ACL</th><th>网段</th><th>当前节点</th><th>SOCKS</th><th>出口 IP</th><th>国家/地区</th><th>ISP</th><th>状态</th></tr></thead>
+<tbody id="passwall_acl_rows"><tr><td colspan="8">读取中...</td></tr></tbody>
+</table>
+</div>
+</div>
+<script type="text/javascript">
+//<![CDATA[
+function passwallEsc(v){return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function passwallAclLoad(force){
+  var b=document.getElementById('passwall_acl_refresh'),m=document.getElementById('passwall_acl_msg');
+  if(b)b.disabled=true;
+  if(m)m.textContent=force?'正在并行检测...':'正在读取...';
+  XHR.get('<%=luci.dispatcher.build_url("admin","services","passwall","acl_exit_ip_status")%>',{refresh:force?'1':'0'},function(x,d){
+    if(b)b.disabled=false;
+    var o=d;try{if(typeof o==='string')o=JSON.parse(o);if((!o||typeof o!=='object')&&x&&x.responseText)o=JSON.parse(x.responseText);}catch(e){o=null;}
+    var body=document.getElementById('passwall_acl_rows');
+    if(!o||o.status!=='OK'){body.innerHTML='<tr><td colspan="8">检测失败</td></tr>';return;}
+    var h='',ok=0;
+    (o.rows||[]).forEach(function(r){
+      var good=r.status==='OK';if(good)ok++;
+      var cc=r.country||'--';if(r.country_code)cc+=' ('+r.country_code+')';
+      h+='<tr><td><strong>'+passwallEsc(r.name)+'</strong></td><td>'+passwallEsc(r.network)+'</td><td>'+passwallEsc(r.remarks||r.node||'--')+'</td><td>'+passwallEsc(r.port?'127.0.0.1:'+r.port:'--')+'</td><td><strong style="color:'+(good?'#159957':'#e43f3b')+'">'+passwallEsc(r.ip||'--')+'</strong></td><td>'+passwallEsc(cc)+'</td><td>'+passwallEsc(r.isp||'--')+'</td><td>'+(good?'<span style="color:#159957">● 正常</span>':'<span style="color:#e43f3b">'+passwallEsc(r.status||'失败')+'</span>')+'</td></tr>';
+    });
+    body.innerHTML=h||'<tr><td colspan="8">没有找到 A1-A10</td></tr>';
+    if(m)m.innerHTML='<span style="color:#159957">'+ok+'/'+(o.count||0)+' 正常，本次实际检测节点：'+(o.detected_nodes||0)+'</span>';
+  });
+}
+passwallAclLoad(false);
+//]]>
+</script>
