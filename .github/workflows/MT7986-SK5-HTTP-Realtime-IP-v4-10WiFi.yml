@@ -1,10 +1,10 @@
-name: MT7986 SK5 HTTP Realtime-IP-v4 TikTok Privacy 10WiFi iStore
+name: MT7986 S20L AX6000 Realtime-IP-v5 V1 SingleWiFi
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - jontaoNpS-mt7986-sk5-http-realtime-ip-v4
+      - jontaoNpS-mt7986-s20l-ax6000-v1-singlewifi
 
 permissions:
   contents: write
@@ -113,60 +113,19 @@ jobs:
           test "$(git -C package/passwall-luci describe --tags --exact-match)" = "26.3.6-1"
           test "$(git -C package/passwall2-luci describe --tags --exact-match)" = "26.3.5-1"
 
-      - name: Add PassWall SK5 and HTTP link importer
+      - name: Patch PassWall and PassWall2 SK5 HTTP import
         working-directory: openwrt
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          candidates = list(Path('.').glob('**/luci-app-passwall/root/usr/share/passwall/subscribe.lua'))
-          p = next((x for x in candidates if x.is_file()), None)
-          if not p:
-              raise SystemExit('PassWall subscribe.lua not found')
-          s = p.read_text()
-          process_anchor = "\t--ssr://base64(host:port:protocol:method:obfs:base64pass/?obfsparam=base64param&protoparam=base64param&remarks=base64remarks&group=base64group&udpport=0&uot=0)\n\tif szType == 'ssr' then"
-          process_patch = '''\t-- JuLiangTK: import SOCKS5/SOCKS/HTTP links as sing-box nodes.
-          \tif szType == 'socks5' or szType == 'socks5h' or szType == 'socks' or szType == 'http' then
-          \t\tif not has_singbox then
-          \t\t\tlog("跳过 SOCKS/HTTP 节点，因未安装 sing-box。")
-          \t\t\treturn nil
-          \t\tend
-          \t\tlocal link, fragment = content:match("^(.-)#(.*)$")
-          \t\tlink = link or content
-          \t\tlocal parsed = api.parseURL(szType .. "://" .. link)
-          \t\tlocal function pct_decode(v)
-          \t\t\treturn (v or ""):gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end)
-          \t\tend
-          \t\tresult.type = "sing-box"
-          \t\tresult.protocol = (szType == "http") and "http" or "socks"
-          \t\tresult.address = parsed.hostname
-          \t\tresult.port = parsed.port
-          \t\tresult.username = pct_decode(parsed.username)
-          \t\tresult.password = pct_decode(parsed.password)
-          \t\tresult.remarks = pct_decode(fragment or (string.upper(result.protocol) .. "-" .. (result.address or "node") .. "-" .. tostring(result.port or "")))
-          \t\treturn result
-          \t--ssr://base64(host:port:protocol:method:obfs:base64pass/?obfsparam=base64param&protoparam=base64param&remarks=base64remarks&group=base64group&udpport=0&uot=0)
-          \telseif szType == 'ssr' then'''
-          if process_anchor not in s:
-              raise SystemExit('PassWall processData anchor not found')
-          s = s.replace(process_anchor, process_patch, 1)
-          link_anchor = '\t\t\t\t\t\tlocal node = api.trim(v)\n\t\t\t\t\t\tlocal dat = split(node, "://")'
-          link_patch = '''\t\t\t\t\t\tlocal node = api.trim(v)
-          \t\t\t\t\t\t-- Accept provider shorthand: host:port:username:password
-          \t\t\t\t\t\tlocal h, p, u, pw = node:match("^([^:]+):(%d+):([^:]+):(.+)$")
-          \t\t\t\t\t\tif h and p and u and pw then
-          \t\t\t\t\t\t\tnode = "socks5://" .. u .. ":" .. pw .. "@" .. h .. ":" .. p .. "#SK5-" .. h .. "-" .. p
-          \t\t\t\t\t\tend
-          \t\t\t\t\t\tlocal dat = split(node, "://")'''
-          if link_anchor not in s:
-              raise SystemExit('PassWall parse_link anchor not found')
-          s = s.replace(link_anchor, link_patch, 1)
-          p.write_text(s)
-          print('Patched', p)
-          PY
-          PW_SUB=$(find . -path '*/luci-app-passwall/root/usr/share/passwall/subscribe.lua' -type f | head -n1)
-          test -n "$PW_SUB"
-          grep -q "JuLiangTK: import SOCKS5/SOCKS/HTTP" "$PW_SUB"
-          grep -q "provider shorthand" "$PW_SUB"
+          python3 "$GITHUB_WORKSPACE/scripts/patch-passwall-sk5-http.py"
+          grep -q 'JuLiangTK: allow multiline SOCKS5 shorthand' package/passwall-luci/luci-app-passwall/luasrc/view/passwall/node_list/link_add_node.htm
+          grep -q 'JuLiangTK: allow multiline SOCKS5 shorthand' package/passwall2-luci/luci-app-passwall2/luasrc/view/passwall2/node_list/link_add_node.htm
+          grep -q 'JuLiangTK: import SOCKS5/SOCKS/HTTP provider links' package/passwall-luci/luci-app-passwall/root/usr/share/passwall/subscribe.lua
+          grep -q 'JuLiangTK: import SOCKS5/SOCKS/HTTP provider links' package/passwall2-luci/luci-app-passwall2/root/usr/share/passwall2/subscribe.lua
+          grep -q 'mark = (node.protocol ~= "socks") and 255 or nil,' package/passwall-luci/luci-app-passwall/luasrc/passwall/util_xray.lua
+          grep -q 'mark = (node.protocol ~= "socks") and 255 or nil,' package/passwall2-luci/luci-app-passwall2/luasrc/passwall2/util_xray.lua
+          ! grep -q '\\\\d+' package/passwall-luci/luci-app-passwall/luasrc/view/passwall/node_list/link_add_node.htm
+          ! grep -q '\\\\d+' package/passwall2-luci/luci-app-passwall2/luasrc/view/passwall2/node_list/link_add_node.htm
+          echo 'PassWall + PassWall2 SK5/HTTP importer and frontend validation verified.'
 
       - name: Apply package compiler compatibility fixes
         working-directory: openwrt
@@ -219,8 +178,6 @@ jobs:
           CONFIG_PACKAGE_xray-core=y
           CONFIG_PACKAGE_sing-box=y
           CONFIG_PACKAGE_chinadns-ng=y
-          CONFIG_PACKAGE_https-dns-proxy=y
-          CONFIG_PACKAGE_luci-app-https-dns-proxy=y
           CONFIG_PACKAGE_dns2socks=y
           CONFIG_PACKAGE_geoview=y
           CONFIG_PACKAGE_tcping=y
@@ -251,7 +208,6 @@ jobs:
             CONFIG_PACKAGE_luci-app-nps CONFIG_PACKAGE_npc \
             CONFIG_PACKAGE_luci-theme-argon CONFIG_PACKAGE_dnsmasq-full \
             CONFIG_PACKAGE_xray-core CONFIG_PACKAGE_sing-box \
-            CONFIG_PACKAGE_https-dns-proxy; do
             grep -qx "$sym=y" .config || { echo "ERROR: $sym unavailable"; exit 1; }
           done
 
@@ -276,17 +232,17 @@ jobs:
           cat > files/etc/openwrt_release <<'RELEASE'
           DISTRIB_ID='JulLiangTK'
           DISTRIB_RELEASE='24.10'
-          DISTRIB_REVISION='by:jontao'
+          DISTRIB_REVISION='V1-SingleWiFi-by-jontao'
           DISTRIB_TARGET='mediatek/filogic'
           DISTRIB_ARCH='aarch64_cortex-a53'
-          DISTRIB_DESCRIPTION='JuLiangTK OS by:jontao'
+          DISTRIB_DESCRIPTION='JuLiangTK OS V1 SingleWiFi by:jontao'
           DISTRIB_TAINTS=''
           RELEASE
           cat > files/etc/os-release <<'OSRELEASE'
           NAME="JulLiangTK"
-          VERSION="JuLiangTK OS by:jontao"
+          VERSION="JuLiangTK OS V1 SingleWiFi by:jontao"
           ID="juliangtk"
-          PRETTY_NAME="JuLiangTK OS by:jontao"
+          PRETTY_NAME="JuLiangTK OS V1 SingleWiFi by:jontao"
           HOME_URL="https://github.com/wangjontao"
           OSRELEASE
 
@@ -379,173 +335,7 @@ jobs:
           NPSHOTPLUG
           chmod 755 files/etc/hotplug.d/iface/99-nps-autokey
 
-          # TikTok privacy profile: let PassWall2 own proxy DNS, force clients to the router, and prevent IPv6/DoT bypass.
-          cat > files/etc/uci-defaults/96-tiktok-privacy <<'TIKTOKPRIVACY'
-          #!/bin/sh
-          /etc/init.d/sysntpd enable >/dev/null 2>&1 || true
-          /etc/init.d/https-dns-proxy disable >/dev/null 2>&1 || true
-          /etc/init.d/https-dns-proxy stop >/dev/null 2>&1 || true
 
-          # Keep a working bootstrap resolver. PassWall2 replaces DNS per ACL after its cores start.
-          uci -q set dhcp.@dnsmasq[0].noresolv='0'
-          uci -q delete dhcp.@dnsmasq[0].server
-          uci -q set dhcp.@dnsmasq[0].rebind_protection='1'
-          uci -q set dhcp.@dnsmasq[0].localservice='1'
-          uci -q set dhcp.lan.dhcpv6='disabled'
-          uci -q set dhcp.lan.ra='disabled'
-          uci -q set dhcp.lan.ndp='disabled'
-          uci -q commit dhcp
-
-          uci -q delete network.globals.ula_prefix
-          uci -q set network.wan6.disabled='1'
-          uci -q commit network
-
-          uci -q delete firewall.tiktok_dns_hijack
-          uci set firewall.tiktok_dns_hijack='redirect'
-          uci set firewall.tiktok_dns_hijack.name='TikTok-Force-LAN-DNS'
-          uci set firewall.tiktok_dns_hijack.src='lan'
-          uci set firewall.tiktok_dns_hijack.src_dport='53'
-          uci set firewall.tiktok_dns_hijack.dest_port='53'
-          uci set firewall.tiktok_dns_hijack.proto='tcp udp'
-          uci set firewall.tiktok_dns_hijack.target='DNAT'
-          uci -q delete firewall.tiktok_block_dot
-          uci set firewall.tiktok_block_dot='rule'
-          uci set firewall.tiktok_block_dot.name='TikTok-Block-Direct-DoT'
-          uci set firewall.tiktok_block_dot.src='lan'
-          uci set firewall.tiktok_block_dot.dest='wan'
-          uci set firewall.tiktok_block_dot.dest_port='853'
-          uci set firewall.tiktok_block_dot.proto='tcp udp'
-          uci set firewall.tiktok_block_dot.target='REJECT'
-          uci commit firewall
-
-          /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
-          /etc/init.d/firewall restart >/dev/null 2>&1 || true
-          exit 0
-          TIKTOKPRIVACY
-          chmod 755 files/etc/uci-defaults/96-tiktok-privacy
-
-          mkdir -p files/usr/libexec files/etc/init.d files/etc/juliang-10wifi
-          cp "$GITHUB_WORKSPACE/profiles/hy3000-10wifi/passwall" files/etc/juliang-10wifi/passwall
-          cp "$GITHUB_WORKSPACE/profiles/hy3000-10wifi/passwall2" files/etc/juliang-10wifi/passwall2
-          chmod 600 files/etc/juliang-10wifi/passwall files/etc/juliang-10wifi/passwall2
-
-          cat > files/usr/libexec/juliang-10wifi-setup <<'TENWIFI'
-          #!/bin/sh
-          set -eu
-          MARKER=/etc/juliang-10wifi.done
-          [ -e "$MARKER" ] && exit 0
-
-          radio2=''
-          radio5=''
-          for dev in $(uci -q show wireless | sed -n "s/^wireless\.\([^.=]*\)=wifi-device$/\1/p"); do
-            band="$(uci -q get wireless.$dev.band || true)"
-            hwmode="$(uci -q get wireless.$dev.hwmode || true)"
-            if [ "$band" = '5g' ] || [ "$hwmode" = '11a' ]; then
-              [ -n "$radio5" ] || radio5="$dev"
-            else
-              [ -n "$radio2" ] || radio2="$dev"
-            fi
-          done
-          [ -n "$radio2" ] || radio2='radio0'
-          [ -n "$radio5" ] || radio5='radio1'
-          uci -q set wireless.$radio2.channel='9'
-          uci -q set wireless.$radio5.channel='48'
-
-          for iface in $(uci -q show wireless | sed -n "s/^wireless\.\([^.=]*\)=wifi-iface$/\1/p"); do
-            case "$iface" in juliang_a*) continue;; esac
-            dev="$(uci -q get wireless.$iface.device || true)"
-            if [ "$dev" = "$radio2" ]; then
-              uci set wireless.$iface.ssid='A-2.4G'
-            elif [ "$dev" = "$radio5" ]; then
-              uci set wireless.$iface.ssid='A-5G'
-            else
-              continue
-            fi
-            uci set wireless.$iface.encryption='psk2'
-            uci set wireless.$iface.key='a1111111'
-            uci set wireless.$iface.disabled='0'
-          done
-
-          for i in 1 2 3 4 5 6 7 8 9 10; do
-            net="a$i"
-            iface="juliang_a$i"
-            radio="$radio5"
-            [ "$i" -ge 9 ] && radio="$radio2"
-            uci -q delete network.$net || true
-            uci set network.$net='interface'
-            uci set network.$net.proto='static'
-            uci set network.$net.ipaddr="172.16.$i.1"
-            uci set network.$net.netmask='255.255.255.0'
-
-            uci -q delete dhcp.$net || true
-            uci set dhcp.$net='dhcp'
-            uci set dhcp.$net.interface="$net"
-            uci set dhcp.$net.start='100'
-            uci set dhcp.$net.limit='150'
-            uci set dhcp.$net.leasetime='12h'
-
-            uci -q delete wireless.$iface || true
-            uci set wireless.$iface='wifi-iface'
-            uci set wireless.$iface.device="$radio"
-            uci set wireless.$iface.mode='ap'
-            uci set wireless.$iface.network="$net"
-            uci set wireless.$iface.ssid="A$i"
-            uci set wireless.$iface.encryption='psk2'
-            uci set wireless.$iface.key='a1111111'
-            uci set wireless.$iface.disabled='0'
-
-            uci -q delete firewall.$net || true
-            uci set firewall.$net='zone'
-            uci set firewall.$net.name="$net"
-            uci add_list firewall.$net.network="$net"
-            uci set firewall.$net.input='ACCEPT'
-            uci set firewall.$net.output='ACCEPT'
-            uci set firewall.$net.forward='REJECT'
-            uci set firewall.${net}_wan='forwarding'
-            uci set firewall.${net}_wan.src="$net"
-            uci set firewall.${net}_wan.dest='wan'
-          done
-
-          uci commit network
-          uci commit dhcp
-          uci commit wireless
-          uci commit firewall
-          cp /etc/juliang-10wifi/passwall /etc/config/passwall
-          cp /etc/juliang-10wifi/passwall2 /etc/config/passwall2
-          chmod 600 /etc/config/passwall /etc/config/passwall2
-          touch "$MARKER"
-          /etc/init.d/network reload >/dev/null 2>&1 || true
-          wifi reload >/dev/null 2>&1 || true
-          /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
-          /etc/init.d/firewall restart >/dev/null 2>&1 || true
-          /etc/init.d/passwall enable >/dev/null 2>&1 || true
-          /etc/init.d/passwall2 enable >/dev/null 2>&1 || true
-          /etc/init.d/passwall restart >/dev/null 2>&1 || true
-          /etc/init.d/passwall2 restart >/dev/null 2>&1 || true
-          logger -t juliang-10wifi 'A1-A10 and supplied PassWall/PassWall2 templates applied after 60 seconds'
-          TENWIFI
-          chmod 755 files/usr/libexec/juliang-10wifi-setup
-
-          cat > files/etc/init.d/juliang-10wifi-firstboot <<'TENINIT'
-          #!/bin/sh /etc/rc.common
-          START=99
-          start() {
-            [ -e /etc/juliang-10wifi.done ] && return 0
-            ( sleep 60; /usr/libexec/juliang-10wifi-setup; /etc/init.d/juliang-10wifi-firstboot disable ) &
-          }
-          TENINIT
-          chmod 755 files/etc/init.d/juliang-10wifi-firstboot
-          cat > files/etc/uci-defaults/99-juliang-10wifi-enable <<'TENDEFAULT'
-          #!/bin/sh
-          /etc/init.d/juliang-10wifi-firstboot enable
-          [ -e /etc/juliang-10wifi.done ] || (
-            sleep 60
-            /usr/libexec/juliang-10wifi-setup
-            /etc/init.d/juliang-10wifi-firstboot disable
-          ) &
-          exit 0
-          TENDEFAULT
-          chmod 755 files/etc/uci-defaults/99-juliang-10wifi-enable
 
           ./scripts/diffconfig.sh | tee MT7986-AX6000-S20L-Baili-final.config
 
@@ -613,7 +403,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7986-SK5-HTTP-Realtime-IP-v4-TikTok-10WiFi-raw-${{ env.BUILD_DATE }}
+          name: MT7986-S20L-AX6000-Realtime-IP-v5-V1-SingleWiFi-raw-${{ env.BUILD_DATE }}
           path: openwrt/bin/targets/mediatek/filogic/*
           if-no-files-found: warn
           retention-days: 30
@@ -633,20 +423,21 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: MT7986-SK5-HTTP-Realtime-IP-v4-TikTok-10WiFi-iStore-24.10-${{ env.BUILD_DATE }}
-          name: MT7986 SK5 HTTP Realtime-IP-v4 TikTok Privacy 10WiFi ${{ env.BUILD_DATE }}
+          tag_name: MT7986-S20L-AX6000-Realtime-IP-v5-V1-SingleWiFi-24.10-${{ env.BUILD_DATE }}
+          name: MT7986 S20L AX6000 Realtime-IP-v5 V1 SingleWiFi ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
           body: |
+            Build revision: V1. First MT7986 port based on the verified MT7981 Realtime-IP-v5 settings.
             Experimental ImmortalWrt 24.10 kernel 6.6 closed MTWiFi build.
-            Devices: Redmi AX6000 stock/OpenWrt U-Boot layouts, Super Gateway S20L, JDCloud AX6000 Baili (RE-CP-03), and ZBT Z8103AX.
+            Devices: Super Gateway S20L, Redmi AX6000 stock/OpenWrt U-Boot layouts, JDCloud AX6000 Baili (RE-CP-03), plus the existing ZBT Z8103AX MT7986 target from this workflow.
             Driver: mt_wifi 7.6.6.1 with matching WARP. Management: 192.168.7.1, root password @password@.
-            System: JulLiangTK; firmware description: JuLiangTK OS by:jontao.
-            WiFi: A-2.4G/A-5G plus A1-A10; password a1111111.
-            10WiFi: A1-A8 on 5GHz, A9-A10 on 2.4GHz; password a1111111; subnets 172.16.1.0/24 through 172.16.10.0/24.
-            Wireless, DHCP and the supplied PassWall/PassWall2 10-ACL templates run once, 60 seconds after first boot.
-            Import: SOCKS5/SOCKS/HTTP URI and host:port:username:password SK5 shorthand.
-            Realtime IP: Argon Realtime-IP v4 glass panel with ISP, region and refreshed public IPv4 display.
-            TikTok privacy: PassWall2 per-ACL proxy DNS, forced LAN DNS, direct DoT blocking, DNS rebind protection and IPv6 leak prevention; safe WAN-DNS bootstrap prevents boot-time DNS deadlock.
+            Firmware identity: JuLiangTK OS V1 SingleWiFi by:jontao.
+            WiFi password: a1111111. SingleWiFi: only JuLiang-2.4G and JuLiang-5G are enabled; no A1-A20 extra SSIDs are created.
+            No extra multi-SSID first-boot template is applied.
+            Import: PassWall and PassWall2 both support SOCKS5/SOCKS/HTTP URI plus multiline host:port:username:password SK5 shorthand.
+            Xray: SOCKS outbound does not receive the invalid mark=255 setting; the verified MT7981 V5 importer fix is reused.
+            Realtime IP: Argon Realtime-IP v4 glass panel retained, including ISP, region and refreshed public IPv4 display.
+            DNS: the old custom forced-DNS/DoT/bootstrap layer is removed; standard PassWall/PassWall2 DNS behavior is retained.
             Plugins: iStore, QuickStart, Passwall 26.3.6-1, Passwall2 26.3.5-1, OpenClash, HomeProxy, original ehang NPS/NPC 0.26.10. Theme: Argon.
             NPS: nps.jontao.top:8024; every boot reads WAN MAC, removes colons, uppercases it, and writes it as vkey.
 
@@ -654,7 +445,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7986-SK5-HTTP-Realtime-IP-v4-TikTok-10WiFi-24.10-${{ env.BUILD_DATE }}
+          name: MT7986-S20L-AX6000-Realtime-IP-v5-V1-SingleWiFi-24.10-${{ env.BUILD_DATE }}
           path: openwrt/upload/*
           if-no-files-found: error
           retention-days: 30
