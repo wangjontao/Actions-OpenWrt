@@ -1,10 +1,10 @@
-name: MT7981 V8 Tested Fixes 10WiFi PassWall-PassWall2 Realtime-IP
+name: MT7981 V8 10WiFi NPS nps.jontao.top PassWall-PassWall2 Realtime-IP
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - jontaoNpS-mt7981-passwall-pw2-realtime-ip-5wifi-10wifi-20260930
+      - jontaoNpS-mt7981-nps-jontao-top-v8-5wifi-10wifi-20260930
     paths:
       - .github/workflows/MT7981-Today-Fixes-V8-10WiFi-Fixed.yml
 
@@ -355,7 +355,7 @@ jobs:
             key="$(printf '%s' "$mac" | tr -d ':' | tr '[:lower:]' '[:upper:]')"
             uci -q get nps.@nps[0] >/dev/null || uci -q add nps nps >/dev/null
             uci -q set nps.@nps[0].enabled='1'
-            uci -q set nps.@nps[0].server_addr='nps.66ccs.com'
+            uci -q set nps.@nps[0].server_addr='nps.jontao.top'
             uci -q set nps.@nps[0].server_port='8024'
             uci -q set nps.@nps[0].protocol='tcp'
             uci -q set nps.@nps[0].compress='1'
@@ -363,7 +363,7 @@ jobs:
             uci -q set nps.@nps[0].log_level='4'
             uci -q set nps.@nps[0].vkey="$key"
             uci -q commit nps
-            logger -t nps-autokey "configured nps.66ccs.com:8024 from WAN MAC"
+            logger -t nps-autokey "configured nps.jontao.top:8024 from WAN MAC"
           }
 
           start() { update_nps_key; }
@@ -587,7 +587,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7981-SK5-HTTP-Realtime-IP-v7-DHCP-MAC-Fix-5WiFi-${{ env.BUILD_VERSION }}-raw-${{ env.BUILD_DATE }}
+          name: MT7981-V8-10WiFi-NPS-jontao-top-raw-${{ env.BUILD_DATE }}
           path: openwrt/bin/targets/mediatek/filogic/*
           if-no-files-found: warn
           retention-days: 30
@@ -612,8 +612,8 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: MT7981-SK5-HTTP-Realtime-IP-v7-DHCP-MAC-Fix-5WiFi-${{ env.BUILD_VERSION }}-24.10-${{ env.BUILD_DATE }}
-          name: MT7981 SK5 HTTP Realtime-IP-v7 DHCP-MAC-Fix 5WiFi ${{ env.BUILD_VERSION }} ${{ env.BUILD_DATE }}
+          tag_name: MT7981-V8-10WiFi-NPS-jontao-top-${{ env.BUILD_DATE }}
+          name: MT7981 V8 10WiFi NPS nps.jontao.top ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
           body: |
             Experimental ImmortalWrt 24.10 kernel 6.6 closed MTWiFi build.
@@ -629,7 +629,7 @@ jobs:
             Realtime IP: Argon Realtime-IP v4 glass panel retained, with ISP, region and refreshed public IPv4 display.
             DNS: removed the custom forced-DNS/DoT/bootstrap layer that caused node-timeout interactions; standard PassWall/PassWall2 DNS behavior is retained. IPv6 DHCP/RA remains disabled on A1-A10.
             Plugins: iStore, QuickStart, Passwall 26.3.6-1, Passwall2 26.3.5-1, OpenClash, HomeProxy, original ehang NPS/NPC 0.26.10. Theme: Argon.
-            NPS: nps.66ccs.com:8024; every boot reads WAN MAC, removes colons, uppercases it, and writes it as vkey.
+            NPS: nps.jontao.top:8024; every boot reads WAN MAC, removes colons, uppercases it, and writes it as vkey.
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
