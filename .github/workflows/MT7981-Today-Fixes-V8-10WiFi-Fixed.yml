@@ -287,6 +287,7 @@ jobs:
               'ssid="ImmortalWrt-2.4G"': 'ssid="DulWiFi 2.4G"',
               'ssid="ImmortalWrt-5G"': 'ssid="DulWiFi 5G"',
               'channel="auto"': 'channel="9"',
+              'channel="36"': 'channel="48"',
               'set wireless.default_${dev}.encryption=none': 'set wireless.default_${dev}.encryption=psk2+ccmp\n\t\t\t\t\tset wireless.default_${dev}.key=a1111111',
           }
           for old, new in replacements.items():
@@ -297,6 +298,7 @@ jobs:
           PY
           grep -q 'ssid="DulWiFi 2.4G"' package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
           grep -q 'ssid="DulWiFi 5G"' package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
+          grep -q 'channel="48"' package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
           grep -q 'set wireless.default_${dev}.encryption=psk2+ccmp' package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
           grep -q 'set wireless.default_${dev}.key=a1111111' package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
           mkdir -p files/etc
