@@ -1,0 +1,33 @@
+#!/bin/sh
+# JuLiangTK V9 FastACL defaults
+# PassWall2 remains installed for node/subscription/UI management, but its
+# transparent-proxy dataplane is disabled. FastACL owns A1..An traffic.
+uci -q delete juliang_fastacl.main
+uci set juliang_fastacl.main='main'
+uci set juliang_fastacl.main.enabled='1'
+uci set juliang_fastacl.main.tproxy_port='12345'
+uci set juliang_fastacl.main.mark='0x66'
+uci set juliang_fastacl.main.route_table='100'
+uci set juliang_fastacl.main.dns_mode='doh'
+uci set juliang_fastacl.main.dns_server='1.1.1.1'
+uci set juliang_fastacl.main.dns_tls_server_name='cloudflare-dns.com'
+uci set juliang_fastacl.main.dns_path='/dns-query'
+uci set juliang_fastacl.main.version='V9'
+uci commit juliang_fastacl
+
+uci -q set passwall2.@global[0].enabled='0'
+uci -q set passwall2.@global[0].acl_enable='0'
+uci -q set passwall2.@global[0].socks_enabled='0'
+uci commit passwall2
+/etc/init.d/passwall2 stop >/dev/null 2>&1 || true
+/etc/init.d/passwall2 disable >/dev/null 2>&1 || true
+
+chmod 0755 /usr/bin/juliang-fastacl /usr/bin/juliang-fastacl-guard /usr/bin/juliang-fastacl-luci-install >/dev/null 2>&1 || true
+chmod 0755 /etc/init.d/juliang-fastacl /etc/hotplug.d/iface/99-juliang-fastacl >/dev/null 2>&1 || true
+
+/usr/bin/juliang-fastacl-luci-install >/tmp/juliang-fastacl-luci-install.log 2>&1 || logger -t juliang-fastacl "LuCI patch deferred/failed; see /tmp/juliang-fastacl-luci-install.log"
+/etc/init.d/juliang-fastacl enable >/dev/null 2>&1 || true
+/etc/init.d/juliang-fastacl restart >/dev/null 2>&1 || true
+
+logger -t juliang-fastacl "V9 FastACL guardian enabled; DoH enabled; fail-closed kill-switch active after AP discovery"
+exit 0
