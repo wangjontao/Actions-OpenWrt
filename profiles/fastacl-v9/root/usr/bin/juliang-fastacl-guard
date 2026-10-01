@@ -1,0 +1,61 @@
+#!/bin/sh
+set -u
+
+LOG="/tmp/juliang-fastacl/guard.log"
+mkdir -p /tmp/juliang-fastacl
+
+log(){
+  echo "$(date '+%Y-%m-%d %H:%M:%S') [GUARD] $*" >> "$LOG"
+}
+
+disable_passwall2_runtime(){
+  local changed=0
+  [ "$(uci -q get passwall2.@global[0].enabled 2>/dev/null || echo 0)" = "0" ] || { uci -q set passwall2.@global[0].enabled=0; changed=1; }
+  [ "$(uci -q get passwall2.@global[0].acl_enable 2>/dev/null || echo 0)" = "0" ] || { uci -q set passwall2.@global[0].acl_enable=0; changed=1; }
+  [ "$(uci -q get passwall2.@global[0].socks_enabled 2>/dev/null || echo 0)" = "0" ] || { uci -q set passwall2.@global[0].socks_enabled=0; changed=1; }
+  [ "$changed" -eq 0 ] || uci commit passwall2
+}
+
+# Wait for network/wireless services. Persistent UCI bindings are kept intact
+# while we wait; discovery itself is transactional and cannot erase them.
+sleep 12
+
+while true; do
+  if [ "$(uci -q get juliang_fastacl.main.enabled 2>/dev/null || echo 0)" != "1" ]; then
+    sleep 30
+    continue
+  fi
+
+  disable_passwall2_runtime
+
+  # If persistent topology is unexpectedly missing, first attempt
+  # discovery. If boot services are not ready yet, restore last-good state.
+  count="$(uci -q get juliang_fastacl.main.ap_count 2>/dev/null || echo 0)"
+  case "$count" in ''|*[!0-9]*) count=0 ;; esac
+  if [ "$count" -eq 0 ]; then
+    if lua /usr/libexec/juliang-fastacl-discover.lua >/tmp/juliang-fastacl/guard-discover.json 2>/tmp/juliang-fastacl/guard-discover.log; then
+      log "wireless topology discovered"
+    elif /usr/bin/juliang-fastacl restore-state >/tmp/juliang-fastacl/guard-restore.log 2>&1; then
+      log "persistent config restored from last-good snapshot"
+    else
+      log "wireless not ready and no last-good snapshot; retrying"
+      sleep 15
+      continue
+    fi
+  fi
+
+  if ! /usr/bin/juliang-fastacl ensure >/tmp/juliang-fastacl/guard-ensure.log 2>&1; then
+    log "dataplane unhealthy; full repair"
+    if /usr/bin/juliang-fastacl repair >/tmp/juliang-fastacl/guard-repair.log 2>&1; then
+      log "dataplane repaired"
+    else
+      log "dataplane repair failed"
+    fi
+  fi
+
+  if ! /usr/bin/juliang-fastacl heal >/tmp/juliang-fastacl/guard-heal.log 2>&1; then
+    log "one or more AP relays were missing; heal attempted"
+  fi
+
+  sleep 20
+done
