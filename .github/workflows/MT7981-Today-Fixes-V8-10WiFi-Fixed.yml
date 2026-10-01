@@ -279,6 +279,26 @@ jobs:
             -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
             -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' \
             package/mtk/drivers/wifi-profile/files/mt7981/mt7981.dbdc.b1.dat
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('package/mtk/applications/mtwifi-cfg/files/mtwifi.sh')
+          s = p.read_text()
+          replacements = {
+              'ssid="ImmortalWrt-2.4G"': 'ssid="JuLiangTK 2.4G"',
+              'ssid="ImmortalWrt-5G"': 'ssid="JuLiangTK 5G"',
+              'channel="auto"': 'channel="9"',
+              'set wireless.default_${dev}.encryption=none': 'set wireless.default_${dev}.encryption=psk2+ccmp\n\t\t\t\t\tset wireless.default_${dev}.key=a1111111',
+          }
+          for old, new in replacements.items():
+              if old not in s:
+                  raise SystemExit(f'missing MTWiFi default: {old}')
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+          grep -q 'ssid="JuLiangTK 2.4G"' package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
+          grep -q 'ssid="JuLiangTK 5G"' package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
+          grep -q 'set wireless.default_${dev}.encryption=psk2+ccmp' package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
+          grep -q 'set wireless.default_${dev}.key=a1111111' package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
           mkdir -p files/etc
           cp package/base-files/files/etc/shadow files/etc/shadow
           HASH="$(openssl passwd -1 '@password@')"
@@ -319,6 +339,21 @@ jobs:
               -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
               -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' "$f"
           done
+          for dev in $(l1util list 2>/dev/null); do
+            section="default_${dev}"
+            uci -q get "wireless.${section}" >/dev/null || continue
+            idx="$(l1util get "$dev" subidx 2>/dev/null)"
+            if [ "$idx" = "1" ]; then
+              uci -q set "wireless.${dev}.channel=9"
+              uci -q set "wireless.${section}.ssid=JuLiangTK 2.4G"
+            else
+              uci -q set "wireless.${dev}.channel=48"
+              uci -q set "wireless.${section}.ssid=JuLiangTK 5G"
+            fi
+            uci -q set "wireless.${section}.encryption=psk2+ccmp"
+            uci -q set "wireless.${section}.key=a1111111"
+          done
+          uci -q commit wireless
           exit 0
           WIFIDEFAULT
           chmod 755 files/etc/uci-defaults/97-juliang-system-wifi
