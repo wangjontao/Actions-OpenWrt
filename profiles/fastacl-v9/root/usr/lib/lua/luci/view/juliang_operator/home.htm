@@ -5,7 +5,10 @@ local uci = require "luci.model.uci".cursor()
 local dsp = require "luci.dispatcher"
 
 local function sh(cmd)
-  return (sys.exec(cmd .. " 2>/dev/null") or ""):gsub("^%s+",""):gsub("%s+$","")
+  local out = sys.exec(cmd .. " 2>/dev/null") or ""
+  out = out:gsub("^%s+","")
+  out = out:gsub("%s+$","")
+  return out
 end
 
 local hostname = sys.hostname() or "JuLiangTK"
