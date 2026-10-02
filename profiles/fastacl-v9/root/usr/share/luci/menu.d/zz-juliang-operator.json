@@ -92,5 +92,18 @@
         "juliang-quickstart-admin"
       ]
     }
+  },
+  "admin/network/wireless_operator": {
+    "title": "无线",
+    "order": 15,
+    "action": {
+      "type": "template",
+      "path": "juliang_operator/wireless"
+    },
+    "depends": {
+      "acl": [
+        "juliang-wireless-operator"
+      ]
+    }
   }
 }
