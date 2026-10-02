@@ -1,0 +1,106 @@
+<%+header%>
+<%
+local sys = require "luci.sys"
+local uci = require "luci.model.uci".cursor()
+local dsp = require "luci.dispatcher"
+
+local function sh(cmd)
+  return (sys.exec(cmd .. " 2>/dev/null") or ""):gsub("^%s+",""):gsub("%s+$","")
+end
+
+local hostname = sys.hostname() or "JuLiangTK"
+local wan_ip = sh([[ubus call network.interface.wan status | jsonfilter -e '@["ipv4-address"][0].address']]])
+if wan_ip == "" then wan_ip = "-" end
+
+local uptime_s = tonumber(sh([[cut -d. -f1 /proc/uptime]])) or 0
+local d = math.floor(uptime_s / 86400)
+local h = math.floor((uptime_s % 86400) / 3600)
+local m = math.floor((uptime_s % 3600) / 60)
+local uptime = (d > 0 and (d .. "天 ") or "") .. h .. "小时 " .. m .. "分钟"
+
+local fast_status = sh([[/usr/bin/juliang-fastacl status]])
+local fast_running = fast_status:find("router: running", 1, true) ~= nil
+local killswitch = fast_status:find("killswitch: loaded", 1, true) ~= nil
+local guardian = sh([[pgrep -f '/usr/bin/juliang-fastacl-guard' | head -n1]]) ~= ""
+local wifi_count = tonumber(uci:get("juliang_fastacl","main","ap_count") or "0") or 0
+local assigned = 0
+uci:foreach("juliang_fastacl","ap",function(s)
+  if s.node and s.node ~= "" then assigned = assigned + 1 end
+end)
+
+local fast_url = dsp.build_url("admin","services","juliang_fastacl_console")
+local wifi_url = dsp.build_url("admin","network","wireless")
+%>
+
+<style>
+.jo-wrap{max-width:none!important;width:100%;box-sizing:border-box;padding:0 4px 20px}
+.jo-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:8px 0 18px}
+.jo-hero h2{margin:0 0 6px;font-size:26px}
+.jo-sub{opacity:.68;font-size:14px}
+.jo-grid{display:grid;grid-template-columns:repeat(4,minmax(210px,1fr));gap:14px;margin-bottom:18px}
+.jo-card{border:1px solid rgba(128,128,128,.16);border-radius:14px;padding:18px;background:var(--main-bg-color,#fff);box-shadow:0 2px 10px rgba(0,0,0,.04)}
+.jo-card h3{margin:0 0 12px;font-size:15px;opacity:.72}
+.jo-value{font-size:21px;font-weight:700;line-height:1.35}
+.jo-detail{margin-top:8px;font-size:13px;opacity:.7;line-height:1.5}
+.jo-ok{color:#159957}.jo-bad{color:#e43f3b}.jo-warn{color:#e6a23c}
+.jo-actions{display:grid;grid-template-columns:repeat(2,minmax(260px,1fr));gap:14px}
+.jo-action{display:block;text-decoration:none!important;border-radius:16px;padding:22px;border:1px solid rgba(128,128,128,.16);background:rgba(92,110,225,.06);transition:.15s}
+.jo-action:hover{transform:translateY(-1px);box-shadow:0 5px 18px rgba(0,0,0,.08)}
+.jo-action-title{font-size:19px;font-weight:700;margin-bottom:7px}
+.jo-action-desc{font-size:13px;opacity:.7;line-height:1.5}
+.jo-badges{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.jo-badge{padding:4px 9px;border-radius:999px;background:rgba(128,128,128,.11);font-size:12px;font-weight:700}
+@media(max-width:1000px){.jo-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:650px){.jo-grid,.jo-actions{grid-template-columns:1fr}.jo-wrap{padding:0}}
+</style>
+
+<div class="cbi-map jo-wrap">
+  <div class="jo-hero">
+    <div>
+      <h2>JuLiang 控制中心</h2>
+      <div class="jo-sub">仅保留常用状态、FastACL 与无线管理。</div>
+    </div>
+  </div>
+
+  <div class="jo-grid">
+    <div class="jo-card">
+      <h3>网络状态</h3>
+      <div class="jo-value"><%=wan_ip%></div>
+      <div class="jo-detail">WAN IPv4</div>
+    </div>
+
+    <div class="jo-card">
+      <h3>FastACL</h3>
+      <div class="jo-value <%=fast_running and "jo-ok" or "jo-bad"%>"><%=fast_running and "运行中" or "未运行"%></div>
+      <div class="jo-badges">
+        <span class="jo-badge <%=guardian and "jo-ok" or "jo-bad"%>">Guardian <%=guardian and "正常" or "异常"%></span>
+        <span class="jo-badge <%=killswitch and "jo-ok" or "jo-bad"%>">Kill-switch <%=killswitch and "保护中" or "缺失"%></span>
+      </div>
+    </div>
+
+    <div class="jo-card">
+      <h3>无线 / 网络组</h3>
+      <div class="jo-value"><%=wifi_count%> 个</div>
+      <div class="jo-detail">已分配代理：<%=assigned%> 个</div>
+    </div>
+
+    <div class="jo-card">
+      <h3>系统运行</h3>
+      <div class="jo-value"><%=hostname%></div>
+      <div class="jo-detail">运行时间：<%=uptime%></div>
+    </div>
+  </div>
+
+  <div class="jo-actions">
+    <a class="jo-action" href="<%=fast_url%>">
+      <div class="jo-action-title">FastACL 控制台</div>
+      <div class="jo-action-desc">节点导入、无线分配、链式前置、出口检测与解除绑定。</div>
+    </a>
+    <a class="jo-action" href="<%=wifi_url%>">
+      <div class="jo-action-title">无线概况</div>
+      <div class="jo-action-desc">查看当前 2.4G / 5G / 多 SSID 无线状态。</div>
+    </a>
+  </div>
+</div>
+
+<%+footer%>
