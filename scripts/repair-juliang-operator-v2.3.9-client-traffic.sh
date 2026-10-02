@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-PIN="f4d77162a84e03578964b0da03b99f45473ae37c"
+PIN="2a768dee995a2a819e470c09b9dc918d49fb1198"
 BASE="https://raw.githubusercontent.com/wangjontao/Actions-OpenWrt/$PIN/profiles/fastacl-v9/root"
 TMP="/tmp/jfa-op-239-$$"
 BK="/etc/juliang-fastacl/operator-239-backup"
@@ -25,7 +25,7 @@ fetch usr/lib/lua/luci/view/juliang_operator/wireless.htm "$TMP/wireless.htm"
 lua -e 'assert(loadfile("'"$TMP"'/juliang_operator.lua"))'
 grep -q 'juliang_operator_stats' "$TMP/juliang_operator.lua"
 grep -q 'router_down_bytes' "$TMP/juliang_operator.lua"
-grep -q '无线名称、密码与信道设置' "$TMP/wireless.htm"
+! grep -q '不开放接口、DHCP、防火墙' "$TMP/wireless.htm"
 
 cp -af /usr/lib/lua/luci/controller/juliang_operator.lua "$BK/juliang_operator.lua.pre239" 2>/dev/null || true
 cp -af /usr/lib/lua/luci/view/juliang_operator/wireless.htm "$BK/wireless.htm.pre239" 2>/dev/null || true
