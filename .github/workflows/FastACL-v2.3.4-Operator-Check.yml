@@ -37,8 +37,8 @@ jobs:
           grep -q 'action == "import"' "$ROOT/usr/lib/lua/luci/controller/juliang_fastacl.lua"
           grep -q "fd.append('action','import')" "$ROOT/usr/lib/lua/luci/view/juliang_fastacl/console.htm"
           grep -q "juliang-wireless-operator" "$ROOT/usr/share/rpcd/acl.d/juliang-operator.json"
-          grep -q '"session"' "$ROOT/usr/share/rpcd/acl.d/juliang-operator.json
-          grep -q '"admin/istorex"' "$ROOT/usr/share/luci/menu.d/zz-juliang-operator.json
+          grep -q '"session"' "$ROOT/usr/share/rpcd/acl.d/juliang-operator.json"
+          grep -q '"admin/istorex"' "$ROOT/usr/share/luci/menu.d/zz-juliang-operator.json"
           grep -q "LuCI-only restricted account" "$ROOT/usr/bin/juliang-operator"
           ! grep -q "useradd\|adduser\|/etc/passwd.*write" "$ROOT/usr/bin/juliang-operator"
           sh -n scripts/install-juliang-fastacl-v2.3.4-operator.sh
