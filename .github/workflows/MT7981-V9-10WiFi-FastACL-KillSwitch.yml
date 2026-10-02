@@ -304,6 +304,9 @@ jobs:
           CONFIG_PACKAGE_ruby-yaml=y
           CONFIG_PACKAGE_kmod-tun=y
           CONFIG_PACKAGE_kmod-nft-tproxy=y
+          # nft userspace is required by FastACL kill-switch
+          # CONFIG_PACKAGE_nftables-nojson is not set
+          CONFIG_PACKAGE_nftables-json=y
           CONFIG_PACKAGE_kmod-inet-diag=y
           CONFIG_PACKAGE_luci-compat=y
           CONFIG_CCACHE=y
@@ -670,6 +673,7 @@ jobs:
           grep -q "option enabled '1'" "$ROOTFS/etc/config/juliang_fastacl"
           grep -q 'juliang_killswitch' "$ROOTFS/usr/bin/juliang-fastacl"
           grep -q 'enforce_failclosed_firewall' "$ROOTFS/usr/bin/juliang-fastacl-guard"
+          test -x "$ROOTFS/usr/sbin/nft" || test -x "$ROOTFS/sbin/nft"
           grep -q 'JULIANG_FASTACL_V240' "$ROOTFS/usr/lib/lua/luci/view/passwall2/node_list/node_list.htm"
           grep -q 'FastACL 即时分配无线' "$ROOTFS/usr/lib/lua/luci/view/passwall2/node_list/node_list.htm"
           grep -q 'V9-FIX3 migration applied' "$ROOTFS/etc/uci-defaults/94-juliang-fastacl-v9"
