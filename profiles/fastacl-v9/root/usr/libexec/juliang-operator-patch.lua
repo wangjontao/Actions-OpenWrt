@@ -25,20 +25,45 @@ end
 
 local function patch_quickstart_controller()
     local path = "/usr/lib/lua/luci/controller/quickstart.lua"
+    local bak = path .. ".juliang-operator.bak"
+
+    -- Always start from the original QuickStart controller if the previous
+    -- Operator build patched it. This makes 2.3.5 deterministic on upgrades.
+    if fs.access(bak) then
+        assert(fs.copy(bak, path))
+    end
+
     local s = read(path)
     if not s then return false, "quickstart controller missing" end
-    if s:find("JULIANG_OPERATOR_V234", 1, true) then return true end
     backup(path)
 
-    local changed = false
-    local old, new
-
-    old = '        entry({"admin", "quickstart"}, template("quickstart/home"), _("QuickStart"), 1).leaf = true'
-    new = '        local jfa_home = entry({"admin", "quickstart"}, template("quickstart/home"), _("QuickStart"), 1)\n' ..
-          '        jfa_home.leaf = true\n' ..
-          '        jfa_home.acl_depends = { "juliang-operator-home" }'
+    local old = '        entry({"admin", "quickstart"}, template("quickstart/home"), _("QuickStart"), 1).leaf = true'
+    local new = '        local jfa_home = entry({"admin", "quickstart"}, call("juliang_operator_home"), _("首页"), 1)\n' ..
+                '        jfa_home.leaf = true\n' ..
+                '        jfa_home.acl_depends = { "juliang-operator-home" }'
+    local changed
     s, changed = replace_once(s, old, new)
     if not changed then return false, "quickstart home anchor missing" end
+
+    local fn = [[
+
+-- JULIANG_OPERATOR_HOME_V235
+function juliang_operator_home()
+    local dispatcher = require "luci.dispatcher"
+    local template = require "luci.template"
+    local uci = require "luci.model.uci".cursor()
+    local op_user = uci:get("juliang_operator", "main", "username") or ""
+    local auth_user = (dispatcher.context and dispatcher.context.authuser) or ""
+
+    if op_user ~= "" and auth_user == op_user then
+        template.render("juliang_operator/home")
+    else
+        template.render("quickstart/home")
+    end
+end
+]]
+    s = s:gsub('module%("luci%.controller%.quickstart", package%.seeall%)',
+        'module("luci.controller.quickstart", package.seeall)' .. fn, 1)
 
     local entries = {
         {
@@ -74,13 +99,8 @@ local function patch_quickstart_controller()
     for _, pair in ipairs(entries) do
         local did
         s, did = replace_once(s, pair[1], pair[2])
-        if not did then
-            return false, "quickstart admin route anchor missing"
-        end
+        if not did then return false, "quickstart admin route anchor missing" end
     end
-
-    s = s:gsub('module%("luci%.controller%.quickstart", package%.seeall%)',
-        'module("luci.controller.quickstart", package.seeall)\n\n-- JULIANG_OPERATOR_V234', 1)
 
     write(path, s)
     return true
@@ -88,98 +108,15 @@ end
 
 local function patch_quickstart_template()
     local path = "/usr/lib/lua/luci/view/quickstart/main.htm"
+    local bak = path .. ".juliang-operator.bak"
     local s = read(path)
-    if not s then return false, "quickstart template missing" end
-    if s:find("JULIANG_OPERATOR_HOME_V234", 1, true) then return true end
-    backup(path)
+    if not s then return true end
 
-    local old = '  local uci = require "luci.model.uci".cursor()'
-    local new = old .. [[
-  local op_user = uci:get("juliang_operator", "main", "username") or ""
-  local auth_user = (luci.dispatcher.context and luci.dispatcher.context.authuser) or ""
-  local operator_mode = (op_user ~= "" and auth_user == op_user)
-]]
-    s = replace_once(s, old, new)
-
-    local needle = '      window.quickstart_configs = <%=jsonc.stringify(configs)%>;'
-    local inject = needle .. [[
-
-      // JULIANG_OPERATOR_HOME_V234
-      window.juliang_operator_mode = <%=operator_mode and "true" or "false"%>;
-      if (window.juliang_operator_mode) {
-        const __jfaFetch = window.fetch.bind(window);
-        window.fetch = function(input, init) {
-          try {
-            const u = (typeof input === 'string') ? input : (input && input.url) || '';
-            const method = String((init && init.method) || 'GET').toUpperCase();
-            if (method === 'GET' && /\/cgi-bin\/luci\/istore\/system\/module-settings\/?(?:\?|$)/.test(u)) {
-              const body = JSON.stringify({
-                success: 0,
-                result: {
-                  diableDisplay: [ "diskInfo", "storage", "downloadService", "remoteDomain" ]
-                }
-              });
-              return Promise.resolve(new Response(body, {
-                status: 200,
-                headers: { "Content-Type": "application/json" }
-              }));
-            }
-          } catch (e) {}
-          return __jfaFetch(input, init);
-        };
-      }
-]]
-    s = replace_once(s, needle, inject)
-
-    local app = '<div id="app">\n</div>'
-    local operator_ui = app .. [[
-<% if operator_mode then %>
-<style>
-/* Operator home is display-only. Keep status modules, hide sensitive cards/actions. */
-#app .model_btn,
-#app .settings-wrapper,
-#app .item1.bgcolor1,
-#app .item1.bgcolor2 {
-  display: none !important;
-}
-#app .card-container {
-  pointer-events: none !important;
-}
-a[href*="/istorex"],
-a[href*="/istorerouter"],
-a[href*="/store"],
-a[href*="/istore"] {
-  display: none !important;
-}
-</style>
-<script>
-(function(){
-  function hideClosestCard(el){
-    var p=el;
-    for(var i=0;i<6 && p;i++,p=p.parentElement){
-      var cls=(p.className||'').toString();
-      if(/card|item|module/i.test(cls)){ p.style.setProperty('display','none','important'); return; }
-    }
-    if(el) el.style.setProperty('display','none','important');
-  }
-  function jfaOperatorTrim(){
-    document.querySelectorAll('#app .model_btn,#app .settings-wrapper,#app .item1.bgcolor1,#app .item1.bgcolor2')
-      .forEach(function(el){ el.style.setProperty('display','none','important'); });
-    document.querySelectorAll('a[href*="/istorex"],a[href*="/istorerouter"],a[href*="/store"],a[href*="/istore"]')
-      .forEach(hideClosestCard);
-    document.querySelectorAll('#app *').forEach(function(el){
-      var t=(el.textContent||'').trim();
-      if(t==='iStore' || t==='应用商店') hideClosestCard(el);
-    });
-  }
-  new MutationObserver(jfaOperatorTrim).observe(document.getElementById('app'), {childList:true,subtree:true});
-  jfaOperatorTrim();
-})();
-</script>
-<% end %>
-]]
-    s = replace_once(s, app, operator_ui)
-    write(path, s)
+    -- Operator 2.3.5 no longer loads the iStore/QuickStart SPA for restricted
+    -- users. Restore the original template so root keeps the stock homepage.
+    if s:find("JULIANG_OPERATOR_HOME_V234", 1, true) and fs.access(bak) then
+        assert(fs.copy(bak, path))
+    end
     return true
 end
 
