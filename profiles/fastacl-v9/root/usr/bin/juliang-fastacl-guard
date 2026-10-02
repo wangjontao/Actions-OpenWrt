@@ -16,6 +16,39 @@ disable_passwall2_runtime(){
   [ "$changed" -eq 0 ] || uci commit passwall2
 }
 
+enforce_failclosed_firewall(){
+  local sec src dest i changed
+  changed=0
+
+  # Never permit any A1..A10 zone to forward directly to WAN. This catches
+  # named and anonymous sections preserved from old firmware upgrades.
+  for sec in $(uci -q show firewall | sed -n "s/^firewall\.\([^.=]*\)=forwarding$/\1/p"); do
+    src="$(uci -q get firewall.$sec.src 2>/dev/null || true)"
+    dest="$(uci -q get firewall.$sec.dest 2>/dev/null || true)"
+    case "$src:$dest" in
+      a1:wan|a2:wan|a3:wan|a4:wan|a5:wan|a6:wan|a7:wan|a8:wan|a9:wan|a10:wan)
+        uci -q delete firewall.$sec
+        changed=1
+      ;;
+    esac
+  done
+
+  i=1
+  while [ "$i" -le 10 ]; do
+    if [ "$(uci -q get firewall.a$i 2>/dev/null || true)" = "zone" ] &&        [ "$(uci -q get firewall.a$i.forward 2>/dev/null || true)" != "REJECT" ]; then
+      uci set firewall.a$i.forward='REJECT'
+      changed=1
+    fi
+    i=$((i+1))
+  done
+
+  if [ "$changed" -ne 0 ]; then
+    uci commit firewall
+    /etc/init.d/firewall restart >/dev/null 2>&1 || true
+    log "removed unsafe A->WAN forwarding / restored REJECT zones"
+  fi
+}
+
 # Wait for network/wireless services. Persistent UCI bindings are kept intact
 # while we wait; discovery itself is transactional and cannot erase them.
 sleep 12
@@ -27,6 +60,7 @@ while true; do
   fi
 
   disable_passwall2_runtime
+  enforce_failclosed_firewall
 
   # If persistent topology is unexpectedly missing, first attempt
   # discovery. If boot services are not ready yet, restore last-good state.
