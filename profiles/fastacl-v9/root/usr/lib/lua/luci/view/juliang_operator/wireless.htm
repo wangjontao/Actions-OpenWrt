@@ -1,0 +1,129 @@
+<%+header%>
+<%
+local dsp = require "luci.dispatcher"
+local api = dsp.build_url("admin","network","wireless_operator_api")
+%>
+<style>
+.jow-wrap{max-width:none!important;width:100%;box-sizing:border-box}
+.jow-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.jow-grid{display:grid;grid-template-columns:repeat(2,minmax(360px,1fr));gap:14px}
+.jow-card{border:1px solid rgba(128,128,128,.16);border-radius:14px;padding:16px;background:var(--main-bg-color,#fff)}
+.jow-title{font-size:17px;font-weight:700;margin-bottom:4px}
+.jow-sub{font-size:12px;opacity:.65;margin-bottom:14px}
+.jow-row{display:grid;grid-template-columns:110px 1fr;gap:10px;align-items:center;margin:10px 0}
+.jow-row label{font-size:13px;opacity:.75}
+.jow-row input,.jow-row select{width:100%;box-sizing:border-box}
+.jow-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+.jow-msg{min-height:22px;font-weight:700;margin:8px 0}
+.jow-ok{color:#159957}.jow-bad{color:#e43f3b}.jow-warn{color:#e6a23c}
+.jow-note{font-size:12px;opacity:.65;line-height:1.5}
+@media(max-width:900px){.jow-grid{grid-template-columns:1fr}.jow-row{grid-template-columns:90px 1fr}}
+</style>
+
+<div class="cbi-map jow-wrap">
+  <div class="jow-head">
+    <div>
+      <h2>无线设置</h2>
+      <div class="cbi-map-descr">仅允许修改无线名称、密码和信道，不开放接口、DHCP、防火墙等系统设置。</div>
+    </div>
+    <input class="btn cbi-button cbi-button-reload" type="button" value="刷新" onclick="loadWireless()"/>
+  </div>
+
+  <div id="jow_msg" class="jow-msg"></div>
+  <div id="jow_grid" class="jow-grid"><div class="jow-card">读取中…</div></div>
+</div>
+
+<script type="text/javascript">
+(function(){
+  var API='<%=api%>', devices={}, ifaces=[];
+
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+  function msg(t,ok){
+    var e=document.getElementById('jow_msg');
+    e.textContent=t||'';
+    e.className='jow-msg '+(ok===true?'jow-ok':(ok===false?'jow-bad':'jow-warn'));
+  }
+  function xhr(params,cb){XHR.get(API,params,function(x,r){cb((x&&x.status===200)?r:null)})}
+
+  function bandName(d){
+    var b=(d.band||'').toLowerCase(), h=(d.hwmode||'').toLowerCase(), ch=parseInt(d.channel||'0',10);
+    if(b.indexOf('2g')>=0 || h.indexOf('11g')>=0 || (ch>0&&ch<=14)) return '2.4 GHz';
+    if(b.indexOf('5g')>=0 || h.indexOf('11a')>=0 || ch>14) return '5 GHz';
+    return d.section||'Radio';
+  }
+
+  function channelOptions(current){
+    var out='<option value="auto"'+(current==='auto'?' selected':'')+'>自动</option>';
+    for(var i=1;i<=196;i++){
+      if(i>14 && i<36) continue;
+      if(i>64 && i<100) continue;
+      if(i>144 && i<149) continue;
+      out+='<option value="'+i+'"'+(String(current)===String(i)?' selected':'')+'>'+i+'</option>';
+    }
+    return out;
+  }
+
+  function render(){
+    var g=document.getElementById('jow_grid'), html='';
+    for(var i=0;i<ifaces.length;i++){
+      var f=ifaces[i], d=devices[f.device]||{section:f.device,channel:'auto'};
+      html+='<div class="jow-card" id="card_'+esc(f.section)+'">'+
+        '<div class="jow-title">'+esc(f.ssid||f.section)+'</div>'+
+        '<div class="jow-sub">'+esc(bandName(d))+' · '+esc(f.device)+' · '+esc(f.network||'-')+'</div>'+
+        '<div class="jow-row"><label>无线名称</label><input class="cbi-input-text" id="ssid_'+esc(f.section)+'" maxlength="32" value="'+esc(f.ssid)+'"></div>'+
+        '<div class="jow-row"><label>无线密码</label><input class="cbi-input-password" type="password" id="key_'+esc(f.section)+'" placeholder="留空保持原密码"></div>'+
+        '<div class="jow-row"><label>无线信道</label><select class="cbi-input-select" id="ch_'+esc(f.section)+'">'+channelOptions(d.channel||'auto')+'</select></div>'+
+        '<div class="jow-note">加密方式：'+esc(f.encryption||'none')+'。同一射频下多个 SSID 共用信道，修改后会一起生效。</div>'+
+        '<div class="jow-actions"><input class="btn cbi-button cbi-button-apply" type="button" value="保存并应用" onclick="saveWireless(\''+f.section.replace(/'/g,"\\'")+'\',\''+f.device.replace(/'/g,"\\'")+'\')"></div>'+
+      '</div>';
+    }
+    g.innerHTML=html||'<div class="jow-card">没有找到可用无线接口</div>';
+  }
+
+  window.loadWireless=function(){
+    msg('正在读取无线配置…');
+    xhr({action:'status'},function(r){
+      if(!r||!r.ok){msg('读取无线配置失败',false);return}
+      devices={}; ifaces=r.ifaces||[];
+      var ds=r.devices||[];
+      for(var i=0;i<ds.length;i++) devices[ds[i].section]=ds[i];
+      render(); msg('');
+    });
+  }
+
+  window.saveWireless=function(section,device){
+    var ssid=document.getElementById('ssid_'+section).value||'';
+    var key=document.getElementById('key_'+section).value||'';
+    var channel=document.getElementById('ch_'+section).value||'auto';
+    if(!ssid){msg('无线名称不能为空',false);return}
+    if(key && (key.length<8 || key.length>63)){msg('无线密码需 8-63 位；留空表示不修改',false);return}
+
+    msg('正在保存 '+ssid+'，无线会短暂重载…');
+    var fd=new FormData();
+    fd.append('action','save');
+    fd.append('section',section);
+    fd.append('device',device);
+    fd.append('ssid',ssid);
+    fd.append('key',key);
+    fd.append('channel',channel);
+
+    var x=new XMLHttpRequest();
+    x.open('POST',API,true);
+    x.onload=function(){
+      var r=null;try{r=JSON.parse(x.responseText||'{}')}catch(e){}
+      if(x.status===200&&r&&r.ok){
+        document.getElementById('key_'+section).value='';
+        msg('✓ 已保存并应用：'+ssid+' · 信道 '+channel,true);
+        setTimeout(loadWireless,1800);
+      }else{
+        msg('保存失败：'+((r&&r.error)||('HTTP '+x.status)),false);
+      }
+    };
+    x.onerror=function(){msg('保存失败：网络请求错误',false)};
+    x.send(fd);
+  }
+
+  loadWireless();
+})();
+</script>
+<%+footer%>
