@@ -1,10 +1,10 @@
-name: MT7981 V9 Fix3 10WiFi FastACL Guardian KillSwitch NPS nps.jontao.top
+name: MT7981 FastACL 2.3.9 Stable 10WiFi 正式版 NPS nps.jontao.top
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - jontaoNpS-mt7981-v9-fix3-fastacl-stable-20261002
+      - FastACL正式版
     paths:
       - .github/workflows/MT7981-V9-10WiFi-FastACL-KillSwitch.yml
 
@@ -191,12 +191,16 @@ jobs:
             files/usr/bin/uninstall-juliang-fastacl \
             files/etc/init.d/juliang-fastacl \
             files/etc/hotplug.d/iface/99-juliang-fastacl \
-            files/etc/uci-defaults/94-juliang-fastacl-v9
+            files/etc/uci-defaults/94-juliang-fastacl-v9 \
+            files/usr/bin/juliang-operator \
+            files/etc/uci-defaults/97-juliang-operator-mode
           chmod 0644 \
             files/usr/libexec/juliang-fastacl-router.lua \
             files/usr/libexec/juliang-fastacl-relay.lua \
             files/usr/libexec/juliang-fastacl-discover.lua \
-            files/usr/lib/lua/luci/controller/juliang_fastacl.lua
+            files/usr/lib/lua/luci/controller/juliang_fastacl.lua \
+            files/usr/lib/lua/luci/controller/juliang_operator.lua \
+            files/usr/libexec/juliang-operator-patch.lua
           grep -q 'juliang_killswitch' files/usr/bin/juliang-fastacl
           grep -q 'dns_mode.*doh' files/etc/uci-defaults/94-juliang-fastacl-v9
           grep -q 'juliang-fastacl-guard' files/etc/init.d/juliang-fastacl
@@ -209,6 +213,16 @@ jobs:
           grep -q 'switch_node "$ap" "$node" 1' files/usr/bin/juliang-fastacl
           grep -q "option health_probe_interval '120'" files/etc/config/juliang_fastacl
           grep -q "option health_fail_threshold '3'" files/etc/config/juliang_fastacl
+          test -x files/usr/bin/juliang-operator
+          test -s files/usr/lib/lua/luci/controller/juliang_operator.lua
+          test -s files/usr/lib/lua/luci/view/juliang_operator/home.htm
+          test -s files/usr/lib/lua/luci/view/juliang_operator/wireless.htm
+          test -s files/usr/share/rpcd/acl.d/juliang-operator.json
+          grep -q 'juliang_operator_stats' files/usr/lib/lua/luci/controller/juliang_operator.lua
+          grep -q 'router_down_bytes' files/usr/lib/lua/luci/controller/juliang_operator.lua
+          grep -q 'counter comment "DOWN:' files/usr/lib/lua/luci/controller/juliang_operator.lua
+          ! grep -q '不开放接口、DHCP、防火墙' files/usr/lib/lua/luci/view/juliang_operator/wireless.htm
+          sh -n files/usr/bin/juliang-operator
           sh -n files/usr/bin/juliang-fastacl
           sh -n files/usr/bin/juliang-fastacl-guard
           echo 'FastACL V9 Fix3 runtime, Guardian, MOVE fix, real-exit health and fail-closed kill-switch staged into rootfs.'
@@ -339,14 +353,14 @@ jobs:
           DISTRIB_REVISION='V9-10WiFi-DHCP-MAC-Fix-by-jontao'
           DISTRIB_TARGET='mediatek/filogic'
           DISTRIB_ARCH='aarch64_cortex-a53'
-          DISTRIB_DESCRIPTION='JuLiangTK OS V9 10WiFi DHCP-MAC-Fix by:jontao'
+          DISTRIB_DESCRIPTION='JuLiangTK FastACL 2.3.9 Stable 10WiFi by:jontao'
           DISTRIB_TAINTS=''
           RELEASE
           cat > files/etc/os-release <<'OSRELEASE'
           NAME="JulLiangTK"
-          VERSION="JuLiangTK OS V9 10WiFi DHCP-MAC-Fix by:jontao"
+          VERSION="JuLiangTK FastACL 2.3.9 Stable 10WiFi by:jontao"
           ID="juliangtk"
-          PRETTY_NAME="JuLiangTK OS V9 10WiFi DHCP-MAC-Fix by:jontao"
+          PRETTY_NAME="JuLiangTK FastACL 2.3.9 Stable 10WiFi by:jontao"
           HOME_URL="https://github.com/wangjontao"
           OSRELEASE
 
@@ -639,7 +653,7 @@ jobs:
           df -h /
           make -j"$(nproc)" || { df -h /; make -j1 V=s; }
 
-      - name: Verify FastACL V9 Fix3 inside final rootfs
+      - name: Verify FastACL 2.3.9 Stable and Operator UI inside final rootfs
         working-directory: openwrt
         run: |
           ROOTFS="$(find build_dir -type d -name root-mediatek | head -n1)"
@@ -660,6 +674,16 @@ jobs:
           grep -q 'restart-ap)' "$ROOTFS/usr/bin/juliang-fastacl"
           grep -q 'switch_node "$ap" "$node" 1' "$ROOTFS/usr/bin/juliang-fastacl"
           grep -q "option health_probe_interval '120'" "$ROOTFS/etc/config/juliang_fastacl"
+          test -x "$ROOTFS/usr/bin/juliang-operator"
+          test -s "$ROOTFS/usr/lib/lua/luci/controller/juliang_operator.lua"
+          test -s "$ROOTFS/usr/lib/lua/luci/view/juliang_operator/home.htm"
+          test -s "$ROOTFS/usr/lib/lua/luci/view/juliang_operator/wireless.htm"
+          test -s "$ROOTFS/usr/share/rpcd/acl.d/juliang-operator.json"
+          grep -q 'juliang_operator_stats' "$ROOTFS/usr/lib/lua/luci/controller/juliang_operator.lua"
+          grep -q 'router_down_bytes' "$ROOTFS/usr/lib/lua/luci/controller/juliang_operator.lua"
+          grep -q 'counter comment "DOWN:' "$ROOTFS/usr/lib/lua/luci/controller/juliang_operator.lua"
+          grep -q 'counter comment "UP:' "$ROOTFS/usr/lib/lua/luci/controller/juliang_operator.lua"
+          ! grep -q '不开放接口、DHCP、防火墙' "$ROOTFS/usr/lib/lua/luci/view/juliang_operator/wireless.htm"
           ! grep -q 'idx<=10' "$ROOTFS/usr/bin/pw2-acl-ip-json"
           ! grep -q 'idx<=10' "$ROOTFS/usr/bin/pw-acl-ip-json"
           grep -q 'if not _jfa_enabled then' "$ROOTFS/usr/lib/lua/luci/view/passwall2/acl_exit_ip_status.htm"
@@ -704,8 +728,8 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: MT7981-V9-FIX3-10WiFi-NPS-jontao-top-${{ env.BUILD_DATE }}
-          name: MT7981 V9 Fix3 10WiFi NPS nps.jontao.top ${{ env.BUILD_DATE }}
+          tag_name: MT7981-FastACL-2.3.9-Stable-10WiFi-${{ env.BUILD_DATE }}
+          name: MT7981 FastACL 2.3.9 Stable 10WiFi 正式版 ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
           target_commitish: ${{ github.sha }}
           body: |
@@ -723,8 +747,9 @@ jobs:
             DNS: removed the custom forced-DNS/DoT/bootstrap layer that caused node-timeout interactions; standard PassWall/PassWall2 DNS behavior is retained. IPv6 DHCP/RA remains disabled on A1-A10.
             Plugins: iStore, QuickStart, Passwall 26.3.6-1, Passwall2 26.3.5-1, OpenClash, HomeProxy, original ehang NPS/NPC 0.26.10. Theme: Argon.
             NPS: nps.jontao.top:8024; every boot reads WAN MAC, removes colons, uppercases it, and writes it as vkey.
-            FastACL V9 Fix3: integrated directly into firmware and baked into the PassWall2 node-list UI; preserved V8 overlays are migrated automatically; PassWall2 node list supports instant assignment to the discovered A1-A10 SSIDs, per-AP local SOCKS relays, cross-core preproxy, Guardian self-healing, last-good persistence and reboot recovery.
+            FastACL 2.3.9 Stable: integrated directly into firmware and baked into the PassWall2 node-list UI; preserved V8 overlays are migrated automatically; PassWall2 node list supports instant assignment to the discovered A1-A10 SSIDs, per-AP local SOCKS relays, cross-core preproxy, Guardian self-healing, last-good persistence and reboot recovery.
             DNS: FastACL AP traffic uses encrypted Cloudflare DoH (1.1.1.1 / cloudflare-dns.com) through each AP's assigned proxy path; per-AP doh/tcp/auto override remains available.
+            Operator UI: restricted ordinary-user interface is included, with JuLiang home dashboard, WAN/interface status, realtime total traffic, wireless SSID/password/channel management, client IP/MAC/signal/link rate, and per-client realtime upload/download traffic.
             Fix3 reliability: same-node MOVE no longer revives the old AP relay; Guardian performs parallel real-exit probes every 120 seconds and restarts only the affected AP after 3 consecutive failures.
             ACL display: legacy PassWall/PassWall2 ACL exit-IP panel is dynamic (5/10/20+ based on detected ACL subnets) and automatically hidden while FastACL mode is enabled.
             Leak protection: fail-closed by design. A1-A10 have no direct firewall forwarding to WAN, and an independent nftables juliang_killswitch drops any AP traffic that reaches forward without being TPROXY-captured. If a node/relay/router fails or is unassigned, that WiFi loses Internet instead of exposing the real WAN IP.
@@ -733,7 +758,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7981-V9-10WiFi-FastACL-KillSwitch-${{ env.BUILD_DATE }}
+          name: MT7981-FastACL-2.3.9-Stable-10WiFi-${{ env.BUILD_DATE }}
           path: openwrt/upload/*
           if-no-files-found: error
           retention-days: 30
