@@ -1,0 +1,37 @@
+name: FastACL 2.3.9 Client Traffic Check
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - juliang-fastacl-v2.3.9-client-traffic-20261002
+    paths:
+      - profiles/fastacl-v9/root/usr/lib/lua/luci/controller/juliang_operator.lua
+      - profiles/fastacl-v9/root/usr/lib/lua/luci/view/juliang_operator/wireless.htm
+      - scripts/repair-juliang-operator-v2.3.9-client-traffic.sh
+      - .github/workflows/FastACL-v2.3.9-Client-Traffic-Check.yml
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1
+      - name: Validate 2.3.9
+        run: |
+          set -euxo pipefail
+          ROOT=profiles/fastacl-v9/root
+          luac5.1 -p "$ROOT/usr/lib/lua/luci/controller/juliang_operator.lua"
+          awk 'NR==2{inb=1;next} inb && /^%>/{exit} inb{print}' "$ROOT/usr/lib/lua/luci/view/juliang_operator/wireless.htm" >/tmp/operator-wireless.lua
+          luac5.1 -p /tmp/operator-wireless.lua
+          sh -n scripts/repair-juliang-operator-v2.3.9-client-traffic.sh
+          grep -q 'juliang_operator_stats' "$ROOT/usr/lib/lua/luci/controller/juliang_operator.lua"
+          grep -q 'router_down_bytes' "$ROOT/usr/lib/lua/luci/controller/juliang_operator.lua"
+          grep -q 'counter comment "DOWN:' "$ROOT/usr/lib/lua/luci/controller/juliang_operator.lua"
+          grep -q 'counter comment "UP:' "$ROOT/usr/lib/lua/luci/controller/juliang_operator.lua"
+          grep -q '无线名称、密码与信道设置' "$ROOT/usr/lib/lua/luci/view/juliang_operator/wireless.htm"
+          ! grep -q '不开放接口、DHCP、防火墙' "$ROOT/usr/lib/lua/luci/view/juliang_operator/wireless.htm"
+          echo "FastACL 2.3.9 Client Traffic validation passed."
