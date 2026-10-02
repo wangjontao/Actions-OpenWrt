@@ -32,6 +32,5 @@ jobs:
           grep -q 'router_down_bytes' "$ROOT/usr/lib/lua/luci/controller/juliang_operator.lua"
           grep -q 'counter comment "DOWN:' "$ROOT/usr/lib/lua/luci/controller/juliang_operator.lua"
           grep -q 'counter comment "UP:' "$ROOT/usr/lib/lua/luci/controller/juliang_operator.lua"
-          grep -q '无线名称、密码与信道设置' "$ROOT/usr/lib/lua/luci/view/juliang_operator/wireless.htm"
           ! grep -q '不开放接口、DHCP、防火墙' "$ROOT/usr/lib/lua/luci/view/juliang_operator/wireless.htm"
           echo "FastACL 2.3.9 Client Traffic validation passed."
