@@ -220,22 +220,8 @@ local function patch_blank_login_user()
 end
 
 local function patch_operator_menu()
-    local path = "/usr/share/luci/menu.d/zz-juliang-operator.json"
-    local s = read(path)
-    if not s then return true end
-    local ok, json = pcall(require("luci.jsonc").parse, s)
-    if not ok or type(json) ~= "table" then return false, "operator menu json parse failed" end
-
-    json["admin/network/wireless"] = nil
-    json["admin/network/wireless_operator"] = {
-        title = "无线",
-        order = 15,
-        action = { type = "template", path = "juliang_operator/wireless" },
-        depends = { acl = { "juliang-wireless-operator" } }
-    }
-
-    local encoded = require("luci.jsonc").stringify(json, true)
-    write(path, encoded .. "\n")
+    -- The corrected zz-juliang-operator.json is installed atomically by the
+    -- package/repair script. Nothing dynamic is needed here.
     return true
 end
 
