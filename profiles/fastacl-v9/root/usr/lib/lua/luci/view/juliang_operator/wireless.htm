@@ -159,22 +159,28 @@ local api = dsp.build_url("admin","network","wireless_operator_api")
         for(var i=0;i<rows.length;i++){
           var x=rows[i], key=g.section+'|'+String(x.mac||'').toLowerCase();
           var old=prevClient[key], down=0, up=0;
+          var curDown=(x.router_down_bytes!==null && x.router_down_bytes!==undefined)
+            ? Number(x.router_down_bytes)||0
+            : Number(x.tx_bytes)||0;
+          var curUp=(x.router_up_bytes!==null && x.router_up_bytes!==undefined)
+            ? Number(x.router_up_bytes)||0
+            : Number(x.rx_bytes)||0;
 
           if(old&&dt>0){
-            var dtx=(Number(x.tx_bytes)||0)-(Number(old.tx_bytes)||0);
-            var drx=(Number(x.rx_bytes)||0)-(Number(old.rx_bytes)||0);
+            var dtx=curDown-(Number(old.down_bytes)||0);
+            var drx=curUp-(Number(old.up_bytes)||0);
             if(dtx>=0) down=dtx/dt;
             if(drx>=0) up=drx/dt;
           }
-          next[key]={tx_bytes:Number(x.tx_bytes)||0,rx_bytes:Number(x.rx_bytes)||0};
+          next[key]={down_bytes:curDown,up_bytes:curUp};
 
           var label=x.name||'手机 / 设备';
           html+='<tr>'+
             '<td><div class="jow-client-name">'+esc(label)+'</div><div class="jow-client-ip">'+esc(x.ip||'IP 未获取')+'</div></td>'+
             '<td>'+esc(x.mac||'-')+'</td>'+
             '<td class="jow-signal '+signalClass(x.signal)+'">'+esc(x.signal||0)+' dBm</td>'+
-            '<td class="jow-rate-down">↓ '+(old?fmtSpeed(down):'-')+'</td>'+
-            '<td class="jow-rate-up">↑ '+(old?fmtSpeed(up):'-')+'</td>'+
+            '<td class="jow-rate-down">↓ '+(old?fmtSpeed(down):'采样中')+'</td>'+
+            '<td class="jow-rate-up">↑ '+(old?fmtSpeed(up):'采样中')+'</td>'+
             '<td>↓ '+esc(fmtPhy(x.tx_rate))+' / ↑ '+esc(fmtPhy(x.rx_rate))+'</td>'+
           '</tr>';
         }
