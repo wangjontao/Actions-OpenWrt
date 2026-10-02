@@ -204,7 +204,7 @@ local js = [=[
                     document.getElementById("jfa_preproxy_current").innerText = jfa_preproxy_current(jfaNode);
                 });
             } else {
-                status.innerText = "前置切换失败：" + ((result && result.error) || "ERROR");
+                status.innerText = "前置切换失败：" + jfa_error_text(result);
                 status.style.color = "#e43f3b";
             }
         });
@@ -239,6 +239,20 @@ local js = [=[
     function jfa_close() {
         document.getElementById("jfa_div").style.display = "none";
         jfaNode = "";
+    }
+
+    function jfa_error_text(result) {
+        var e = (result && result.error) || "ERROR";
+        if (e == "BUSY") return "FastACL 正在处理另一个切换，请稍候再试";
+        if (e == "FINAL_EGRESS_FAILED") return "节点本地端口已启动，但真实出口不可用，已自动回滚";
+        if (e == "NODE_START_FAILED") return "节点/本地 SOCKS 未正常启动，已自动回滚";
+        if (e == "PREPROXY_START_FAILED") {
+            var d = result && result.detail && result.detail.error;
+            if (d == "FINAL_EGRESS_FAILED") return "前置链路或落地真实出口不可用，已自动回滚";
+            if (d == "BUSY") return "FastACL 正在处理另一个切换，请稍候再试";
+            return "前置代理启动或实际连通检测失败，已自动回滚";
+        }
+        return e;
     }
 
     function jfa_assign() {
@@ -276,7 +290,7 @@ local js = [=[
                     document.getElementById("jfa_current").innerText = labels.length ? labels.join(", ") : "未分配";
                 });
             } else {
-                status.innerText = "切换失败：" + ((result && result.error) || "ERROR");
+                status.innerText = "切换失败：" + jfa_error_text(result);
                 status.style.color = "#e43f3b";
             }
         });
