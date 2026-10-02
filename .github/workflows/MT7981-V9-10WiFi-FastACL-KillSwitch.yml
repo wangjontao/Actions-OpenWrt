@@ -1,10 +1,10 @@
-name: MT7981 FastACL 2.3.9 Stable 10WiFi 正式版 NPS nps.jontao.top
+name: MT7981 FastACL 2.3.9 Stable 10WiFi 正式版V2 NPS nps.jontao.top
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - FastACL正式版
+      - FastACL正式版V2
     paths:
       - .github/workflows/MT7981-V9-10WiFi-FastACL-KillSwitch.yml
       - profiles/fastacl-v9/root/**
@@ -175,8 +175,18 @@ jobs:
           sh -n files/usr/bin/install-proxy-realtime-ip-suite
           ! grep -q 'idx<=10' files/usr/bin/pw2-acl-ip-json
           ! grep -q 'idx<=10' files/usr/bin/pw-acl-ip-json
-          grep -q 'if not _jfa_enabled then' files/usr/lib/lua/luci/view/passwall2/acl_exit_ip_status.htm
+          for tpl in \
+            files/usr/lib/lua/luci/view/passwall2/acl_exit_ip_status.htm \
+            files/usr/lib/lua/luci/view/passwall2/acl_ip_refresh.htm; do
+            test -s "$tpl"
+            grep -q 'if not _jfa_enabled then' "$tpl"
+            [ "$(grep -c '<% end %>' "$tpl")" -eq 1 ]
+            guard_line="$(grep -n 'if not _jfa_enabled then' "$tpl" | head -n1 | cut -d: -f1)"
+            end_line="$(grep -n '<% end %>' "$tpl" | tail -n1 | cut -d: -f1)"
+            [ "$guard_line" -lt "$end_line" ]
+          done
           grep -q 'ACL 实际出口 IP' files/usr/lib/lua/luci/view/passwall2/acl_exit_ip_status.htm
+          grep -q '快速更新实际出口 IP' files/usr/lib/lua/luci/view/passwall2/acl_ip_refresh.htm
           ! grep -q 'ACL A1-A10 实际出口 IP' files/usr/lib/lua/luci/view/passwall2/acl_exit_ip_status.htm
           echo 'Verified dynamic ACL realtime-IP UI: unlimited A-subnets; hidden automatically in FastACL mode.'
 
@@ -695,8 +705,18 @@ jobs:
           ! grep -q '不开放接口、DHCP、防火墙' "$ROOTFS/usr/lib/lua/luci/view/juliang_operator/wireless.htm"
           ! grep -q 'idx<=10' "$ROOTFS/usr/bin/pw2-acl-ip-json"
           ! grep -q 'idx<=10' "$ROOTFS/usr/bin/pw-acl-ip-json"
-          grep -q 'if not _jfa_enabled then' "$ROOTFS/usr/lib/lua/luci/view/passwall2/acl_exit_ip_status.htm"
+          for tpl in \
+            "$ROOTFS/usr/lib/lua/luci/view/passwall2/acl_exit_ip_status.htm" \
+            "$ROOTFS/usr/lib/lua/luci/view/passwall2/acl_ip_refresh.htm"; do
+            test -s "$tpl"
+            grep -q 'if not _jfa_enabled then' "$tpl"
+            [ "$(grep -c '<% end %>' "$tpl")" -eq 1 ]
+            guard_line="$(grep -n 'if not _jfa_enabled then' "$tpl" | head -n1 | cut -d: -f1)"
+            end_line="$(grep -n '<% end %>' "$tpl" | tail -n1 | cut -d: -f1)"
+            [ "$guard_line" -lt "$end_line" ]
+          done
           grep -q 'ACL 实际出口 IP' "$ROOTFS/usr/lib/lua/luci/view/passwall2/acl_exit_ip_status.htm"
+          grep -q '快速更新实际出口 IP' "$ROOTFS/usr/lib/lua/luci/view/passwall2/acl_ip_refresh.htm"
           echo "Verified: FastACL UI/runtime/MOVE-fix/Guardian/real-exit-health/kill-switch/dynamic-ACL are physically present in final rootfs."
 
       - name: Save download cache
@@ -737,8 +757,8 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: MT7981-FastACL-2.3.9-Stable-10WiFi-${{ env.BUILD_DATE }}
-          name: MT7981 FastACL 2.3.9 Stable 10WiFi 正式版 ${{ env.BUILD_DATE }}
+          tag_name: MT7981-FastACL-2.3.9-Stable-V2-10WiFi-${{ env.BUILD_DATE }}
+          name: MT7981 FastACL 2.3.9 Stable 10WiFi 正式版V2 ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
           target_commitish: ${{ github.sha }}
           body: |
@@ -761,14 +781,14 @@ jobs:
             Operator UI: restricted ordinary-user interface is pre-enabled with username admin; password is stored as a crypt hash in firmware defaults. Includes JuLiang home dashboard, WAN/interface status, realtime total traffic, wireless SSID/password/channel management, client IP/MAC/signal/link rate, and per-client realtime upload/download traffic.
             SSH: Dropbear listens on TCP port 20022 after first boot defaults are applied.
             Fix3 reliability: same-node MOVE no longer revives the old AP relay; Guardian performs parallel real-exit probes every 120 seconds and restarts only the affected AP after 3 consecutive failures.
-            ACL display: legacy PassWall/PassWall2 ACL exit-IP panel is dynamic (5/10/20+ based on detected ACL subnets) and automatically hidden while FastACL mode is enabled.
+            ACL display: PassWall2 access-control page remains usable; legacy ACL exit-IP/refresh panels are syntax-validated and automatically hidden while FastACL mode is enabled.
             Leak protection: fail-closed by design. A1-A10 have no direct firewall forwarding to WAN, and an independent nftables juliang_killswitch drops any AP traffic that reaches forward without being TPROXY-captured. If a node/relay/router fails or is unassigned, that WiFi loses Internet instead of exposing the real WAN IP.
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7981-FastACL-2.3.9-Stable-10WiFi-${{ env.BUILD_DATE }}
+          name: MT7981-FastACL-2.3.9-Stable-V2-10WiFi-${{ env.BUILD_DATE }}
           path: openwrt/upload/*
           if-no-files-found: error
           retention-days: 30
