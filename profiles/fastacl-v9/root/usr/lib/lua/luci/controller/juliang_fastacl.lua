@@ -1,9 +1,13 @@
 module("luci.controller.juliang_fastacl", package.seeall)
 
 function index()
-    local page = entry({"admin", "services", "juliang_fastacl"}, call("handle"), nil)
-    page.leaf = true
-    page.dependent = false
+    local api = entry({"admin", "services", "juliang_fastacl"}, call("handle"), nil)
+    api.leaf = true
+    api.dependent = false
+
+    local console = entry({"admin", "services", "juliang_fastacl_console"}, template("juliang_fastacl/console"), _("FastACL 控制台"), 26)
+    console.leaf = true
+    console.dependent = false
 end
 
 local function write_json(t)
@@ -143,11 +147,38 @@ function handle()
             end
         end)
 
+        local nodes = {}
+        uci:foreach("passwall2", "nodes", function(s)
+            local id = s[".name"] or ""
+            local proto = s.protocol or ""
+            if id ~= "" and not is_special_protocol(proto) then
+                nodes[#nodes + 1] = {
+                    id = id,
+                    remarks = s.remarks or id,
+                    type = s.type or "",
+                    protocol = proto,
+                    address = s.address or "",
+                    port = tonumber(s.port or "") or 0,
+                    chain_proxy = s.chain_proxy == "1",
+                    preproxy_node = s.preproxy_node or "",
+                    preproxy_remarks = (s.preproxy_node and s.preproxy_node ~= "") and (uci:get("passwall2", s.preproxy_node, "remarks") or s.preproxy_node) or ""
+                }
+            end
+        end)
+        table.sort(nodes, function(a,b) return (a.remarks or "") < (b.remarks or "") end)
+
+        local sys = require "luci.sys"
+        local killswitch = (sys.call("nft list table inet juliang_killswitch >/dev/null 2>&1") == 0)
+        local guardian = (sys.call("pgrep -f '/usr/bin/juliang-fastacl-guard' >/dev/null 2>&1") == 0)
+
         write_json({
             ok = true,
             engine = runtime_status(),
+            killswitch = killswitch,
+            guardian = guardian,
             count = #aps,
             aps = ap_meta,
+            nodes = nodes,
             map = map,
             ap_to_node = ap_to_node,
             wireless_labels = labels,
