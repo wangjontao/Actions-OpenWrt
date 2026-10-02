@@ -407,7 +407,8 @@ local function wifi_status(uci)
                 ssid = s.ssid or "",
                 encryption = s.encryption or "none",
                 network = s.network or "",
-                mode = s.mode or "ap"
+                mode = s.mode or "ap",
+                hidden = tostring(s.hidden or "0") == "1"
             }
         end
     end)
@@ -434,6 +435,54 @@ function handle_wireless()
 
     if action == "clients" then
         write_json({ok=true, groups=wireless_clients(uci), timestamp=os.time()})
+        return
+    end
+
+    if action == "visibility" then
+        local section = http.formvalue("section") or ""
+        local hidden = http.formvalue("hidden") or "0"
+        local iface = uci:get_all("wireless", section)
+
+        if not iface or iface[".type"] ~= "wifi-iface" then
+            write_json({ok=false,error="BAD_IFACE"})
+            return
+        end
+        if tostring(iface.disabled or "0") == "1" or tostring(iface.mode or "ap") ~= "ap" then
+            write_json({ok=false,error="NOT_ACTIVE_AP"})
+            return
+        end
+        if hidden ~= "0" and hidden ~= "1" then
+            write_json({ok=false,error="BAD_HIDDEN"})
+            return
+        end
+
+        uci:set("wireless", section, "hidden", hidden)
+        uci:commit("wireless")
+        require("luci.sys").call("(sleep 1; wifi reload >/tmp/juliang-operator-wireless.log 2>&1) >/dev/null 2>&1 &")
+        write_json({ok=true, section=section, hidden=(hidden == "1")})
+        return
+    end
+
+    if action == "visibility_all" then
+        local hidden = http.formvalue("hidden") or "0"
+        if hidden ~= "0" and hidden ~= "1" then
+            write_json({ok=false,error="BAD_HIDDEN"})
+            return
+        end
+
+        local count = 0
+        uci:foreach("wireless", "wifi-iface", function(s)
+            if tostring(s.disabled or "0") ~= "1" and tostring(s.mode or "ap") == "ap" then
+                local section = s[".name"] or ""
+                if section ~= "" then
+                    uci:set("wireless", section, "hidden", hidden)
+                    count = count + 1
+                end
+            end
+        end)
+        uci:commit("wireless")
+        require("luci.sys").call("(sleep 1; wifi reload >/tmp/juliang-operator-wireless.log 2>&1) >/dev/null 2>&1 &")
+        write_json({ok=true, hidden=(hidden == "1"), count=count})
         return
     end
 
