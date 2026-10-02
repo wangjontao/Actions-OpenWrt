@@ -3,7 +3,7 @@ set -eu
 
 FILE="${JFA_NODE_LIST_FILE:-/usr/lib/lua/luci/view/passwall2/node_list/node_list.htm}"
 CTRL="${JFA_CTRL_FILE:-/usr/lib/lua/luci/controller/juliang_fastacl.lua}"
-MARKER="JULIANG_FASTACL_V220"
+MARKER="JULIANG_FASTACL_V240"
 
 [ -f "$FILE" ] || {
     echo "[ERROR] PassWall2 node_list.htm not found: $FILE"
@@ -22,7 +22,7 @@ if [ -f "$FILE.quick-acl.bak" ]; then
 fi
 
 if grep -q "$MARKER" "$FILE"; then
-    echo "[OK] FastACL v2.2 LuCI already installed"
+    echo "[OK] FastACL Fix4 LuCI already installed"
     exit 0
 fi
 
@@ -54,7 +54,7 @@ text = replace_once(text, top_old, top_new, "top anchor")
 local js_anchor = '\n\tfunction to_edit_node(cbi_id) {'
 local js = [=[
 
-    // JULIANG_FASTACL_V220
+    // JULIANG_FASTACL_V240
     var jfaNode = "";
     var jfaMap = {};
     var jfaLabels = {};
@@ -389,5 +389,5 @@ if [ "${JFA_OFFLINE:-0}" != "1" ]; then
     /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
 fi
 
-echo "[OK] FastACL v2 LuCI installed"
+echo "[OK] FastACL Fix4 LuCI installed"
 echo "PassWall2 -> 节点列表：自动读取真实无线/网段 + 即时分配 + 跨内核快速前置，并显示出口 IP。"
