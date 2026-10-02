@@ -1,7 +1,12 @@
+<%
+local _jfa_uci=require("luci.model.uci").cursor()
+local _jfa_enabled=(_jfa_uci:get("juliang_fastacl","main","enabled")=="1")
+if not _jfa_enabled then
+%>
 <div class="cbi-section">
-<h3>ACL A1-A10 实际出口 IP</h3>
+<h3>ACL 实际出口 IP</h3>
 <p>
-<input id="passwall2_acl_refresh" type="button" class="cbi-button cbi-button-action" value="重新检测 A1-A10" onclick="passwall2AclLoad(true);" />
+<input id="passwall2_acl_refresh" type="button" class="cbi-button cbi-button-action" value="重新检测全部 ACL" onclick="passwall2AclLoad(true);" />
 <span id="passwall2_acl_msg" style="margin-left:12px"></span>
 </p>
 <div style="overflow-x:auto">
@@ -29,10 +34,12 @@ function passwall2AclLoad(force){
       var cc=r.country||'--';if(r.country_code)cc+=' ('+r.country_code+')';
       h+='<tr><td><strong>'+passwall2Esc(r.name)+'</strong></td><td>'+passwall2Esc(r.network)+'</td><td>'+passwall2Esc(r.remarks||r.node||'--')+'</td><td>'+passwall2Esc(r.port?'127.0.0.1:'+r.port:'--')+'</td><td><strong style="color:'+(good?'#159957':'#e43f3b')+'">'+passwall2Esc(r.ip||'--')+'</strong></td><td>'+passwall2Esc(cc)+'</td><td>'+passwall2Esc(r.isp||'--')+'</td><td>'+(good?'<span style="color:#159957">● 正常</span>':'<span style="color:#e43f3b">'+passwall2Esc(r.status||'失败')+'</span>')+'</td></tr>';
     });
-    body.innerHTML=h||'<tr><td colspan="8">没有找到 A1-A10</td></tr>';
+    body.innerHTML=h||'<tr><td colspan="8">没有找到可检测的 ACL</td></tr>';
     if(m)m.innerHTML='<span style="color:#159957">'+ok+'/'+(o.count||0)+' 正常，本次实际检测节点：'+(o.detected_nodes||0)+'</span>';
   });
 }
 passwall2AclLoad(false);
 //]]>
 </script>
+
+<% end %>
