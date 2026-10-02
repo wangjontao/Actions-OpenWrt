@@ -15,6 +15,7 @@ uci set juliang_fastacl.main.dns_tls_server_name='cloudflare-dns.com'
 uci set juliang_fastacl.main.dns_path='/dns-query'
 uci set juliang_fastacl.main.health_probe_interval='120'
 uci set juliang_fastacl.main.health_fail_threshold='3'
+uci set juliang_fastacl.main.include_lan='1'
 uci set juliang_fastacl.main.version='V9-FIX3'
 uci commit juliang_fastacl
 
