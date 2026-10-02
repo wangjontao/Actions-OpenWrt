@@ -1,0 +1,41 @@
+name: FastACL 2.3.4 Operator Check
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - juliang-fastacl-v2.3.4-operator-20261002
+    paths:
+      - profiles/fastacl-v9/root/usr/bin/juliang-operator
+      - profiles/fastacl-v9/root/usr/libexec/juliang-operator-patch.lua
+      - profiles/fastacl-v9/root/usr/share/rpcd/acl.d/juliang-operator.json
+      - profiles/fastacl-v9/root/usr/share/luci/menu.d/zz-juliang-operator.json
+      - profiles/fastacl-v9/root/usr/lib/lua/luci/controller/juliang_fastacl.lua
+      - profiles/fastacl-v9/root/usr/lib/lua/luci/view/juliang_fastacl/console.htm
+      - .github/workflows/FastACL-v2.3.4-Operator-Check.yml
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1 jq
+      - name: Validate operator mode
+        run: |
+          set -euxo pipefail
+          ROOT=profiles/fastacl-v9/root
+          sh -n "$ROOT/usr/bin/juliang-operator"
+          luac5.1 -p "$ROOT/usr/libexec/juliang-operator-patch.lua"
+          luac5.1 -p "$ROOT/usr/lib/lua/luci/controller/juliang_fastacl.lua"
+          jq empty "$ROOT/usr/share/rpcd/acl.d/juliang-operator.json"
+          jq empty "$ROOT/usr/share/luci/menu.d/zz-juliang-operator.json"
+          grep -q 'acl_depends = { "juliang-fastacl-operator" }' "$ROOT/usr/lib/lua/luci/controller/juliang_fastacl.lua"
+          grep -q 'action == "import"' "$ROOT/usr/lib/lua/luci/controller/juliang_fastacl.lua"
+          grep -q "fd.append('action','import')" "$ROOT/usr/lib/lua/luci/view/juliang_fastacl/console.htm"
+          grep -q "juliang-wireless-operator" "$ROOT/usr/share/rpcd/acl.d/juliang-operator.json"
+          grep -q "LuCI-only restricted account" "$ROOT/usr/bin/juliang-operator"
+          ! grep -q "useradd\|adduser\|/etc/passwd.*write" "$ROOT/usr/bin/juliang-operator"
+          echo "FastACL 2.3.4 Operator static validation passed."
