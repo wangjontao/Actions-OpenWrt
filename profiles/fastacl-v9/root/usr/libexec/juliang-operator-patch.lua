@@ -107,16 +107,25 @@ end
 end
 
 local function patch_quickstart_template()
-    local path = "/usr/lib/lua/luci/view/quickstart/main.htm"
-    local bak = path .. ".juliang-operator.bak"
+    local path = "/usr/lib/lua/luci/view/quickstart/home.htm"
     local s = read(path)
-    if not s then return true end
+    if not s then return false, "quickstart home template missing" end
+    if s:find("JULIANG_OPERATOR_HOME_GATE_V236", 1, true) then return true end
+    backup(path)
 
-    -- Operator 2.3.5 no longer loads the iStore/QuickStart SPA for restricted
-    -- users. Restore the original template so root keeps the stock homepage.
-    if s:find("JULIANG_OPERATOR_HOME_V234", 1, true) and fs.access(bak) then
-        assert(fs.copy(bak, path))
-    end
+    local gate = [[
+<%
+-- JULIANG_OPERATOR_HOME_GATE_V236
+local __jfa_uci = require "luci.model.uci".cursor()
+local __jfa_op = __jfa_uci:get("juliang_operator", "main", "username") or ""
+local __jfa_user = (luci.dispatcher.context and luci.dispatcher.context.authuser) or ""
+if __jfa_op ~= "" and __jfa_user == __jfa_op then
+    luci.template.render("juliang_operator/home")
+    return
+end
+%>
+]]
+    write(path, gate .. s)
     return true
 end
 
@@ -219,17 +228,13 @@ end
 
 local function patch_wireless_menu()
     local path = "/usr/share/luci/menu.d/luci-mod-network.json"
+    local bak = path .. ".juliang-operator.bak"
     local s = read(path)
     if not s then return false, "luci-mod-network menu missing" end
-    if s:find('"juliang-wireless-operator"', 1, true) then return true end
-    backup(path)
 
-    local p = s:find('"admin/network/wireless"', 1, true)
-    if not p then return false, "wireless menu anchor missing" end
-    local a, b = s:find('"acl"%s*:%s*%[%s*"luci%-mod%-network%-config"%s*%]', p)
-    if not a then return false, "wireless ACL anchor missing" end
-    s = s:sub(1, a - 1) .. '"acl": [ "juliang-wireless-operator" ]' .. s:sub(b + 1)
-    write(path, s)
+    if s:find('"juliang-wireless-operator"', 1, true) and fs.access(bak) then
+        assert(fs.copy(bak, path))
+    end
     return true
 end
 
