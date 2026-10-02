@@ -1,0 +1,41 @@
+name: FastACL 2.3.8 Operator Dashboard Check
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - juliang-fastacl-v2.3.8-operator-dashboard-20261002
+    paths:
+      - profiles/fastacl-v9/root/usr/lib/lua/luci/controller/juliang_operator.lua
+      - profiles/fastacl-v9/root/usr/lib/lua/luci/view/juliang_operator/home.htm
+      - profiles/fastacl-v9/root/usr/lib/lua/luci/view/juliang_operator/wireless.htm
+      - scripts/repair-juliang-operator-v2.3.8-dashboard.sh
+      - .github/workflows/FastACL-v2.3.8-Operator-Dashboard-Check.yml
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1
+      - name: Validate 2.3.8
+        run: |
+          set -euxo pipefail
+          ROOT=profiles/fastacl-v9/root
+          luac5.1 -p "$ROOT/usr/lib/lua/luci/controller/juliang_operator.lua"
+          awk 'NR==2{inb=1;next} inb && /^%>/{exit} inb{print}' "$ROOT/usr/lib/lua/luci/view/juliang_operator/home.htm" >/tmp/operator-home.lua
+          luac5.1 -p /tmp/operator-home.lua
+          awk 'NR==2{inb=1;next} inb && /^%>/{exit} inb{print}' "$ROOT/usr/lib/lua/luci/view/juliang_operator/wireless.htm" >/tmp/operator-wireless.lua
+          luac5.1 -p /tmp/operator-wireless.lua
+          sh -n scripts/repair-juliang-operator-v2.3.8-dashboard.sh
+          grep -q 'handle_dashboard' "$ROOT/usr/lib/lua/luci/controller/juliang_operator.lua"
+          grep -q 'action == "clients"' "$ROOT/usr/lib/lua/luci/controller/juliang_operator.lua"
+          grep -q 'rx_bytes' "$ROOT/usr/lib/lua/luci/controller/juliang_operator.lua"
+          grep -q '实时网络流量' "$ROOT/usr/lib/lua/luci/view/juliang_operator/home.htm"
+          grep -q 'WAN 与网络接口' "$ROOT/usr/lib/lua/luci/view/juliang_operator/home.htm"
+          grep -q '已连接设备' "$ROOT/usr/lib/lua/luci/view/juliang_operator/wireless.htm"
+          grep -q 'loadClients' "$ROOT/usr/lib/lua/luci/view/juliang_operator/wireless.htm"
+          echo "FastACL 2.3.8 Operator Dashboard validation passed."
