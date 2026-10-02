@@ -11,6 +11,10 @@ echo "=================================================="
 /etc/init.d/juliang-fastacl stop >/dev/null 2>&1 || true
 /etc/init.d/juliang-fastacl disable >/dev/null 2>&1 || true
 
+# FastACL stop intentionally leaves the independent kill-switch fail-closed.
+# A deliberate uninstall must remove it before restoring PassWall2.
+nft list table inet juliang_killswitch >/dev/null 2>&1 && nft delete table inet juliang_killswitch >/dev/null 2>&1 || true
+
 # Keep all current PassWall2 nodes and the AP mappings FastACL mirrored into
 # the original ACL sections. Only remove our shadow SOCKS holders and restore
 # the three original engine switches.
@@ -40,7 +44,12 @@ rm -rf /tmp/luci-modulecache /tmp/luci-templatecache
 rm -rf /tmp/juliang-fastacl
 
 /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
-/etc/init.d/passwall2 restart >/tmp/passwall2-fastacl-rollback.log 2>&1 &
+if [ "${PW2_ENABLED:-0}" = "1" ]; then
+    /etc/init.d/passwall2 enable >/dev/null 2>&1 || true
+    /etc/init.d/passwall2 restart >/tmp/passwall2-fastacl-rollback.log 2>&1 &
+else
+    /etc/init.d/passwall2 disable >/dev/null 2>&1 || true
+fi
 
 echo "[OK] FastACL disabled; current nodes/AP mappings kept"
 echo "PassWall2 is restoring in background; log: /tmp/passwall2-fastacl-rollback.log"
