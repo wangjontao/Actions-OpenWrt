@@ -556,7 +556,24 @@ switch_node(){
   uci commit "$CFG"; uci commit "$APP"
 
   t0="$(date +%s)"
-  if start_ap "$n" && ensure_dataplane; then
+  subnet="$(uci -q get $CFG.ap$n.subnet 2>/dev/null || true)"
+  topology_ready=0
+  if [ -n "$subnet" ] && nft list table inet juliang_fastacl 2>/dev/null | grep -Fq "$subnet"; then
+    topology_ready=1
+  fi
+
+  switch_ok=0
+  if start_ap "$n"; then
+    if [ "$topology_ready" = "1" ]; then
+      ensure_dataplane && switch_ok=1
+    else
+      # Newly discovered target (for example the main LAN) is not present in
+      # the currently loaded TProxy/nftables topology yet. Reload once only;
+      # later switches stay on the fast path.
+      reload_router && switch_ok=1
+    fi
+  fi
+  if [ "$switch_ok" = "1" ]; then
     # Starting a new local relay must never leave an already assigned AP dead.
     # Heal only missing listeners; healthy AP relays are untouched.
     heal_other_aps "$n" >/dev/null 2>&1 || true
