@@ -16,36 +16,88 @@ disable_passwall2_runtime(){
   [ "$changed" -eq 0 ] || uci commit passwall2
 }
 
-enforce_failclosed_firewall(){
-  local sec src dest i changed
+is_fastacl_network(){
+  local net="$1" apsec n
+  for apsec in $(uci -q show juliang_fastacl | sed -n "s/^juliang_fastacl\.\([^.=]*\)=ap$/\1/p"); do
+    n="$(uci -q get juliang_fastacl.$apsec.network 2>/dev/null || true)"
+    [ -n "$n" ] && [ "$n" = "$net" ] && return 0
+  done
+  return 1
+}
+
+find_zone_section_for_network(){
+  local net="$1" z name nets x
+  for z in $(uci -q show firewall | sed -n "s/^firewall\.\([^.=]*\)=zone$/\1/p"); do
+    name="$(uci -q get firewall.$z.name 2>/dev/null || true)"
+    [ "$name" = "$net" ] && { echo "$z"; return 0; }
+    nets="$(uci -q get firewall.$z.network 2>/dev/null || true)"
+    for x in $nets; do
+      [ "$x" = "$net" ] && { echo "$z"; return 0; }
+    done
+  done
+  return 1
+}
+
+enforce_mainlan_ipv6_privacy(){
+  local apsec net has_lan changed zone
+  has_lan=0
   changed=0
 
-  # Never permit any A1..A10 zone to forward directly to WAN. This catches
-  # named and anonymous sections preserved from old firmware upgrades.
+  for apsec in $(uci -q show juliang_fastacl | sed -n "s/^juliang_fastacl\.\([^.=]*\)=ap$/\1/p"); do
+    net="$(uci -q get juliang_fastacl.$apsec.network 2>/dev/null || true)"
+    [ "$net" = "lan" ] && { has_lan=1; break; }
+  done
+  [ "$has_lan" -eq 1 ] || return 0
+
+  # FastACL currently proxies IPv4. Disable LAN IPv6 advertisement so clients
+  # cannot bypass the IPv4 TProxy/DNS path. This also fixes apps/videos that
+  # prefer a half-working IPv6 path while normal IPv4 web pages still load.
+  [ "$(uci -q get dhcp.lan.ra 2>/dev/null || true)" = "disabled" ] || { uci set dhcp.lan.ra='disabled'; changed=1; }
+  [ "$(uci -q get dhcp.lan.dhcpv6 2>/dev/null || true)" = "disabled" ] || { uci set dhcp.lan.dhcpv6='disabled'; changed=1; }
+  [ "$(uci -q get dhcp.lan.ndp 2>/dev/null || true)" = "disabled" ] || { uci set dhcp.lan.ndp='disabled'; changed=1; }
+  [ "$(uci -q get network.lan.ip6assign 2>/dev/null || true)" = "0" ] || { uci set network.lan.ip6assign='0'; changed=1; }
+
+  if [ "$changed" -ne 0 ]; then
+    uci commit dhcp
+    uci commit network
+    /etc/init.d/odhcpd restart >/dev/null 2>&1 || true
+    log "main LAN IPv6 RA/DHCPv6/NDP disabled for FastACL privacy"
+  fi
+}
+
+enforce_failclosed_firewall(){
+  local sec src dest changed apsec net z
+  changed=0
+
+  # Remove direct ->WAN forwarding for every network currently managed by
+  # FastACL, including the optional main LAN.
   for sec in $(uci -q show firewall | sed -n "s/^firewall\.\([^.=]*\)=forwarding$/\1/p"); do
     src="$(uci -q get firewall.$sec.src 2>/dev/null || true)"
     dest="$(uci -q get firewall.$sec.dest 2>/dev/null || true)"
-    case "$src:$dest" in
-      a1:wan|a2:wan|a3:wan|a4:wan|a5:wan|a6:wan|a7:wan|a8:wan|a9:wan|a10:wan)
-        uci -q delete firewall.$sec
-        changed=1
-      ;;
-    esac
-  done
-
-  i=1
-  while [ "$i" -le 10 ]; do
-    if [ "$(uci -q get firewall.a$i 2>/dev/null || true)" = "zone" ] &&        [ "$(uci -q get firewall.a$i.forward 2>/dev/null || true)" != "REJECT" ]; then
-      uci set firewall.a$i.forward='REJECT'
+    [ "$dest" = "wan" ] || continue
+    if is_fastacl_network "$src"; then
+      uci -q delete firewall.$sec
       changed=1
     fi
-    i=$((i+1))
+  done
+
+  # Keep every FastACL-managed zone fail-closed. Proxied IPv4 is diverted by
+  # TProxy before forward; anything else (including IPv6) must not escape.
+  for apsec in $(uci -q show juliang_fastacl | sed -n "s/^juliang_fastacl\.\([^.=]*\)=ap$/\1/p"); do
+    net="$(uci -q get juliang_fastacl.$apsec.network 2>/dev/null || true)"
+    [ -n "$net" ] || continue
+    z="$(find_zone_section_for_network "$net" 2>/dev/null || true)"
+    [ -n "$z" ] || continue
+    if [ "$(uci -q get firewall.$z.forward 2>/dev/null || true)" != "REJECT" ]; then
+      uci set firewall.$z.forward='REJECT'
+      changed=1
+    fi
   done
 
   if [ "$changed" -ne 0 ]; then
     uci commit firewall
     /etc/init.d/firewall restart >/dev/null 2>&1 || true
-    log "removed unsafe A->WAN forwarding / restored REJECT zones"
+    log "removed unsafe FastACL -> WAN forwarding / restored REJECT zones"
   fi
 }
 
@@ -60,6 +112,7 @@ while true; do
   fi
 
   disable_passwall2_runtime
+  enforce_mainlan_ipv6_privacy
   enforce_failclosed_firewall
 
   # If persistent topology is unexpectedly missing, first attempt
