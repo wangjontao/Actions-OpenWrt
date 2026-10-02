@@ -62,9 +62,11 @@ cp -af /usr/lib/lua/luci/controller/juliang_fastacl.lua "$BK/juliang_fastacl.lua
 
 /etc/init.d/juliang-fastacl stop >/dev/null 2>&1 || true
 
-install -m0755 "$TMP/usr/bin/juliang-fastacl" /usr/bin/juliang-fastacl
-install -m0644 "$TMP/usr/libexec/juliang-fastacl-router.lua" /usr/libexec/juliang-fastacl-router.lua
-install -m0644 "$TMP/usr/lib/lua/luci/controller/juliang_fastacl.lua" /usr/lib/lua/luci/controller/juliang_fastacl.lua
+cp -af "$TMP/usr/bin/juliang-fastacl" /usr/bin/juliang-fastacl
+cp -af "$TMP/usr/libexec/juliang-fastacl-router.lua" /usr/libexec/juliang-fastacl-router.lua
+cp -af "$TMP/usr/lib/lua/luci/controller/juliang_fastacl.lua" /usr/lib/lua/luci/controller/juliang_fastacl.lua
+chmod 0755 /usr/bin/juliang-fastacl
+chmod 0644 /usr/libexec/juliang-fastacl-router.lua /usr/lib/lua/luci/controller/juliang_fastacl.lua
 
 rm -f /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null || true
 rm -rf /tmp/luci-modulecache /tmp/luci-templatecache 2>/dev/null || true
