@@ -4,12 +4,12 @@ function index()
     local page = entry({"admin", "network", "wireless_operator"}, template("juliang_operator/wireless"), _("无线"), 15)
     page.leaf = true
     page.dependent = false
-    page.acl_depends = { "juliang-wireless-operator-edit" }
+    page.acl_depends = { "juliang-wireless-operator" }
 
     local api = entry({"admin", "network", "wireless_operator_api"}, call("handle_wireless"), nil)
     api.leaf = true
     api.dependent = false
-    api.acl_depends = { "juliang-wireless-operator-edit" }
+    api.acl_depends = { "juliang-wireless-operator" }
 end
 
 local function write_json(t)
