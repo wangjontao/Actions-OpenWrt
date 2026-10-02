@@ -1,0 +1,117 @@
+name: Rescue firmware from run 36979045284
+
+on:
+  push:
+    branches:
+      - FastACL正式版
+    paths:
+      - .github/workflows/rescue-run-36979045284.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      SOURCE_ARTIFACT_ID: "11224343647"
+    steps:
+      - name: Download raw artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          curl -fL --retry 5 --retry-delay 3 \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" \
+            -o /tmp/raw.zip
+          ls -lh /tmp/raw.zip
+
+      - name: Extract firmware only
+        run: |
+          set -euxo pipefail
+          mkdir -p fw
+          unzip -j /tmp/raw.zip \
+            'immortalwrt-mediatek-filogic-*.bin' \
+            'immortalwrt-mediatek-filogic-*.itb' \
+            'MT7981-MTWiFi-final.config' \
+            'sha256sums' \
+            -d fw || true
+          ls -lh fw | tee firmware-files.txt
+          test -n "$(find fw -maxdepth 1 -type f \( -name '*.bin' -o -name '*.itb' \) -print -quit)"
+
+      - name: Split rescue packs
+        run: |
+          set -euxo pipefail
+          mkdir -p packs/{01-main,02-extra,03-komi-etr,04-newland-asr,05-zbt}
+
+          copy_matches() {
+            dst="$1"; shift
+            for pat in "$@"; do
+              find fw -maxdepth 1 -type f -iname "*${pat}*" -exec cp -a {} "$dst/" \;
+            done
+          }
+
+          copy_matches packs/01-main             philips_hy3000 cmcc_rax3000m-nand-mtk cmcc_rax3000m-emmc-mtk qihoo_360t7
+
+          copy_matches packs/02-extra             aigo_ags21 cmcc_a10-ubootmod jcg_q30-pro
+
+          copy_matches packs/03-komi-etr             konka_komi-a31 etr631-t etr635-u
+
+          copy_matches packs/04-newland-asr             newland_nl-wr8103 newland_nl-wr9103 abt_asr3000
+
+          copy_matches packs/05-zbt             zbtlink_zbt-z8103ax-c
+
+          cp firmware-files.txt packs/01-main/
+          for d in packs/*; do
+            test -n "$(find "$d" -maxdepth 1 -type f \( -name '*.bin' -o -name '*.itb' \) -print -quit)"
+            (cd "$d" && sha256sum *.bin *.itb 2>/dev/null | sort > SHA256SUMS) || true
+            echo "==== $d ===="
+            du -sh "$d"
+            ls -lh "$d"
+          done
+
+      - name: Upload rescue pack 01 main
+        uses: actions/upload-artifact@v4
+        with:
+          name: rescue-36979045284-01-HY3000-RAX3000M-360T7
+          path: packs/01-main/*
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload rescue pack 02 extra
+        uses: actions/upload-artifact@v4
+        with:
+          name: rescue-36979045284-02-AGS21-A10-Q30Pro
+          path: packs/02-extra/*
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload rescue pack 03 KOMI ETR
+        uses: actions/upload-artifact@v4
+        with:
+          name: rescue-36979045284-03-KOMI-A31-ETR631-ETR635
+          path: packs/03-komi-etr/*
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload rescue pack 04 Newland ASR
+        uses: actions/upload-artifact@v4
+        with:
+          name: rescue-36979045284-04-Newland8103-9103-ASR3000
+          path: packs/04-newland-asr/*
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload rescue pack 05 ZBT
+        uses: actions/upload-artifact@v4
+        with:
+          name: rescue-36979045284-05-ZBT-Z8103AX-C-D
+          path: packs/05-zbt/*
+          compression-level: 0
+          retention-days: 30
