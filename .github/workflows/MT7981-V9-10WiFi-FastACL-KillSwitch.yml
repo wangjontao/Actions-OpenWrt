@@ -217,7 +217,8 @@ jobs:
           test -x files/usr/bin/juliang-operator
           grep -q "Port='20022'" files/etc/uci-defaults/97-juliang-operator-mode
           grep -q "username='admin'" files/etc/uci-defaults/97-juliang-operator-mode
-          grep -Fq '$1$JFA239
+          grep -q 'rpcd.juliang_operator.password=' files/etc/uci-defaults/97-juliang-operator-mode
+          sh -n files/etc/uci-defaults/97-juliang-operator-mode
           test -s files/usr/lib/lua/luci/controller/juliang_operator.lua
           test -s files/usr/lib/lua/luci/view/juliang_operator/home.htm
           test -s files/usr/lib/lua/luci/view/juliang_operator/wireless.htm
@@ -681,7 +682,8 @@ jobs:
           test -x "$ROOTFS/usr/bin/juliang-operator"
           grep -q "Port='20022'" "$ROOTFS/etc/uci-defaults/97-juliang-operator-mode"
           grep -q "username='admin'" "$ROOTFS/etc/uci-defaults/97-juliang-operator-mode"
-          grep -Fq '$1$JFA239
+          grep -q 'rpcd.juliang_operator.password=' "$ROOTFS/etc/uci-defaults/97-juliang-operator-mode"
+          sh -n "$ROOTFS/etc/uci-defaults/97-juliang-operator-mode"
           test -s "$ROOTFS/usr/lib/lua/luci/controller/juliang_operator.lua"
           test -s "$ROOTFS/usr/lib/lua/luci/view/juliang_operator/home.htm"
           test -s "$ROOTFS/usr/lib/lua/luci/view/juliang_operator/wireless.htm"
