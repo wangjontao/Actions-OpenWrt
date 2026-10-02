@@ -25,7 +25,7 @@ jobs:
           set -euxo pipefail
           F=scripts/install-juliang-fastacl-v2.3.0-stable.sh
           sh -n "$F"
-          grep -q 'VERSION="2.3.0-stable"' "$F"
+          grep -q 'VERSION="2.3.0-stable-r2"' "$F"
           grep -q 'juliang_killswitch' "$F"
           grep -q 'health_check_assigned' "$F"
           grep -q 'switch_node "$ap" "$node" 1' "$F"
@@ -35,10 +35,13 @@ jobs:
           extract() {
             tag="$1"
             out="$2"
-            awk -v b="__JFA_BEGIN_${tag}__" -v e="__JFA_END_${tag}__" '
+            awk -v b="#__JFA_BEGIN_${tag}__" -v e="#__JFA_END_${tag}__" '
               $0 == b { on=1; next }
               $0 == e { found=1; exit }
-              on { print }
+              on {
+                if (substr($0,1,2) == "#|") print substr($0,3)
+                else exit 3
+              }
               END { if (!found) exit 2 }
             ' "$F" > "$out"
             test -s "$out"
@@ -50,9 +53,14 @@ jobs:
             sh -n "/tmp/jfa-check/$tag.sh"
           done
 
-          for tag in ROUTER RELAY DISCOVER CTRL PW2_ACL_JSON PW_ACL_JSON; do
+          for tag in ROUTER RELAY DISCOVER CTRL; do
             extract "$tag" "/tmp/jfa-check/$tag.lua"
             luac5.1 -p "/tmp/jfa-check/$tag.lua"
+          done
+
+          for tag in PW2_ACL_JSON PW_ACL_JSON; do
+            extract "$tag" "/tmp/jfa-check/$tag.sh"
+            sh -n "/tmp/jfa-check/$tag.sh"
           done
 
           echo "FastACL 2.3.0 Stable installer verification passed."
