@@ -1,0 +1,57 @@
+name: Recover FastACL firmware packages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download successful 5WiFi raw artifact
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 36993229987
+          artifact-ids: 11227049336
+          path: raw-5wifi
+
+      - name: Download successful 10WiFi raw artifact
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 36993234937
+          artifact-ids: 11228527939
+          path: raw-10wifi
+
+      - name: Collect final firmware only
+        shell: bash
+        run: |
+          set -euo pipefail
+          for variant in 5wifi 10wifi; do
+            src="raw-${variant}"
+            dst="FastACL-V9-${variant}"
+            mkdir -p "$dst"
+            find "$src" -type f \( -iname '*.bin' -o -iname '*.itb' -o -iname '*.config' -o -name 'sha256sums' -o -name 'profiles.json' \) -exec cp -a {} "$dst/" \;
+            test "$(find "$dst" -type f \( -iname '*.bin' -o -iname '*.itb' \) | wc -l)" -gt 0
+            (cd "$dst" && sha256sum * > SHA256SUMS.txt)
+          done
+
+      - name: Upload 5WiFi firmware package
+        uses: actions/upload-artifact@v4
+        with:
+          name: FastACL-V9-5WiFi-firmware-only
+          path: FastACL-V9-5wifi/*
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload 10WiFi firmware package
+        uses: actions/upload-artifact@v4
+        with:
+          name: FastACL-V9-10WiFi-firmware-only
+          path: FastACL-V9-10wifi/*
+          compression-level: 0
+          retention-days: 30
