@@ -179,14 +179,42 @@ start_preproxy(){
 }
 
 kill_ap(){
-  local n="$1" sec psec pidf flag
+  local n="$1" sec psec pidf flag pid port preport i
   sec="jfa_ap$n"; psec="jfa_pre$n"
   pidf="$RUN_DIR/ap$n.pid"
-  if [ -s "$pidf" ]; then kill "$(cat "$pidf")" >/dev/null 2>&1 || true; rm -f "$pidf"; fi
+  port="$(uci -q get $CFG.ap$n.socks_port 2>/dev/null || echo $((13100+n)))"
+  preport="$(uci -q get $CFG.ap$n.preproxy_port 2>/dev/null || echo $((14100+n)))"
+
+  # Stop the direct sing-box landing relay and wait for its PID to exit.
+  if [ -s "$pidf" ]; then
+    pid="$(cat "$pidf" 2>/dev/null || true)"
+    [ -n "$pid" ] && kill "$pid" >/dev/null 2>&1 || true
+    i=0
+    while [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && [ "$i" -lt 2 ]; do
+      sleep 1
+      i=$((i+1))
+    done
+    [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && kill -9 "$pid" >/dev/null 2>&1 || true
+    rm -f "$pidf"
+  fi
+
+  # Catch an orphan relay if the pidfile is stale/missing.
+  ps w 2>/dev/null | awk -v C="$RUN_DIR/ap$n-direct.json" '
+    /sing-box/ && index($0,C) {print $1}
+  ' | xargs -r kill -9 >/dev/null 2>&1 || true
+
   for flag in "$sec" "$psec"; do
     pgrep -af '/tmp/etc/passwall2/bin' 2>/dev/null | awk -v P="$flag" '$0 ~ P {print $1}' | xargs -r kill -9 >/dev/null 2>&1 || true
     pgrep -af "SOCKS_${flag}" 2>/dev/null | awk '!/pgrep/{print $1}' | xargs -r kill -9 >/dev/null 2>&1 || true
   done
+
+  # A rapid SK5->SK5 switch must not reuse an old 131xx/141xx listener.
+  i=0
+  while { has_tcp_listener "$port" || has_tcp_listener "$preport"; } && [ "$i" -lt 2 ]; do
+    sleep 1
+    i=$((i+1))
+  done
+
   rm -f "$RUN_DIR/ap$n-direct.json" "$RUN_DIR/ap$n-preproxy-error.log" "$RUN_DIR/ap$n-preproxy-switch.log" "$RUN_DIR/ap$n-preproxy.ip"
 }
 
@@ -198,6 +226,12 @@ start_ap(){
   ensure_socks_section "$n" "$landing_node"
   uci commit "$APP"
   kill_ap "$n"
+  port="$(uci -q get $CFG.ap$n.socks_port 2>/dev/null || echo $((13100+n)))"
+  if has_tcp_listener "$port"; then
+    log "AP$n 旧 SOCKS 端口 $port 未释放，拒绝误用旧 SK5 出口"
+    echo "STALE_LISTENER" > "$RUN_DIR/ap$n-last-error"
+    return 1
+  fi
   type="$(uci -q get $APP.$landing_node.type 2>/dev/null | tr 'A-Z' 'a-z')"
   proto="$(uci -q get $APP.$landing_node.protocol 2>/dev/null | tr 'A-Z' 'a-z')"
   [ -n "$proto" ] || proto="$type"
@@ -587,6 +621,8 @@ switch_node(){
   [ -n "$acl" ] && { uci set $APP.$acl.node="$node"; uci set $APP.$acl.enabled='1'; }
   uci commit "$CFG"; uci commit "$APP"
 
+  old_ip="$(cat "$RUN_DIR/ap$n.ip" 2>/dev/null || true)"
+  rm -f "$RUN_DIR/ap$n.ip"
   t0="$(date +%s)"
   if start_ap "$n" && ensure_dataplane; then
     port="$(uci -q get $CFG.ap$n.socks_port 2>/dev/null || echo $((13100+n)))"
@@ -623,6 +659,7 @@ switch_node(){
   fi
   uci commit "$CFG"; uci commit "$APP"
   [ -n "$old" ] && start_ap "$n" >/dev/null 2>&1 || kill_ap "$n"
+  [ -n "$old_ip" ] && printf '%s\n' "$old_ip" > "$RUN_DIR/ap$n.ip" || true
   reason="$(cat "$RUN_DIR/ap$n-last-error" 2>/dev/null || echo NODE_START_FAILED)"
   rm -f "$RUN_DIR/ap$n-last-error"
   printf '{"ok":false,"ap":"AP%s","node":"%s","error":"%s","rolled_back":true}\n' "$n" "$node" "$reason"
