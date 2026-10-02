@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-FILE="/usr/lib/lua/luci/view/passwall2/node_list/node_list.htm"
-CTRL="/usr/lib/lua/luci/controller/juliang_fastacl.lua"
+FILE="${JFA_NODE_LIST_FILE:-/usr/lib/lua/luci/view/passwall2/node_list/node_list.htm}"
+CTRL="${JFA_CTRL_FILE:-/usr/lib/lua/luci/controller/juliang_fastacl.lua}"
 MARKER="JULIANG_FASTACL_V220"
 
 [ -f "$FILE" ] || {
@@ -369,9 +369,11 @@ grep -q 'jfa-btn' "$FILE"
 grep -q 'FastACL 即时分配无线' "$FILE"
 grep -q '快速前置代理' "$FILE"
 
-rm -f /tmp/luci-indexcache
-rm -rf /tmp/luci-modulecache /tmp/luci-templatecache
-/etc/init.d/uhttpd restart >/dev/null 2>&1 || true
+if [ "${JFA_OFFLINE:-0}" != "1" ]; then
+    rm -f /tmp/luci-indexcache
+    rm -rf /tmp/luci-modulecache /tmp/luci-templatecache
+    /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
+fi
 
 echo "[OK] FastACL v2 LuCI installed"
 echo "PassWall2 -> 节点列表：自动读取真实无线/网段 + 即时分配 + 跨内核快速前置，并显示出口 IP。"
