@@ -1,0 +1,35 @@
+name: FastACL 2.3.5 Operator Home Check
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - juliang-fastacl-v2.3.5-operator-home-20261002
+    paths:
+      - profiles/fastacl-v9/root/usr/libexec/juliang-operator-patch.lua
+      - profiles/fastacl-v9/root/usr/lib/lua/luci/view/juliang_operator/home.htm
+      - profiles/fastacl-v9/root/usr/share/rpcd/acl.d/juliang-operator.json
+      - scripts/repair-juliang-operator-v2.3.5-home.sh
+      - .github/workflows/FastACL-v2.3.5-Operator-Home-Check.yml
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1 jq
+      - name: Validate operator home
+        run: |
+          set -euxo pipefail
+          ROOT=profiles/fastacl-v9/root
+          luac5.1 -p "$ROOT/usr/libexec/juliang-operator-patch.lua"
+          jq empty "$ROOT/usr/share/rpcd/acl.d/juliang-operator.json"
+          sh -n scripts/repair-juliang-operator-v2.3.5-home.sh
+          grep -q 'JULIANG_OPERATOR_HOME_V235' "$ROOT/usr/libexec/juliang-operator-patch.lua"
+          grep -q 'JuLiang 控制中心' "$ROOT/usr/lib/lua/luci/view/juliang_operator/home.htm"
+          grep -q '"getFeatures"' "$ROOT/usr/share/rpcd/acl.d/juliang-operator.json"
+          grep -q 'patch_istore_menu_json' "$ROOT/usr/libexec/juliang-operator-patch.lua"
+          echo "FastACL 2.3.5 Operator Home validation passed."
