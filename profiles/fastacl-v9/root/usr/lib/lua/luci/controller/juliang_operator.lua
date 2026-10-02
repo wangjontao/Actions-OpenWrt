@@ -63,7 +63,7 @@ end
 
 function handle_wireless()
     local http = require "luci.http"
-    local uci = require("luci.model.uci").cursor()
+    local uci = require("uci").cursor()
     local action = http.formvalue("action") or "status"
 
     if action == "status" then
