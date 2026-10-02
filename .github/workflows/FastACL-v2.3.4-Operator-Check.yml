@@ -42,7 +42,8 @@ jobs:
           sh -n scripts/install-juliang-fastacl-v2.3.4-operator.sh
 
           echo "=== simulate patcher against upstream QuickStart/LuCI files ==="
-          sudo mkdir -p /usr/lib/lua/luci/controller /usr/lib/lua/luci/view/quickstart /usr/share/luci/menu.d /tmp/jfa-lua/nixio
+          sudo mkdir -p /usr/lib/lua/luci/controller /usr/lib/lua/luci/view/quickstart /usr/share/luci/menu.d
+          mkdir -p /tmp/jfa-lua/nixio
           sudo curl -fsSL -o /usr/lib/lua/luci/controller/quickstart.lua             https://raw.githubusercontent.com/linkease/nas-packages-luci/main/luci/luci-app-quickstart/luasrc/controller/quickstart.lua
           sudo curl -fsSL -o /usr/lib/lua/luci/controller/istore_backend.lua             https://raw.githubusercontent.com/linkease/nas-packages-luci/main/luci/luci-app-quickstart/luasrc/controller/istore_backend.lua
           sudo curl -fsSL -o /usr/lib/lua/luci/view/quickstart/main.htm             https://raw.githubusercontent.com/linkease/nas-packages-luci/main/luci/luci-app-quickstart/luasrc/view/quickstart/main.htm
