@@ -1,0 +1,174 @@
+#!/bin/sh
+set -eu
+
+CFG="juliang_operator"
+RPCSEC="juliang_operator"
+
+say(){ printf '%s\n' "$*"; }
+die(){ say "[ERROR] $*" >&2; exit 1; }
+
+valid_user(){
+  case "$1" in
+    ""|root|*[!A-Za-z0-9_.-]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+read_secret(){
+  prompt="$1"
+  if [ -t 0 ]; then
+    printf '%s' "$prompt" >&2
+    stty -echo 2>/dev/null || true
+    IFS= read -r secret
+    stty echo 2>/dev/null || true
+    printf '\n' >&2
+  else
+    IFS= read -r secret
+  fi
+  printf '%s' "$secret"
+}
+
+make_hash(){
+  pass="$1"
+  salt="$(od -An -N4 -tx4 /dev/urandom 2>/dev/null | tr -d ' \n' | cut -c1-8)"
+  [ -n "$salt" ] || salt="JFA$(date +%s | tail -c 6)"
+  {
+    printf '%s\n' "$pass"
+    printf '%s\n' "$salt"
+  } | lua -e 'local p=io.read("*l") or ""; local s=io.read("*l") or "jfa"; local n=require("nixio"); local h=n.crypt(p, "$1$"..s.."$"); if h then print(h) end'
+}
+
+apply_login(){
+  user="$1"
+  hash="$2"
+
+  uci -q delete rpcd.$RPCSEC >/dev/null 2>&1 || true
+  uci set rpcd.$RPCSEC='login'
+  uci set rpcd.$RPCSEC.username="$user"
+  uci set rpcd.$RPCSEC.password="$hash"
+
+  uci add_list rpcd.$RPCSEC.read='luci-base'
+  uci add_list rpcd.$RPCSEC.read='luci-base-network-status'
+  uci add_list rpcd.$RPCSEC.read='juliang-operator-home'
+  uci add_list rpcd.$RPCSEC.read='juliang-fastacl-operator'
+  uci add_list rpcd.$RPCSEC.read='juliang-wireless-operator'
+  uci commit rpcd
+
+  uci -q get $CFG.main >/dev/null 2>&1 || uci set $CFG.main='main'
+  uci set $CFG.main.username="$user"
+  uci set $CFG.main.enabled='1'
+  uci commit $CFG
+
+  /etc/init.d/rpcd restart >/dev/null 2>&1 || true
+  rm -f /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null || true
+  rm -rf /tmp/luci-modulecache /tmp/luci-templatecache 2>/dev/null || true
+}
+
+cmd_setup(){
+  say "=================================================="
+  say " JuLiang Operator Mode"
+  say " LuCI-only restricted account (no SSH/Linux user)"
+  say "=================================================="
+
+  [ -s /usr/share/rpcd/acl.d/juliang-operator.json ] || die "operator ACL is not installed"
+  [ -s /usr/share/luci/menu.d/zz-juliang-operator.json ] || die "operator menu policy is not installed"
+
+  old="$(uci -q get $CFG.main.username 2>/dev/null || true)"
+  if [ -n "$old" ]; then
+    printf '普通用户名称 [%s]: ' "$old" >&2
+  else
+    printf '普通用户名称: ' >&2
+  fi
+  IFS= read -r user
+  [ -n "$user" ] || user="$old"
+  valid_user "$user" || die "用户名仅允许字母/数字/._-，且不能为 root"
+
+  pass="$(read_secret '普通用户密码: ')"
+  [ "\${#pass}" -ge 6 ] || die "密码至少 6 位"
+  pass2="$(read_secret '再次输入密码: ')"
+  [ "$pass" = "$pass2" ] || die "两次密码不一致"
+
+  hash="$(make_hash "$pass")"
+  unset pass pass2
+  [ -n "$hash" ] || die "密码哈希生成失败"
+
+  apply_login "$user" "$hash"
+
+  say "[OK] Operator account enabled: $user"
+  say "[OK] LuCI only; no /etc/passwd user and no SSH shell created"
+  say "[INFO] Allowed UI: iStore home + FastACL console + read-only Wireless"
+}
+
+cmd_passwd(){
+  user="$(uci -q get $CFG.main.username 2>/dev/null || true)"
+  [ -n "$user" ] || die "operator account is not configured"
+  pass="$(read_secret '新密码: ')"
+  [ "\${#pass}" -ge 6 ] || die "密码至少 6 位"
+  pass2="$(read_secret '再次输入新密码: ')"
+  [ "$pass" = "$pass2" ] || die "两次密码不一致"
+  hash="$(make_hash "$pass")"
+  unset pass pass2
+  [ -n "$hash" ] || die "密码哈希生成失败"
+  apply_login "$user" "$hash"
+  say "[OK] password updated for $user"
+}
+
+cmd_disable(){
+  uci -q delete rpcd.$RPCSEC >/dev/null 2>&1 || true
+  uci commit rpcd
+  if uci -q get $CFG.main >/dev/null 2>&1; then
+    uci set $CFG.main.enabled='0'
+    uci commit $CFG
+  fi
+  /etc/init.d/rpcd restart >/dev/null 2>&1 || true
+  say "[OK] operator login disabled"
+}
+
+cmd_remove(){
+  uci -q delete rpcd.$RPCSEC >/dev/null 2>&1 || true
+  uci commit rpcd
+  uci -q delete $CFG.main >/dev/null 2>&1 || true
+  uci commit $CFG 2>/dev/null || true
+  /etc/init.d/rpcd restart >/dev/null 2>&1 || true
+  say "[OK] operator account configuration removed"
+  say "[INFO] operator ACL/UI files remain installed but inactive"
+}
+
+cmd_status(){
+  user="$(uci -q get $CFG.main.username 2>/dev/null || true)"
+  enabled="$(uci -q get $CFG.main.enabled 2>/dev/null || echo 0)"
+  say "JuLiang Operator"
+  say "username: \${user:--}"
+  say "enabled: $enabled"
+  if [ -n "$user" ] && [ "$(uci -q get rpcd.$RPCSEC.username 2>/dev/null || true)" = "$user" ]; then
+    say "rpcd login: present"
+  else
+    say "rpcd login: absent"
+  fi
+  if [ -n "$user" ] && grep -q "^$user:" /etc/passwd 2>/dev/null; then
+    say "Linux user: PRESENT (unexpected)"
+  else
+    say "Linux user: none"
+  fi
+  [ -s /usr/share/rpcd/acl.d/juliang-operator.json ] && say "ACL: installed" || say "ACL: missing"
+  [ -s /usr/share/luci/menu.d/zz-juliang-operator.json ] && say "menu policy: installed" || say "menu policy: missing"
+}
+
+case "\${1:-}" in
+  setup) cmd_setup ;;
+  passwd) cmd_passwd ;;
+  disable) cmd_disable ;;
+  remove) cmd_remove ;;
+  status) cmd_status ;;
+  *)
+    cat <<'EOF'
+Usage:
+  juliang-operator setup
+  juliang-operator status
+  juliang-operator passwd
+  juliang-operator disable
+  juliang-operator remove
+EOF
+    exit 2
+    ;;
+esac
