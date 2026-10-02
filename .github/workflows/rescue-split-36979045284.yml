@@ -1,0 +1,95 @@
+name: Split oversized rescue packs 36979045284
+
+on:
+  push:
+    branches:
+      - FastACL正式版
+    paths:
+      - .github/workflows/rescue-split-36979045284.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  split:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Download oversized rescue artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          for id in 11235513718 11235493875; do
+            curl -fL --retry 5 --retry-delay 3 \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip" \
+              -o "/tmp/${id}.zip"
+          done
+          mkdir -p src04 src05
+          unzip -j /tmp/11235513718.zip -d src04
+          unzip -j /tmp/11235493875.zip -d src05
+
+      - name: Split by device/layout
+        run: |
+          set -euxo pipefail
+          mkdir -p packs/{04-newland,05-asr,06-zbt-standard,07-zbt-nmbm,08-zbt-ubootmod}
+
+          find src04 -maxdepth 1 -type f \( -iname '*newland_nl-wr8103*' -o -iname '*newland_nl-wr9103*' \) -exec cp -a {} packs/04-newland/ \;
+          find src04 -maxdepth 1 -type f -iname '*abt_asr3000*' -exec cp -a {} packs/05-asr/ \;
+
+          find src05 -maxdepth 1 -type f -iname '*zbtlink_zbt-z8103ax-c-*' \
+            ! -iname '*-nmbm-*' ! -iname '*-ubootmod-*' -exec cp -a {} packs/06-zbt-standard/ \;
+          find src05 -maxdepth 1 -type f -iname '*zbtlink_zbt-z8103ax-c-nmbm-*' -exec cp -a {} packs/07-zbt-nmbm/ \;
+          find src05 -maxdepth 1 -type f -iname '*zbtlink_zbt-z8103ax-c-ubootmod-*' -exec cp -a {} packs/08-zbt-ubootmod/ \;
+
+          for d in packs/*; do
+            test -n "$(find "$d" -maxdepth 1 -type f \( -name '*.bin' -o -name '*.itb' \) -print -quit)"
+            (cd "$d" && sha256sum *.bin *.itb 2>/dev/null | sort > SHA256SUMS) || true
+            du -sh "$d"
+            ls -lh "$d"
+          done
+
+      - name: Upload Newland
+        uses: actions/upload-artifact@v4
+        with:
+          name: rescue-36979045284-04-Newland8103-9103
+          path: packs/04-newland/*
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload ASR3000
+        uses: actions/upload-artifact@v4
+        with:
+          name: rescue-36979045284-05-ASR3000
+          path: packs/05-asr/*
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload ZBT standard
+        uses: actions/upload-artifact@v4
+        with:
+          name: rescue-36979045284-06-ZBT-Z8103AX-C-D-standard
+          path: packs/06-zbt-standard/*
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload ZBT NMBM
+        uses: actions/upload-artifact@v4
+        with:
+          name: rescue-36979045284-07-ZBT-Z8103AX-C-D-NMBM
+          path: packs/07-zbt-nmbm/*
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload ZBT U-BootMod
+        uses: actions/upload-artifact@v4
+        with:
+          name: rescue-36979045284-08-ZBT-Z8103AX-C-D-UbootMod
+          path: packs/08-zbt-ubootmod/*
+          compression-level: 0
+          retention-days: 30
