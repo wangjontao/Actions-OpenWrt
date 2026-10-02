@@ -42,6 +42,8 @@ apply_login(){
   user="$1"
   hash="$2"
 
+  [ -e /etc/config/$CFG ] || : > /etc/config/$CFG
+
   uci -q delete rpcd.$RPCSEC >/dev/null 2>&1 || true
   uci set rpcd.$RPCSEC='login'
   uci set rpcd.$RPCSEC.username="$user"
