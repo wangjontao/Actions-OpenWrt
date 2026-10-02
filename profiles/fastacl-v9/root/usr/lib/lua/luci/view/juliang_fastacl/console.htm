@@ -13,9 +13,13 @@ local import_api = dsp.build_url("admin", "services", "passwall2", "link_add_nod
 .jfa-head{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0 14px}
 .jfa-pill{padding:5px 11px;border-radius:16px;background:rgba(128,128,128,.12);font-weight:600;white-space:nowrap}
 .jfa-ok{color:#159957}.jfa-bad{color:#e43f3b}.jfa-warn{color:#e6a23c}
-.jfa-table{width:100%;border-collapse:collapse;table-layout:auto}
-.jfa-table th,.jfa-table td{padding:9px 8px;border-bottom:1px solid rgba(128,128,128,.18);vertical-align:middle}
-.jfa-table th{text-align:left;white-space:nowrap}
+.jfa-table{width:100%;border-collapse:separate;border-spacing:0 8px;table-layout:auto}
+.jfa-table thead th{padding:8px 10px;text-align:left;white-space:nowrap;border-bottom:1px solid rgba(128,128,128,.22)}
+.jfa-table tbody td{padding:12px 10px;vertical-align:middle;background:rgba(128,128,128,.045);border-top:1px solid rgba(128,128,128,.08);border-bottom:1px solid rgba(128,128,128,.08)}
+.jfa-table tbody tr:nth-child(even) td{background:rgba(128,128,128,.085)}
+.jfa-table tbody tr:hover td{background:rgba(92,110,225,.10)}
+.jfa-table tbody td:first-child{border-left:1px solid rgba(128,128,128,.08);border-radius:10px 0 0 10px}
+.jfa-table tbody td:last-child{border-right:1px solid rgba(128,128,128,.08);border-radius:0 10px 10px 0}
 .jfa-table td:first-child{min-width:280px}
 .jfa-table td:nth-child(2){min-width:120px}
 .jfa-table td:nth-child(3){min-width:90px}
@@ -30,6 +34,10 @@ local import_api = dsp.build_url("admin", "services", "passwall2", "link_add_nod
 .jfa-import-modal{width:56rem}
 .jfa-import-text{width:100%;height:260px;resize:vertical;box-sizing:border-box;font-family:monospace;padding:10px;border:1px solid rgba(128,128,128,.35);border-radius:6px;line-height:1.45}
 .jfa-top-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.jfa-commandbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0 8px}
+.jfa-import-primary{border:0!important;border-radius:999px!important;padding:0 24px!important;min-height:44px!important;font-size:15px!important;font-weight:700!important;box-shadow:0 6px 18px rgba(75,94,220,.28)!important;letter-spacing:.2px}
+.jfa-import-primary:hover{transform:translateY(-1px)}
+.jfa-probe-result{margin-top:5px;font-size:12px;font-weight:700;line-height:1.45}
 .jfa-note{font-size:13px;line-height:1.55;opacity:.78;margin-top:7px}
 @media (max-width:900px){
   .jfa-wrap{width:100%;margin:0}
@@ -42,12 +50,16 @@ local import_api = dsp.build_url("admin", "services", "passwall2", "link_add_nod
   <div class="jfa-titlebar">
     <div>
       <h2>FastACL 控制台</h2>
-      <div class="cbi-map-descr">节点导入、无线分配、链式前置和实际出口统一在这里操作。无线数量自动读取，不固定 5/10/20。</div>
+      <div class="cbi-map-descr">节点导入、无线分配、链式前置和实际出口统一在这里操作。</div>
     </div>
     <div class="jfa-top-actions">
-      <input class="btn cbi-button cbi-button-add" type="button" value="导入节点" onclick="openImport()"/>
       <input class="btn cbi-button cbi-button-reload" type="button" value="刷新" onclick="loadStatus()"/>
     </div>
+  </div>
+
+  <div class="jfa-commandbar">
+    <input class="btn cbi-button cbi-button-add jfa-import-primary" type="button" value="＋ 导入节点" onclick="openImport()"/>
+    <span class="jfa-small">批量粘贴 VLESS / VMess / Trojan / SOCKS5 / HTTP / SK5 简写</span>
   </div>
 
   <div class="jfa-head">
@@ -126,7 +138,7 @@ host:port:username:password"></textarea>
 
 <script type="text/javascript">
 (function(){
-  var API='<%=api%>', IMPORT_API='<%=import_api%>', state={nodes:[],aps:[],map:{},ips:{},preproxy:{}};
+  var API='<%=api%>', IMPORT_API='<%=import_api%>', state={nodes:[],aps:[],map:{},ips:{},preproxy:{},probeResult:{}};
 
   window.jfaState=state;
 
@@ -161,11 +173,16 @@ host:port:username:password"></textarea>
       var hay=(n.remarks+' '+n.address+' '+n.protocol+' '+n.type+' '+ips.join(' ')).toLowerCase();
       if(q && hay.indexOf(q)<0) continue;
       var proto=(n.type||'')+(n.protocol&&n.protocol.toLowerCase()!==(n.type||'').toLowerCase()?('/'+n.protocol):'');
+      var pr=state.probeResult[n.id]||null;
+      var probeHtml='';
+      if(pr){
+        probeHtml='<div class="jfa-probe-result '+(pr.ok?'jfa-ok':'jfa-bad')+'">'+esc(pr.text)+(pr.time?' · '+esc(pr.time):'')+'</div>';
+      }
       html+='<tr>'+
         '<td><strong>'+esc(n.remarks)+'</strong><div class="jfa-small">'+esc(n.address)+(n.port?':'+n.port:'')+'</div></td>'+
         '<td>'+esc(proto)+'</td>'+
         '<td>'+esc(aps.length?aps.map(apName).join(', '):'未分配')+'</td>'+
-        '<td class="'+(ips.length?'jfa-ok':'')+'">'+esc(ips.length?ips.join(' / '):'-')+'</td>'+
+        '<td class="'+(ips.length?'jfa-ok':'')+'">'+esc(ips.length?ips.join(' / '):'-')+probeHtml+'</td>'+
         '<td>'+esc(pp.enabled?(pp.remarks||pp.id):'不使用')+'</td>'+
         '<td><div class="jfa-actions">'+
           '<input class="btn cbi-button cbi-button-edit" type="button" value="操作" onclick="openNode(\''+n.id.replace(/'/g,"\\'")+'\')"/>'+
@@ -320,9 +337,28 @@ host:port:username:password"></textarea>
   window.probeNode=function(id){
     var aps=nodeAps(id); if(!aps.length)return;
     msg('正在检测 '+aps.join(', ')+'…');
-    var left=aps.length, out=[];
+    state.probeResult[id]={ok:true,text:'检测中…',time:''};
+    renderNodes();
+
+    var left=aps.length, out=[], ok=true;
     for(var i=0;i<aps.length;i++)(function(ap){
-      xhr({action:'probe',ap:ap},function(r){out.push(ap+'='+(r&&r.ip?r.ip:'-'));if(--left===0){msg(out.join('；'),true);loadStatus()}})
+      xhr({action:'probe',ap:ap},function(r){
+        var ip=(r&&r.ip)?r.ip:'-';
+        if(!r||!r.ok||!ip||ip==='-') ok=false;
+        if(ip&&ip!=='-') state.ips[ap]=ip;
+        out.push(ap+' = '+ip);
+
+        if(--left===0){
+          var text=out.join('；');
+          state.probeResult[id]={
+            ok:ok,
+            text:(ok?'检测成功：':'检测失败：')+text,
+            time:(new Date()).toLocaleTimeString()
+          };
+          renderNodes();
+          msg((ok?'检测成功：':'检测失败：')+text,ok);
+        }
+      })
     })(aps[i]);
   }
 
