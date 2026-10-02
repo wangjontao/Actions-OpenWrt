@@ -1,0 +1,58 @@
+name: FastACL 2.3.0 Stable Installer Check
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - jontaoNpS-mt7981-v9-fix3-fastacl-stable-20261002
+    paths:
+      - scripts/install-juliang-fastacl-v2.3.0-stable.sh
+      - .github/workflows/FastACL-v2.3.0-Stable-Installer-Check.yml
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Lua parser
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1
+
+      - name: Verify self-contained installer
+        run: |
+          set -euxo pipefail
+          F=scripts/install-juliang-fastacl-v2.3.0-stable.sh
+          sh -n "$F"
+          grep -q 'VERSION="2.3.0-stable"' "$F"
+          grep -q 'juliang_killswitch' "$F"
+          grep -q 'health_check_assigned' "$F"
+          grep -q 'switch_node "$ap" "$node" 1' "$F"
+          grep -q 'ACL 实际出口 IP' "$F"
+          ! grep -q 'idx<=10' "$F"
+
+          extract() {
+            tag="$1"
+            out="$2"
+            awk -v b="__JFA_BEGIN_${tag}__" -v e="__JFA_END_${tag}__" '
+              $0 == b { on=1; next }
+              $0 == e { found=1; exit }
+              on { print }
+              END { if (!found) exit 2 }
+            ' "$F" > "$out"
+            test -s "$out"
+          }
+
+          mkdir -p /tmp/jfa-check
+          for tag in ENGINE GUARD LUCI UNINSTALL INIT HOTPLUG; do
+            extract "$tag" "/tmp/jfa-check/$tag.sh"
+            sh -n "/tmp/jfa-check/$tag.sh"
+          done
+
+          for tag in ROUTER RELAY DISCOVER CTRL PW2_ACL_JSON PW_ACL_JSON; do
+            extract "$tag" "/tmp/jfa-check/$tag.lua"
+            luac5.1 -p "/tmp/jfa-check/$tag.lua"
+          done
+
+          echo "FastACL 2.3.0 Stable installer verification passed."
