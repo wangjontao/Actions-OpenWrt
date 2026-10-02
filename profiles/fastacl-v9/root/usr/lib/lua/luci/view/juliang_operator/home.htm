@@ -9,7 +9,7 @@ local function sh(cmd)
 end
 
 local hostname = sys.hostname() or "JuLiangTK"
-local wan_ip = sh([[ubus call network.interface.wan status | jsonfilter -e '@["ipv4-address"][0].address']]])
+local wan_ip = sh([=[ubus call network.interface.wan status | jsonfilter -e '@["ipv4-address"][0].address']]=])
 if wan_ip == "" then wan_ip = "-" end
 
 local uptime_s = tonumber(sh([[cut -d. -f1 /proc/uptime]])) or 0
