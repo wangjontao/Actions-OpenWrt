@@ -12,8 +12,6 @@ local function sh(cmd)
 end
 
 local hostname = sys.hostname() or "JuLiangTK"
-local wan_ip = sh([=[ubus call network.interface.wan status | jsonfilter -e '@["ipv4-address"][0].address']]=])
-if wan_ip == "" then wan_ip = "-" end
 
 local uptime_s = tonumber(sh([[cut -d. -f1 /proc/uptime]])) or 0
 local d = math.floor(uptime_s / 86400)
@@ -33,6 +31,7 @@ end)
 
 local fast_url = dsp.build_url("admin","services","juliang_fastacl_console")
 local wifi_url = dsp.build_url("admin","network","wireless_operator")
+local api_url = dsp.build_url("admin","juliang_operator_api")
 %>
 
 <style>
@@ -46,30 +45,54 @@ local wifi_url = dsp.build_url("admin","network","wireless_operator")
 .jo-value{font-size:21px;font-weight:700;line-height:1.35}
 .jo-detail{margin-top:8px;font-size:13px;opacity:.7;line-height:1.5}
 .jo-ok{color:#159957}.jo-bad{color:#e43f3b}.jo-warn{color:#e6a23c}
-.jo-actions{display:grid;grid-template-columns:repeat(2,minmax(260px,1fr));gap:14px}
+.jo-actions{display:grid;grid-template-columns:repeat(2,minmax(260px,1fr));gap:14px;margin-bottom:18px}
 .jo-action{display:block;text-decoration:none!important;border-radius:16px;padding:22px;border:1px solid rgba(128,128,128,.16);background:rgba(92,110,225,.06);transition:.15s}
 .jo-action:hover{transform:translateY(-1px);box-shadow:0 5px 18px rgba(0,0,0,.08)}
 .jo-action-title{font-size:19px;font-weight:700;margin-bottom:7px}
 .jo-action-desc{font-size:13px;opacity:.7;line-height:1.5}
 .jo-badges{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .jo-badge{padding:4px 9px;border-radius:999px;background:rgba(128,128,128,.11);font-size:12px;font-weight:700}
-@media(max-width:1000px){.jo-grid{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:650px){.jo-grid,.jo-actions{grid-template-columns:1fr}.jo-wrap{padding:0}}
+.jo-monitor{display:grid;grid-template-columns:minmax(0,2fr) minmax(320px,1fr);gap:14px}
+.jo-panel{border:1px solid rgba(128,128,128,.16);border-radius:14px;padding:18px;background:var(--main-bg-color,#fff);box-shadow:0 2px 10px rgba(0,0,0,.04)}
+.jo-panel-title{font-size:17px;font-weight:700;margin-bottom:14px}
+.jo-speedbar{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+.jo-speeditem{padding:10px 12px;border-radius:10px;background:rgba(128,128,128,.06)}
+.jo-speedlabel{font-size:12px;opacity:.62;margin-bottom:4px}
+.jo-speedvalue{font-size:17px;font-weight:700}
+.jo-down{color:#1677ff}.jo-up{color:#16a085}
+.jo-chart{width:100%;height:220px;display:block;border-radius:10px;background:linear-gradient(180deg,rgba(92,110,225,.04),rgba(92,110,225,0))}
+.jo-chart-grid{stroke:rgba(128,128,128,.14);stroke-width:1}
+.jo-line-down{fill:none;stroke:#22b8cf;stroke-width:3;vector-effect:non-scaling-stroke}
+.jo-line-up{fill:none;stroke:#6c5ce7;stroke-width:3;vector-effect:non-scaling-stroke}
+.jo-legend{display:flex;gap:18px;justify-content:flex-end;font-size:12px;margin-top:7px}
+.jo-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
+.jo-wan-line{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid rgba(128,128,128,.10);font-size:13px}
+.jo-wan-line:last-child{border-bottom:0}
+.jo-wan-label{opacity:.62}
+.jo-wan-val{font-weight:700;text-align:right;word-break:break-all}
+.jo-portlist{margin-top:14px;border-top:1px solid rgba(128,128,128,.14);padding-top:12px}
+.jo-port{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0}
+.jo-portname{font-weight:700}
+.jo-portmeta{font-size:12px;opacity:.68}
+.jo-link-ok{padding:3px 8px;border-radius:999px;background:rgba(21,153,87,.10);color:#159957;font-size:12px;font-weight:700}
+.jo-link-off{padding:3px 8px;border-radius:999px;background:rgba(228,63,59,.08);color:#e43f3b;font-size:12px;font-weight:700}
+@media(max-width:1100px){.jo-grid{grid-template-columns:repeat(2,1fr)}.jo-monitor{grid-template-columns:1fr}}
+@media(max-width:650px){.jo-grid,.jo-actions{grid-template-columns:1fr}.jo-speedbar{grid-template-columns:repeat(2,1fr)}.jo-wrap{padding:0}}
 </style>
 
 <div class="cbi-map jo-wrap">
   <div class="jo-hero">
     <div>
       <h2>JuLiang 控制中心</h2>
-      <div class="jo-sub">仅保留常用状态、FastACL 与无线管理。</div>
+      <div class="jo-sub">常用状态、实时流量、FastACL、无线与连接设备。</div>
     </div>
   </div>
 
   <div class="jo-grid">
     <div class="jo-card">
       <h3>网络状态</h3>
-      <div class="jo-value"><%=wan_ip%></div>
-      <div class="jo-detail">WAN IPv4</div>
+      <div id="jo_wan_ip" class="jo-value">读取中…</div>
+      <div id="jo_wan_detail" class="jo-detail">WAN IPv4</div>
     </div>
 
     <div class="jo-card">
@@ -100,10 +123,139 @@ local wifi_url = dsp.build_url("admin","network","wireless_operator")
       <div class="jo-action-desc">节点导入、无线分配、链式前置、出口检测与解除绑定。</div>
     </a>
     <a class="jo-action" href="<%=wifi_url%>">
-      <div class="jo-action-title">无线概况</div>
-      <div class="jo-action-desc">查看当前 2.4G / 5G / 多 SSID 无线状态。</div>
+      <div class="jo-action-title">无线与终端</div>
+      <div class="jo-action-desc">修改 SSID / 密码 / 信道，并查看每个无线下连接的手机、IP、MAC、信号和实时速率。</div>
     </a>
   </div>
+
+  <div class="jo-monitor">
+    <div class="jo-panel">
+      <div class="jo-panel-title">实时网络流量</div>
+      <div class="jo-speedbar">
+        <div class="jo-speeditem"><div class="jo-speedlabel">当前下载</div><div id="jo_down" class="jo-speedvalue jo-down">-</div></div>
+        <div class="jo-speeditem"><div class="jo-speedlabel">当前上传</div><div id="jo_up" class="jo-speedvalue jo-up">-</div></div>
+        <div class="jo-speeditem"><div class="jo-speedlabel">累计下载</div><div id="jo_rx_total" class="jo-speedvalue">-</div></div>
+        <div class="jo-speeditem"><div class="jo-speedlabel">累计上传</div><div id="jo_tx_total" class="jo-speedvalue">-</div></div>
+      </div>
+
+      <svg id="jo_chart" class="jo-chart" viewBox="0 0 1000 220" preserveAspectRatio="none">
+        <line class="jo-chart-grid" x1="0" y1="55" x2="1000" y2="55"></line>
+        <line class="jo-chart-grid" x1="0" y1="110" x2="1000" y2="110"></line>
+        <line class="jo-chart-grid" x1="0" y1="165" x2="1000" y2="165"></line>
+        <polyline id="jo_down_line" class="jo-line-down" points=""></polyline>
+        <polyline id="jo_up_line" class="jo-line-up" points=""></polyline>
+      </svg>
+      <div class="jo-legend">
+        <span><i class="jo-dot" style="background:#22b8cf"></i>下载</span>
+        <span><i class="jo-dot" style="background:#6c5ce7"></i>上传</span>
+      </div>
+    </div>
+
+    <div class="jo-panel">
+      <div class="jo-panel-title">WAN 与网络接口</div>
+      <div class="jo-wan-line"><span class="jo-wan-label">连接状态</span><span id="jo_wan_up" class="jo-wan-val">-</span></div>
+      <div class="jo-wan-line"><span class="jo-wan-label">IPv4</span><span id="jo_wan_ip2" class="jo-wan-val">-</span></div>
+      <div class="jo-wan-line"><span class="jo-wan-label">接口</span><span id="jo_wan_dev" class="jo-wan-val">-</span></div>
+      <div class="jo-wan-line"><span class="jo-wan-label">协议</span><span id="jo_wan_proto" class="jo-wan-val">-</span></div>
+      <div class="jo-wan-line"><span class="jo-wan-label">网关</span><span id="jo_wan_gw" class="jo-wan-val">-</span></div>
+      <div id="jo_ports" class="jo-portlist"><div class="jo-detail">正在读取网络接口…</div></div>
+    </div>
+  </div>
 </div>
+
+<script type="text/javascript">
+(function(){
+  var API='<%=api_url%>', prev=null, last=0, downHist=[], upHist=[], maxPoints=60;
+
+  function fmtBytes(v){
+    v=Math.max(0,Number(v)||0);
+    if(v<1024) return v.toFixed(0)+' B';
+    if(v<1024*1024) return (v/1024).toFixed(v<10240?1:0)+' KB';
+    if(v<1024*1024*1024) return (v/1024/1024).toFixed(2)+' MB';
+    return (v/1024/1024/1024).toFixed(2)+' GB';
+  }
+  function fmtRate(v){
+    v=Math.max(0,Number(v)||0);
+    if(v<1024) return v.toFixed(0)+' B/s';
+    if(v<1024*1024) return (v/1024).toFixed(v<10240?1:0)+' KB/s';
+    return (v/1024/1024).toFixed(2)+' MB/s';
+  }
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+
+  function draw(){
+    var all=downHist.concat(upHist), max=1;
+    for(var i=0;i<all.length;i++) if(all[i]>max) max=all[i];
+    max*=1.15;
+
+    function pts(a){
+      if(!a.length) return '';
+      var out=[], n=Math.max(1,maxPoints-1);
+      for(var i=0;i<a.length;i++){
+        var x=(i/n)*1000, y=210-(Math.min(max,a[i])/max)*190;
+        out.push(x.toFixed(1)+','+y.toFixed(1));
+      }
+      return out.join(' ');
+    }
+    document.getElementById('jo_down_line').setAttribute('points',pts(downHist));
+    document.getElementById('jo_up_line').setAttribute('points',pts(upHist));
+  }
+
+  function updatePorts(ports){
+    var e=document.getElementById('jo_ports'), html='';
+    ports=ports||[];
+    if(!ports.length){e.innerHTML='<div class="jo-detail">未检测到物理接口</div>';return}
+    for(var i=0;i<ports.length;i++){
+      var p=ports[i], name=p.name+(p.role?' ('+p.role+')':'');
+      html+='<div class="jo-port">'+
+        '<div><div class="jo-portname">'+esc(name)+'</div><div class="jo-portmeta">'+esc(p.operstate||'unknown')+(p.speed?' · '+esc(p.speed)+' Mbit/s':'')+'</div></div>'+
+        '<span class="'+(p.connected?'jo-link-ok':'jo-link-off')+'">'+(p.connected?'已连接':'未连接')+'</span>'+
+      '</div>';
+    }
+    e.innerHTML=html;
+  }
+
+  function poll(){
+    XHR.get(API,{},function(x,r){
+      if(!x||x.status!==200||!r||!r.ok)return;
+      var w=r.wan||{}, now=Date.now(), down=0, up=0, dt=last?Math.max(.5,(now-last)/1000):0;
+
+      if(prev&&dt>0){
+        var dr=(Number(w.rx_bytes)||0)-(Number(prev.rx_bytes)||0);
+        var dtb=(Number(w.tx_bytes)||0)-(Number(prev.tx_bytes)||0);
+        if(dr>=0) down=dr/dt;
+        if(dtb>=0) up=dtb/dt;
+      }
+
+      document.getElementById('jo_wan_ip').textContent=w.ip||'-';
+      document.getElementById('jo_wan_detail').textContent=(w.device||'WAN')+' · '+(w.proto||'-');
+      document.getElementById('jo_wan_up').textContent=w.up?'网络连接正常':'未连接';
+      document.getElementById('jo_wan_up').className='jo-wan-val '+(w.up?'jo-ok':'jo-bad');
+      document.getElementById('jo_wan_ip2').textContent=w.ip||'-';
+      document.getElementById('jo_wan_dev').textContent=w.device||'-';
+      document.getElementById('jo_wan_proto').textContent=(w.proto||'-').toUpperCase();
+      document.getElementById('jo_wan_gw').textContent=w.gateway||'-';
+
+      document.getElementById('jo_down').textContent=prev?fmtRate(down):'采样中…';
+      document.getElementById('jo_up').textContent=prev?fmtRate(up):'采样中…';
+      document.getElementById('jo_rx_total').textContent=fmtBytes(w.rx_bytes);
+      document.getElementById('jo_tx_total').textContent=fmtBytes(w.tx_bytes);
+
+      if(prev){
+        downHist.push(down); upHist.push(up);
+        if(downHist.length>maxPoints)downHist.shift();
+        if(upHist.length>maxPoints)upHist.shift();
+        draw();
+      }
+
+      updatePorts(r.ports||[]);
+      prev={rx_bytes:Number(w.rx_bytes)||0,tx_bytes:Number(w.tx_bytes)||0};
+      last=now;
+    });
+  }
+
+  poll();
+  setInterval(poll,2000);
+})();
+</script>
 
 <%+footer%>
