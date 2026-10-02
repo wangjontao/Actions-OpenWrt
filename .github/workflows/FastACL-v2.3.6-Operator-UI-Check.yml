@@ -12,6 +12,7 @@ on:
       - profiles/fastacl-v9/root/usr/lib/lua/luci/view/juliang_operator/wireless.htm
       - profiles/fastacl-v9/root/usr/share/rpcd/acl.d/juliang-operator.json
       - profiles/fastacl-v9/root/usr/share/luci/menu.d/zz-juliang-operator.json
+      - scripts/repair-juliang-operator-v2.3.6-ui.sh
       - .github/workflows/FastACL-v2.3.6-Operator-UI-Check.yml
 
 jobs:
@@ -37,6 +38,7 @@ jobs:
           grep -q 'wifi reload' "$ROOT/usr/lib/lua/luci/controller/juliang_operator.lua"
           grep -q '"getFeatures"' "$ROOT/usr/share/rpcd/acl.d/juliang-operator.json"
           grep -q '"admin/network/wireless_operator"' "$ROOT/usr/share/luci/menu.d/zz-juliang-operator.json"
+          sh -n scripts/repair-juliang-operator-v2.3.6-ui.sh
 
       - name: Simulate QuickStart gate patch
         run: |
