@@ -13,6 +13,7 @@ on:
       - profiles/fastacl-v9/root/usr/libexec/juliang-operator-patch.lua
       - profiles/fastacl-v9/root/usr/share/luci/menu.d/zz-juliang-operator.json
       - scripts/repair-juliang-operator-v2.3.7-finalize.sh
+      - scripts/repair-juliang-operator-v2.3.7-fix1-home-syntax.sh
       - .github/workflows/FastACL-v2.3.7-Operator-Finalize-Check.yml
 
 jobs:
@@ -31,6 +32,8 @@ jobs:
           luac5.1 -p "$ROOT/usr/lib/lua/luci/controller/juliang_fastacl.lua"
           luac5.1 -p "$ROOT/usr/lib/lua/luci/controller/juliang_operator.lua"
           luac5.1 -p "$ROOT/usr/libexec/juliang-operator-patch.lua"
+          awk 'NR==2{inb=1;next} inb && /^%>/{exit} inb{print}' "$ROOT/usr/lib/lua/luci/view/juliang_operator/home.htm" >/tmp/operator-home.lua
+          luac5.1 -p /tmp/operator-home.lua
           jq empty "$ROOT/usr/share/luci/menu.d/zz-juliang-operator.json"
           sh -n scripts/repair-juliang-operator-v2.3.7-finalize.sh
           grep -q 'require("uci").cursor()' "$ROOT/usr/lib/lua/luci/controller/juliang_fastacl.lua"
