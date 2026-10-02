@@ -208,10 +208,10 @@ jobs:
           test -s files/etc/config/juliang_fastacl
           grep -q "option enabled '1'" files/etc/config/juliang_fastacl
           grep -q "option version 'V9-FIX3'" files/etc/config/juliang_fastacl
-          grep -q 'removed unsafe FastACL AP -> WAN forwarding' files/usr/bin/juliang-fastacl-guard
-          grep -q 'health_check_assigned' files/usr/bin/juliang-fastacl-guard
-          grep -q 'restart-ap)' files/usr/bin/juliang-fastacl
-          grep -q 'switch_node "$ap" "$node" 1' files/usr/bin/juliang-fastacl
+          grep -q 'removed unsafe FastACL -> WAN forwarding / restored REJECT zones' files/usr/bin/juliang-fastacl-guard
+          grep -q 'enforce_failclosed_firewall' files/usr/bin/juliang-fastacl-guard
+          grep -Fq 'move_node(){' files/usr/bin/juliang-fastacl
+          grep -Fq 'switch_node(){' files/usr/bin/juliang-fastacl
           grep -q "option health_probe_interval '120'" files/etc/config/juliang_fastacl
           grep -q "option health_fail_threshold '3'" files/etc/config/juliang_fastacl
           test -x files/usr/bin/juliang-operator
@@ -675,9 +675,9 @@ jobs:
           grep -q 'V9-FIX3 migration applied' "$ROOTFS/etc/uci-defaults/94-juliang-fastacl-v9"
           grep -q 'juliang-v9-fastacl-10wifi.done' "$ROOTFS/usr/libexec/juliang-5wifi-setup"
           ! grep -q "firewall.\${net}_wan.dest='wan'" "$ROOTFS/usr/libexec/juliang-5wifi-setup"
-          grep -q 'health_check_assigned' "$ROOTFS/usr/bin/juliang-fastacl-guard"
-          grep -q 'restart-ap)' "$ROOTFS/usr/bin/juliang-fastacl"
-          grep -q 'switch_node "$ap" "$node" 1' "$ROOTFS/usr/bin/juliang-fastacl"
+          grep -q 'enforce_failclosed_firewall' "$ROOTFS/usr/bin/juliang-fastacl-guard"
+          grep -Fq 'move_node(){' "$ROOTFS/usr/bin/juliang-fastacl"
+          grep -Fq 'switch_node(){' "$ROOTFS/usr/bin/juliang-fastacl"
           grep -q "option health_probe_interval '120'" "$ROOTFS/etc/config/juliang_fastacl"
           test -x "$ROOTFS/usr/bin/juliang-operator"
           grep -q "Port='20022'" "$ROOTFS/etc/uci-defaults/97-juliang-operator-mode"
