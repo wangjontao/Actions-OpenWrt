@@ -65,7 +65,7 @@ local function runtime_status()
     if not pid then return "stopped" end
     local sys = require "luci.sys"
     if sys.call("kill -0 " .. pid .. " >/dev/null 2>&1") ~= 0 then return "stopped" end
-    local port = tonumber(require("luci.model.uci").cursor():get("juliang_fastacl", "main", "tproxy_port") or "12345")
+    local port = tonumber(require("uci").cursor():get("juliang_fastacl", "main", "tproxy_port") or "12345")
     local cmd = "(ss -lnt 2>/dev/null; ss -lnu 2>/dev/null; netstat -lnt 2>/dev/null; netstat -lnu 2>/dev/null) | grep -q ':" .. port .. " '"
     local listener = sys.call(cmd) == 0
     local nft = sys.call("nft list table inet juliang_fastacl >/dev/null 2>&1") == 0
@@ -108,7 +108,7 @@ end
 function handle()
     local http = require "luci.http"
     local util = require "luci.util"
-    local uci = require("luci.model.uci").cursor()
+    local uci = require("uci").cursor()
     local action = http.formvalue("action") or "status"
     local aps = ap_sections(uci)
 
