@@ -609,24 +609,23 @@ switch_node(){
   fi
 
   # Start/listener/dataplane/real-egress failure: restore previous binding.
-  {
-    if [ -n "$old" ]; then
-      uci set $CFG.ap$n.node="$old"
-      ensure_socks_section "$n" "$old"
-    else
-      uci -q delete $CFG.ap$n.node
-      uci -q delete $APP.jfa_ap$n.node
-    fi
-    if [ -n "$acl" ]; then
-      if [ -n "$old_acl_node" ]; then uci set $APP.$acl.node="$old_acl_node"; else uci -q delete $APP.$acl.node; fi
-    fi
-    uci commit "$CFG"; uci commit "$APP"
-    [ -n "$old" ] && start_ap "$n" >/dev/null 2>&1 || kill_ap "$n"
-    reason="$(cat "$RUN_DIR/ap$n-last-error" 2>/dev/null || echo NODE_START_FAILED)"
-    rm -f "$RUN_DIR/ap$n-last-error"
-    printf '{"ok":false,"ap":"AP%s","node":"%s","error":"%s","rolled_back":true}\n' "$n" "$node" "$reason"
-    return 4
-  }
+  if [ -n "$old" ]; then
+    uci set $CFG.ap$n.node="$old"
+    ensure_socks_section "$n" "$old"
+  else
+    uci -q delete $CFG.ap$n.node
+    uci -q delete $APP.jfa_ap$n.node
+  fi
+  if [ -n "$acl" ]; then
+    if [ -n "$old_acl_node" ]; then uci set $APP.$acl.node="$old_acl_node"; else uci -q delete $APP.$acl.node; fi
+  fi
+  uci commit "$CFG"; uci commit "$APP"
+  [ -n "$old" ] && start_ap "$n" >/dev/null 2>&1 || kill_ap "$n"
+  reason="$(cat "$RUN_DIR/ap$n-last-error" 2>/dev/null || echo NODE_START_FAILED)"
+  rm -f "$RUN_DIR/ap$n-last-error"
+  printf '{"ok":false,"ap":"AP%s","node":"%s","error":"%s","rolled_back":true}\n' "$n" "$node" "$reason"
+  return 4
+}
 
 move_node(){
   ap="$1"; node="$2"; n="$(ap_num "$ap")" || { echo '{"ok":false,"error":"BAD_AP"}'; return 2; }
@@ -764,12 +763,17 @@ lock_acquire(){
     [ "$i" -lt "$tries" ] || return 1
     sleep 1
   done
-  echo $ > "$OP_LOCK/pid"
+  echo "$" > "$OP_LOCK/pid"
   return 0
 }
 
 lock_release(){
   rm -rf "$OP_LOCK" >/dev/null 2>&1 || true
+}
+
+restart_all(){
+  stop_all
+  start_all
 }
 
 run_locked(){
@@ -784,8 +788,8 @@ run_locked(){
 }
 
 case "${1:-}" in
-  start) start_all ;;
-  stop) stop_all ;;
+  start) run_locked start_all ;;
+  stop) run_locked stop_all ;;
   restart) run_locked restart_all ;;
   firewall) run_locked firewall ;;
   killswitch) run_locked install_killswitch ;;
