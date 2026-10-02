@@ -651,9 +651,9 @@ restart_ap(){
   ap="$1"
   n="$(ap_num "$ap")" || { echo '{"ok":false,"error":"BAD_AP"}'; return 2; }
   node="$(uci -q get $CFG.ap$n.node 2>/dev/null || true)"
-  [ -n "$node" ] || { echo '{"ok":false,"ap":"'"$ap"'","error":"UNASSIGNED"}'; return 3; }
+  [ -n "$node" ] || { printf '{"ok":false,"ap":"%s","error":"UNASSIGNED"}\n' "$ap"; return 3; }
   [ "$(uci -q get $APP.$node 2>/dev/null || true)" = "nodes" ] || {
-    echo '{"ok":false,"ap":"'"$ap"'","error":"BAD_NODE"}'
+    printf '{"ok":false,"ap":"%s","error":"BAD_NODE"}\n' "$ap"
     return 4
   }
 
