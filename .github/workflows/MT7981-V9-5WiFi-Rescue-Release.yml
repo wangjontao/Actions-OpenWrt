@@ -80,7 +80,18 @@ jobs:
           echo "Final release payload:"
           ls -lh upload
 
-      - name: Create release with retry
+      - name: Upload recovered 5WiFi firmware package
+        uses: actions/upload-artifact@v4
+        with:
+          name: MT7981-V9-FIX3-5WiFi-Recovered-2026.10.02-10.09.32
+          path: upload/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - id: release
+        name: Create release with retry
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -129,6 +140,7 @@ jobs:
           gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
 
       - name: Verify published asset count
+        if: steps.release.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
