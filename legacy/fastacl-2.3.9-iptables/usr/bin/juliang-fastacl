@@ -1,0 +1,700 @@
+#!/bin/sh
+set -u
+CFG="juliang_fastacl"
+APP="passwall2"
+STATE_DIR="/etc/juliang-fastacl"
+RUN_DIR="/tmp/juliang-fastacl"
+ROUTER_CFG="$STATE_DIR/router.json"
+MARK_HEX="0x66"
+ROUTE_TABLE="100"
+mkdir -p "$STATE_DIR" "$RUN_DIR" /tmp/etc/passwall2/bin /tmp/etc/passwall2/script_func /tmp/etc/passwall2/acl /tmp/etc/passwall2/route /tmp/etc/passwall2/iface /tmp/log /tmp/lock 2>/dev/null || true
+touch /tmp/etc/passwall2/var
+
+log(){ echo "[JFA] $*"; }
+
+save_state(){
+  local dir tmp
+  dir="$STATE_DIR/last-good"
+  tmp="$dir/juliang_fastacl.tmp"
+  mkdir -p "$dir" || return 0
+  cp -af /etc/config/juliang_fastacl "$tmp" 2>/dev/null || return 0
+  mv -f "$tmp" "$dir/juliang_fastacl" 2>/dev/null || true
+}
+
+restore_state(){
+  local src
+  src="$STATE_DIR/last-good/juliang_fastacl"
+  [ -s "$src" ] || return 1
+  cp -af "$src" /etc/config/juliang_fastacl || return 1
+  log "restored FastACL last-good persistent config"
+  return 0
+}
+
+has_tcp_listener(){
+  local port="$1"
+  ss -lnt 2>/dev/null | grep -q ":$port " && return 0
+  netstat -lnt 2>/dev/null | grep -q ":$port " && return 0
+  return 1
+}
+
+has_any_listener(){
+  local port="$1"
+  ss -lnt 2>/dev/null | grep -q ":$port " && return 0
+  ss -lnu 2>/dev/null | grep -q ":$port " && return 0
+  netstat -lnt 2>/dev/null | grep -q ":$port " && return 0
+  netstat -lnu 2>/dev/null | grep -q ":$port " && return 0
+  return 1
+}
+
+ap_count(){
+  local c
+  c="$(uci -q get $CFG.main.ap_count 2>/dev/null || echo 0)"
+  case "$c" in ''|*[!0-9]*) c=0 ;; esac
+  echo "$c"
+}
+
+ap_num(){
+  local n
+  case "$1" in
+    AP[0-9]*) n="${1#AP}" ;;
+    *) return 1 ;;
+  esac
+  case "$n" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$n" -ge 1 ] 2>/dev/null || return 1
+  [ "$(uci -q get $CFG.ap$n 2>/dev/null || true)" = "ap" ] || return 1
+  echo "$n"
+}
+
+find_acl_section(){
+  local n="$1" subnet
+  subnet="$(uci -q get $CFG.ap$n.subnet 2>/dev/null || true)"
+  [ -n "$subnet" ] || return 0
+  uci -q show "$APP" | awk -F'[.=]' -v S="$subnet" '
+    /\.sources=/{gsub("\047", "", $0); if ($0 ~ "=" S "$") print $2}
+  ' | head -n1
+}
+
+ensure_socks_section(){
+  local n="$1" node="${2:-}" sec port type
+  sec="jfa_ap$n"; port="$(uci -q get $CFG.ap$n.socks_port 2>/dev/null || echo $((13100+n)))"
+  type="$(uci -q get $APP.$sec 2>/dev/null || true)"
+  [ "$type" = "socks" ] || { uci -q delete $APP.$sec; uci set $APP.$sec='socks'; }
+  uci set $APP.$sec.enabled='0'
+  uci set $APP.$sec.bind_local='1'
+  uci set $APP.$sec.port="$port"
+  uci set $APP.$sec.http_port='0'
+  uci set $APP.$sec.log='1'
+  uci set $APP.$sec.enable_autoswitch='0'
+  [ -n "$node" ] && uci set $APP.$sec.node="$node" || true
+}
+
+ensure_pre_section(){
+  local n="$1" node="${2:-}" sec port type
+  sec="jfa_pre$n"; port="$(uci -q get $CFG.ap$n.preproxy_port 2>/dev/null || echo $((14100+n)))"
+  type="$(uci -q get $APP.$sec 2>/dev/null || true)"
+  [ "$type" = "socks" ] || { uci -q delete $APP.$sec >/dev/null 2>&1 || true; uci set $APP.$sec='socks'; }
+  uci set $APP.$sec.enabled='0'
+  uci set $APP.$sec.bind_local='1'
+  uci set $APP.$sec.port="$port"
+  uci set $APP.$sec.http_port='0'
+  uci set $APP.$sec.log='1'
+  uci set $APP.$sec.enable_autoswitch='0'
+  [ -n "$node" ] && uci set $APP.$sec.node="$node" || true
+}
+
+start_preproxy(){
+  local n="$1" pre="$2" sec port plog i
+  sec="jfa_pre$n"; port="$(uci -q get $CFG.ap$n.preproxy_port 2>/dev/null || echo $((14100+n)))"
+  [ -n "$pre" ] || return 0
+  [ "$(uci -q get $APP.$pre 2>/dev/null || true)" = "nodes" ] || {
+    log "AP$n 前置节点不存在: $pre"
+    return 1
+  }
+
+  ensure_pre_section "$n" "$pre"
+  uci commit "$APP"
+
+  pgrep -af '/tmp/etc/passwall2/bin' 2>/dev/null | awk -v P="$sec" '$0 ~ P {print $1}' | xargs -r kill -9 >/dev/null 2>&1 || true
+  pgrep -af "SOCKS_${sec}" 2>/dev/null | awk '!/pgrep/{print $1}' | xargs -r kill -9 >/dev/null 2>&1 || true
+
+  plog="$RUN_DIR/ap$n-preproxy-switch.log"
+  : > "$plog"
+  # PassWall2 socks_node_switch may return non-zero when its transparent
+  # runtime cache (USE_TABLES) is absent, even if the local relay was started.
+  # FastACL therefore verifies the actual listening port instead of trusting
+  # the helper's shell return code.
+  /usr/share/passwall2/app.sh socks_node_switch flag="$sec" new_node="$pre" >"$plog" 2>&1 || true
+
+  i=0
+  while [ "$i" -lt 6 ]; do
+    has_tcp_listener "$port" && return 0
+    sleep 1
+    i=$((i+1))
+  done
+
+  {
+    echo "AP$n preproxy SOCKS port $port not ready"
+    echo "preproxy=$pre"
+    echo "===== switch log ====="
+    cat "$plog" 2>/dev/null || true
+    echo "===== passwall2 socks log ====="
+    cat "/tmp/etc/passwall2/SOCKS_${sec}.log" 2>/dev/null || true
+    echo "===== generated config ====="
+    cat "/tmp/etc/passwall2/SOCKS_${sec}.json" 2>/dev/null || true
+  } > "$RUN_DIR/ap$n-preproxy-error.log"
+  log "AP$n 前置代理端口 $port 未就绪，诊断：$RUN_DIR/ap$n-preproxy-error.log"
+  return 1
+}
+
+kill_ap(){
+  local n="$1" sec psec pidf flag
+  sec="jfa_ap$n"; psec="jfa_pre$n"
+  pidf="$RUN_DIR/ap$n.pid"
+  if [ -s "$pidf" ]; then kill "$(cat "$pidf")" >/dev/null 2>&1 || true; rm -f "$pidf"; fi
+  for flag in "$sec" "$psec"; do
+    pgrep -af '/tmp/etc/passwall2/bin' 2>/dev/null | awk -v P="$flag" '$0 ~ P {print $1}' | xargs -r kill -9 >/dev/null 2>&1 || true
+    pgrep -af "SOCKS_${flag}" 2>/dev/null | awk '!/pgrep/{print $1}' | xargs -r kill -9 >/dev/null 2>&1 || true
+  done
+  rm -f "$RUN_DIR/ap$n-direct.json" "$RUN_DIR/ap$n-preproxy-error.log" "$RUN_DIR/ap$n-preproxy-switch.log"
+}
+
+start_ap(){
+  local n="$1" landing_node type proto port chain pre preport cfg swlog i
+  landing_node="$(uci -q get $CFG.ap$n.node 2>/dev/null || true)"
+  [ -n "$landing_node" ] || { kill_ap "$n"; return 0; }
+  [ "$(uci -q get $APP.$landing_node 2>/dev/null || true)" = "nodes" ] || { log "AP$n 节点不存在: $landing_node"; return 1; }
+  ensure_socks_section "$n" "$landing_node"
+  uci commit "$APP"
+  kill_ap "$n"
+  type="$(uci -q get $APP.$landing_node.type 2>/dev/null | tr 'A-Z' 'a-z')"
+  proto="$(uci -q get $APP.$landing_node.protocol 2>/dev/null | tr 'A-Z' 'a-z')"
+  [ -n "$proto" ] || proto="$type"
+  port="$(uci -q get $CFG.ap$n.socks_port 2>/dev/null || echo $((13100+n)))"
+  chain="$(uci -q get $APP.$landing_node.chain_proxy 2>/dev/null || true)"
+  pre="$(uci -q get $APP.$landing_node.preproxy_node 2>/dev/null || true)"
+
+  # SOCKS/HTTP landing nodes get a deterministic cross-core bridge:
+  # native preproxy core (Xray or sing-box) -> local SOCKS 141xx ->
+  # sing-box landing SOCKS/HTTP -> local SOCKS 131xx.
+  if [ "$proto" = "socks" ] || [ "$proto" = "http" ]; then
+    preport="0"
+    if [ "$chain" = "1" ] && [ -n "$pre" ]; then
+      start_preproxy "$n" "$pre" || return 1
+      preport="$(uci -q get $CFG.ap$n.preproxy_port 2>/dev/null || echo $((14100+n)))"
+    fi
+    cfg="$RUN_DIR/ap$n-direct.json"
+    lua /usr/libexec/juliang-fastacl-relay.lua "$landing_node" "$port" "$cfg" "$preport" || return 1
+    sing-box check -c "$cfg" >"$RUN_DIR/ap$n-relay-check.log" 2>&1 || {
+      log "AP$n SOCKS/HTTP 桥接配置检查失败"
+      return 1
+    }
+    sing-box run -c "$cfg" >"$RUN_DIR/ap$n.log" 2>&1 &
+    echo $! > "$RUN_DIR/ap$n.pid"
+  else
+    swlog="$RUN_DIR/ap$n-switch.log"
+    : > "$swlog"
+    # The helper can return 1 after PassWall2 handover simply because its
+    # USE_TABLES cache is empty. Do not fail on the return code; the local
+    # SOCKS listener below is the authoritative health check.
+    /usr/share/passwall2/app.sh socks_node_switch flag="jfa_ap$n" new_node="$landing_node" >"$swlog" 2>&1 || true
+  fi
+  i=0
+  while [ "$i" -lt 5 ]; do
+    has_tcp_listener "$port" && return 0
+    sleep 1; i=$((i+1))
+  done
+  {
+    echo "AP$n local SOCKS port $port not ready"
+    echo "node=$landing_node type=$type protocol=$proto chain=$chain preproxy=$pre"
+    echo "===== preproxy error ====="
+    cat "$RUN_DIR/ap$n-preproxy-error.log" 2>/dev/null || true
+    echo "===== relay check ====="
+    cat "$RUN_DIR/ap$n-relay-check.log" 2>/dev/null || true
+    echo "===== switch log ====="
+    cat "$RUN_DIR/ap$n-switch.log" 2>/dev/null || true
+    echo "===== passwall2 socks log ====="
+    cat "/tmp/etc/passwall2/SOCKS_jfa_ap$n.log" 2>/dev/null || true
+    echo "===== generated config ====="
+    cat "/tmp/etc/passwall2/SOCKS_jfa_ap$n.json" 2>/dev/null || true
+  } > "$RUN_DIR/ap$n-start-error.log"
+  log "AP$n 本地 SOCKS 端口 $port 未就绪，诊断：$RUN_DIR/ap$n-start-error.log"
+  return 1
+}
+
+probe_ap(){
+  n="$1"; port="$(uci -q get $CFG.ap$n.socks_port 2>/dev/null || echo $((13100+n)))"
+  ip="$(curl -4 -fsS --connect-timeout 3 --max-time 6 --socks5-hostname "127.0.0.1:$port" https://api.ipify.org 2>/dev/null || true)"
+  [ -n "$ip" ] || ip="-"
+  echo "$ip"
+}
+
+write_router(){
+  lua /usr/libexec/juliang-fastacl-router.lua > "$ROUTER_CFG" || return 1
+  sing-box check -c "$ROUTER_CFG" >/tmp/jfa-router-check.log 2>&1 || { cat /tmp/jfa-router-check.log; return 1; }
+}
+
+remove_fw4_accept(){
+  while iptables -t filter -C INPUT -m mark --mark "$MARK_HEX/0xff" -j ACCEPT >/dev/null 2>&1; do
+    iptables -t filter -D INPUT -m mark --mark "$MARK_HEX/0xff" -j ACCEPT >/dev/null 2>&1 || break
+  done
+}
+
+install_fw4_accept(){
+  remove_fw4_accept
+  iptables -t filter -I INPUT 1 -m mark --mark "$MARK_HEX/0xff" -j ACCEPT >/dev/null 2>&1 || {
+    log "failed to install legacy iptables TProxy INPUT accept rule"
+    return 1
+  }
+}
+
+ap_sources_csv(){
+  local n count subnet out
+  count="$(ap_count)"
+  out=""
+  n=1
+  while [ "$n" -le "$count" ]; do
+    subnet="$(uci -q get $CFG.ap$n.subnet 2>/dev/null || true)"
+    if [ -n "$subnet" ]; then
+      [ -n "$out" ] && out="$out, "
+      out="$out$subnet"
+    fi
+    n=$((n+1))
+  done
+  [ -n "$out" ] || return 1
+  printf '%s' "$out"
+}
+
+install_killswitch(){
+  local n count subnet
+  count="$(ap_count)"
+  [ "$count" -gt 0 ] || { log "no AP subnets discovered for kill-switch"; return 1; }
+
+  while iptables -t filter -C FORWARD -j JULIANG_KILLSWITCH >/dev/null 2>&1; do
+    iptables -t filter -D FORWARD -j JULIANG_KILLSWITCH >/dev/null 2>&1 || break
+  done
+  iptables -t filter -N JULIANG_KILLSWITCH >/dev/null 2>&1 || true
+  iptables -t filter -F JULIANG_KILLSWITCH || return 1
+
+  n=1
+  while [ "$n" -le "$count" ]; do
+    subnet="$(uci -q get $CFG.ap$n.subnet 2>/dev/null || true)"
+    [ -n "$subnet" ] && iptables -t filter -A JULIANG_KILLSWITCH -s "$subnet" -j DROP || true
+    n=$((n+1))
+  done
+
+  iptables -t filter -I FORWARD 1 -j JULIANG_KILLSWITCH || return 1
+}
+
+firewall(){
+  local TPROXY_PORT n count subnet d
+  install_killswitch || return 1
+  TPROXY_PORT="$(uci -q get $CFG.main.tproxy_port 2>/dev/null || echo 12345)"
+
+  while iptables -t mangle -C PREROUTING -j JULIANG_FASTACL >/dev/null 2>&1; do
+    iptables -t mangle -D PREROUTING -j JULIANG_FASTACL >/dev/null 2>&1 || break
+  done
+  iptables -t mangle -N JULIANG_FASTACL >/dev/null 2>&1 || true
+  iptables -t mangle -F JULIANG_FASTACL || return 1
+
+  count="$(ap_count)"
+  [ "$count" -gt 0 ] || { log "no AP subnets discovered"; return 1; }
+  n=1
+  while [ "$n" -le "$count" ]; do
+    subnet="$(uci -q get $CFG.ap$n.subnet 2>/dev/null || true)"
+    if [ -n "$subnet" ]; then
+      iptables -t mangle -A JULIANG_FASTACL -s "$subnet" -p tcp --dport 53 -j TPROXY --on-port "$TPROXY_PORT" --tproxy-mark "$MARK_HEX/0xff" || return 1
+      iptables -t mangle -A JULIANG_FASTACL -s "$subnet" -p udp --dport 53 -j TPROXY --on-port "$TPROXY_PORT" --tproxy-mark "$MARK_HEX/0xff" || return 1
+      for d in 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
+        iptables -t mangle -A JULIANG_FASTACL -s "$subnet" -d "$d" -j RETURN || return 1
+      done
+      iptables -t mangle -A JULIANG_FASTACL -s "$subnet" -p tcp -j TPROXY --on-port "$TPROXY_PORT" --tproxy-mark "$MARK_HEX/0xff" || return 1
+      iptables -t mangle -A JULIANG_FASTACL -s "$subnet" -p udp -j TPROXY --on-port "$TPROXY_PORT" --tproxy-mark "$MARK_HEX/0xff" || return 1
+    fi
+    n=$((n+1))
+  done
+
+  iptables -t mangle -I PREROUTING 1 -j JULIANG_FASTACL || return 1
+  install_fw4_accept || return 1
+  ip rule del fwmark "$MARK_HEX/0xff" table "$ROUTE_TABLE" priority 10000 >/dev/null 2>&1 || true
+  ip rule add fwmark "$MARK_HEX/0xff" table "$ROUTE_TABLE" priority 10000 || return 1
+  ip route replace local 0.0.0.0/0 dev lo table "$ROUTE_TABLE" || return 1
+}
+
+firewall_check(){
+  iptables -t mangle -C PREROUTING -j JULIANG_FASTACL >/dev/null 2>&1 || return 1
+  iptables -t mangle -S JULIANG_FASTACL 2>/dev/null | grep -q -- '--tproxy-mark 0x66/0xff' || return 1
+  iptables -t filter -C FORWARD -j JULIANG_KILLSWITCH >/dev/null 2>&1 || return 1
+  return 0
+}
+
+start_router(){
+  local pid i tport
+  write_router || return 1
+  [ -s "$RUN_DIR/router.pid" ] && kill "$(cat "$RUN_DIR/router.pid")" >/dev/null 2>&1 || true
+  sing-box run -c "$ROUTER_CFG" >"$RUN_DIR/router.log" 2>&1 &
+  pid=$!
+  echo "$pid" > "$RUN_DIR/router.pid"
+  tport="$(uci -q get $CFG.main.tproxy_port 2>/dev/null || echo 12345)"
+  i=0
+  while [ "$i" -lt 5 ]; do
+    kill -0 "$pid" >/dev/null 2>&1 || { cat "$RUN_DIR/router.log"; return 1; }
+    if has_any_listener "$tport"; then
+      return 0
+    fi
+    sleep 1
+    i=$((i+1))
+  done
+  log "FastACL router process exists but TProxy port $tport is not listening"
+  cat "$RUN_DIR/router.log" 2>/dev/null || true
+  return 1
+}
+
+stop_router(){
+  if [ -s "$RUN_DIR/router.pid" ]; then kill "$(cat "$RUN_DIR/router.pid")" >/dev/null 2>&1 || true; rm -f "$RUN_DIR/router.pid"; fi
+}
+
+cleanup_old_passwall2_dataplane(){
+  if [ "$(uci -q get passwall2.@global[0].enabled 2>/dev/null || echo 0)" = "0" ]; then
+    pgrep -af '/tmp/etc/passwall2/acl/default/global.json' 2>/dev/null | awk '!/pgrep|awk/ {print $1}' | xargs -r kill -9 >/dev/null 2>&1 || true
+    for pref in $(ip rule show 2>/dev/null | awk '/fwmark 0x1/ && /lookup 100/ {gsub(":", "", $1); print $1}'); do
+      ip rule del priority "$pref" >/dev/null 2>&1 || true
+    done
+  fi
+}
+
+router_healthy(){
+  local tport pid
+  tport="$(uci -q get $CFG.main.tproxy_port 2>/dev/null || echo 12345)"
+  [ -s "$RUN_DIR/router.pid" ] || return 1
+  pid="$(cat "$RUN_DIR/router.pid" 2>/dev/null || true)"
+  [ -n "$pid" ] || return 1
+  kill -0 "$pid" >/dev/null 2>&1 || return 1
+  has_any_listener "$tport"
+}
+
+dataplane_healthy(){
+  iptables -t filter -C FORWARD -j JULIANG_KILLSWITCH >/dev/null 2>&1 || return 1
+  router_healthy || return 1
+  iptables -t mangle -C PREROUTING -j JULIANG_FASTACL >/dev/null 2>&1 || return 1
+  ip rule show 2>/dev/null | grep -q 'fwmark 0x66/0xff.*lookup 100' || return 1
+  ip route show table "$ROUTE_TABLE" 2>/dev/null | grep -q '^local default dev lo' || return 1
+  return 0
+}
+
+ensure_dataplane(){
+  iptables -t filter -C FORWARD -j JULIANG_KILLSWITCH >/dev/null 2>&1 || {
+    log "FastACL legacy kill-switch 缺失，自动恢复..."
+    install_killswitch || return 1
+  }
+  cleanup_old_passwall2_dataplane
+  if ! router_healthy; then
+    log "FastACL 主 TProxy 未运行，自动恢复..."
+    start_router || return 1
+  fi
+  if ! iptables -t mangle -C PREROUTING -j JULIANG_FASTACL >/dev/null 2>&1; then
+    log "FastACL legacy iptables TProxy 链缺失，自动恢复..."
+    firewall || return 1
+  else
+    install_fw4_accept || return 1
+    if ! ip rule show 2>/dev/null | grep -q 'fwmark 0x66/0xff.*lookup 100'; then
+      ip rule del fwmark "$MARK_HEX/0xff" table "$ROUTE_TABLE" priority 10000 >/dev/null 2>&1 || true
+      ip rule add fwmark "$MARK_HEX/0xff" table "$ROUTE_TABLE" priority 10000 || return 1
+    fi
+    ip route replace local 0.0.0.0/0 dev lo table "$ROUTE_TABLE" || return 1
+  fi
+  dataplane_healthy
+}
+
+repair_all(){
+  lua /usr/libexec/juliang-fastacl-discover.lua >"$RUN_DIR/repair-discover.json" 2>"$RUN_DIR/repair-discover.log" || true
+  cleanup_old_passwall2_dataplane
+  start_all
+}
+
+heal_other_aps(){
+  local skip="${1:-0}" count i node port failed
+  count="$(ap_count)"
+  failed=0
+  i=1
+  while [ "$i" -le "$count" ]; do
+    if [ "$i" -ne "$skip" ]; then
+      node="$(uci -q get $CFG.ap$i.node 2>/dev/null || true)"
+      if [ -n "$node" ] && [ "$(uci -q get $APP.$node 2>/dev/null || true)" = "nodes" ]; then
+        port="$(uci -q get $CFG.ap$i.socks_port 2>/dev/null || echo $((13100+i)))"
+        if ! has_tcp_listener "$port"; then
+          log "AP$i 已绑定但 SOCKS:$port 掉线，自动恢复..."
+          if start_ap "$i"; then
+            log "AP$i 已恢复"
+          else
+            log "AP$i 自动恢复失败"
+            failed=$((failed+1))
+          fi
+        fi
+      fi
+    fi
+    i=$((i+1))
+  done
+  [ "$failed" -eq 0 ]
+}
+
+reload_router(){
+  start_router || return 1
+  firewall || return 1
+}
+
+set_dns_mode(){
+  local ap="$1" mode="$2" n
+  n="$(ap_num "$ap")" || { echo '{"ok":false,"error":"BAD_AP"}'; return 2; }
+  case "$mode" in
+    doh)
+      uci set $CFG.ap$n.dns_mode='doh'
+      ;;
+    tcp)
+      uci set $CFG.ap$n.dns_mode='tcp'
+      ;;
+    auto)
+      uci -q delete $CFG.ap$n.dns_mode
+      ;;
+    *)
+      echo '{"ok":false,"error":"BAD_DNS_MODE"}'
+      return 2
+      ;;
+  esac
+  uci commit "$CFG"
+  save_state
+  if reload_router; then
+    printf '{"ok":true,"ap":"AP%s","dns_mode":"%s"}\n' "$n" "$mode"
+  else
+    printf '{"ok":false,"ap":"AP%s","error":"ROUTER_RELOAD_FAILED"}\n' "$n"
+    return 1
+  fi
+}
+
+start_all(){
+  local n node failed count
+  failed=0
+  count="$(ap_count)"
+  [ "$count" -gt 0 ] || { log "no discovered APs"; return 1; }
+  n=1
+  while [ "$n" -le "$count" ]; do
+    node="$(uci -q get $CFG.ap$n.node 2>/dev/null || true)"
+    if [ -n "$node" ]; then
+      if [ "$(uci -q get $APP.$node 2>/dev/null || true)" != "nodes" ]; then
+        log "AP$n stale mapping cleared: node '$node' no longer exists"
+        clear_ap "AP$n" >/dev/null 2>&1 || true
+      else
+        start_ap "$n" || failed=$((failed+1))
+      fi
+    else
+      kill_ap "$n"
+    fi
+    n=$((n+1))
+  done
+  [ "$failed" -eq 0 ] || {
+    log "$failed assigned AP relay(s) failed to start"
+    return 1
+  }
+  cleanup_old_passwall2_dataplane
+  start_router || return 1
+  firewall || return 1
+  save_state
+}
+
+stop_all(){
+  local n count
+  count="$(ap_count)"
+  n=1; while [ "$n" -le "$count" ]; do kill_ap "$n"; n=$((n+1)); done
+  stop_router
+
+  while iptables -t mangle -C PREROUTING -j JULIANG_FASTACL >/dev/null 2>&1; do
+    iptables -t mangle -D PREROUTING -j JULIANG_FASTACL >/dev/null 2>&1 || break
+  done
+  iptables -t mangle -F JULIANG_FASTACL >/dev/null 2>&1 || true
+  iptables -t mangle -X JULIANG_FASTACL >/dev/null 2>&1 || true
+
+  while iptables -t filter -C FORWARD -j JULIANG_KILLSWITCH >/dev/null 2>&1; do
+    iptables -t filter -D FORWARD -j JULIANG_KILLSWITCH >/dev/null 2>&1 || break
+  done
+  iptables -t filter -F JULIANG_KILLSWITCH >/dev/null 2>&1 || true
+  iptables -t filter -X JULIANG_KILLSWITCH >/dev/null 2>&1 || true
+
+  remove_fw4_accept
+  ip rule del fwmark "$MARK_HEX/0xff" table "$ROUTE_TABLE" priority 10000 >/dev/null 2>&1 || true
+  ip route flush table "$ROUTE_TABLE" >/dev/null 2>&1 || true
+}
+
+switch_node(){
+  ap="$1"; node="$2"; n="$(ap_num "$ap")" || { echo '{"ok":false,"error":"BAD_AP"}'; return 2; }
+  [ "$(uci -q get $APP.$node 2>/dev/null || true)" = "nodes" ] || { echo '{"ok":false,"error":"BAD_NODE"}'; return 3; }
+
+  old="$(uci -q get $CFG.ap$n.node 2>/dev/null || true)"
+  acl="$(find_acl_section "$n")"
+  old_acl_node=""
+  [ -n "$acl" ] && old_acl_node="$(uci -q get $APP.$acl.node 2>/dev/null || true)"
+
+  uci set $CFG.ap$n.node="$node"
+  ensure_socks_section "$n" "$node"
+  [ -n "$acl" ] && { uci set $APP.$acl.node="$node"; uci set $APP.$acl.enabled='1'; }
+  uci commit "$CFG"; uci commit "$APP"
+
+  t0="$(date +%s)"
+  subnet="$(uci -q get $CFG.ap$n.subnet 2>/dev/null || true)"
+  topology_ready=0
+  if [ -n "$subnet" ] && iptables -t mangle -S JULIANG_FASTACL 2>/dev/null | grep -Fq "$subnet"; then
+    topology_ready=1
+  fi
+
+  switch_ok=0
+  if start_ap "$n"; then
+    if [ "$topology_ready" = "1" ]; then
+      ensure_dataplane && switch_ok=1
+    else
+      # Newly discovered target (for example the main LAN) is not present in
+      # the currently loaded TProxy/nftables topology yet. Reload once only;
+      # later switches stay on the fast path.
+      reload_router && switch_ok=1
+    fi
+  fi
+  if [ "$switch_ok" = "1" ]; then
+    # Starting a new local relay must never leave an already assigned AP dead.
+    # Heal only missing listeners; healthy AP relays are untouched.
+    heal_other_aps "$n" >/dev/null 2>&1 || true
+    ensure_dataplane || true
+    ip="$(probe_ap "$n")"
+    printf '%s\n' "$ip" > "$RUN_DIR/ap$n.ip"
+    t1="$(date +%s)"; sec=$((t1-t0))
+    remark="$(uci -q get $APP.$node.remarks 2>/dev/null || echo "$node")"
+    save_state
+    printf '{"ok":true,"ap":"AP%s","node":"%s","remark":"%s","ip":"%s","seconds":%s,"dataplane":"running"}\n' "$n" "$node" "$(echo "$remark" | sed 's/"/\\"/g')" "$ip" "$sec"
+  else
+    if [ -n "$old" ]; then
+      uci set $CFG.ap$n.node="$old"
+      ensure_socks_section "$n" "$old"
+    else
+      uci -q delete $CFG.ap$n.node
+      uci -q delete $APP.jfa_ap$n.node
+    fi
+    if [ -n "$acl" ]; then
+      if [ -n "$old_acl_node" ]; then uci set $APP.$acl.node="$old_acl_node"; else uci -q delete $APP.$acl.node; fi
+    fi
+    uci commit "$CFG"; uci commit "$APP"
+    [ -n "$old" ] && start_ap "$n" >/dev/null 2>&1 || kill_ap "$n"
+    printf '{"ok":false,"ap":"AP%s","node":"%s","error":"NODE_START_FAILED","rolled_back":true}\n' "$n" "$node"
+    return 4
+  fi
+}
+
+move_node(){
+  ap="$1"; node="$2"; n="$(ap_num "$ap")" || { echo '{"ok":false,"error":"BAD_AP"}'; return 2; }
+  [ "$(uci -q get $APP.$node 2>/dev/null || true)" = "nodes" ] || { echo '{"ok":false,"error":"BAD_NODE"}'; return 3; }
+
+  sources=""
+  count="$(ap_count)"
+  i=1
+  while [ "$i" -le "$count" ]; do
+    if [ "$i" -ne "$n" ] && [ "$(uci -q get $CFG.ap$i.node 2>/dev/null || true)" = "$node" ]; then
+      sources="$sources $i"
+    fi
+    i=$((i+1))
+  done
+
+  # Unique-binding means MOVE, not duplicate-then-delete. Stop old AP relay(s)
+  # first to avoid protocol/plugin/shared-resource collisions, but keep UCI
+  # mappings until the target is confirmed healthy so rollback is possible.
+  for i in $sources; do
+    kill_ap "$i"
+  done
+
+  if result="$(switch_node "$ap" "$node")"; then
+    for i in $sources; do
+      uci -q delete $CFG.ap$i.node
+      uci -q delete $APP.jfa_ap$i.node
+      old_acl="$(find_acl_section "$i")"
+      [ -n "$old_acl" ] && uci -q delete $APP.$old_acl.node
+      rm -f "$RUN_DIR/ap$i.ip"
+    done
+    uci commit "$CFG"
+    uci commit "$APP"
+    save_state
+    printf '%s\n' "$result"
+    return 0
+  fi
+
+  # Target failed: source UCI mappings were intentionally left intact; restart
+  # them so the previous working wireless AP is restored.
+  for i in $sources; do
+    start_ap "$i" >/dev/null 2>&1 || true
+  done
+  printf '{"ok":false,"ap":"%s","node":"%s","error":"NODE_START_FAILED","rolled_back_sources":true,"diagnostic":"%s"}\n' "$ap" "$node" "$RUN_DIR/ap$n-start-error.log"
+  return 4
+}
+
+clear_ap(){
+  ap="$1"; n="$(ap_num "$ap")" || { echo '{"ok":false,"error":"BAD_AP"}'; return 2; }
+  old="$(uci -q get $CFG.ap$n.node 2>/dev/null || true)"
+  uci -q delete $CFG.ap$n.node
+  ensure_socks_section "$n" ""
+  uci -q delete $APP.jfa_ap$n.node
+  acl="$(find_acl_section "$n")"
+  [ -n "$acl" ] && uci -q delete $APP.$acl.node
+  uci commit "$CFG"; uci commit "$APP"
+  save_state
+  kill_ap "$n"
+  rm -f "$RUN_DIR/ap$n.ip"
+  printf '{"ok":true,"ap":"AP%s","old_node":"%s"}\n' "$n" "$old"
+}
+
+status(){
+  local tport router_state count
+  echo "JuLiang FastACL"
+  tport="$(uci -q get $CFG.main.tproxy_port 2>/dev/null || echo 12345)"
+  router_state="stopped"
+  if router_healthy; then
+    router_state="running"
+  elif [ -s "$RUN_DIR/router.pid" ] && kill -0 "$(cat "$RUN_DIR/router.pid")" 2>/dev/null; then
+    router_state="broken(no-listener:$tport)"
+  fi
+  echo "router: $router_state"
+  iptables -t mangle -C PREROUTING -j JULIANG_FASTACL >/dev/null 2>&1 && echo "iptables: loaded" || echo "iptables: missing"
+  iptables -t filter -C FORWARD -j JULIANG_KILLSWITCH >/dev/null 2>&1 && echo "killswitch: loaded(fail-closed)" || echo "killswitch: MISSING"
+  count="$(ap_count)"
+  echo "wireless: $count discovered"
+  n=1; while [ "$n" -le "$count" ]; do
+    node="$(uci -q get $CFG.ap$n.node 2>/dev/null || true)"
+    port="$(uci -q get $CFG.ap$n.socks_port 2>/dev/null || echo $((13100+n)))"
+    ssid="$(uci -q get $CFG.ap$n.ssid 2>/dev/null || echo "AP$n")"
+    net="$(uci -q get $CFG.ap$n.network 2>/dev/null || true)"
+    subnet="$(uci -q get $CFG.ap$n.subnet 2>/dev/null || true)"
+    if [ -n "$node" ]; then
+      remark="$(uci -q get $APP.$node.remarks 2>/dev/null || echo "$node")"
+      listen="no"; has_tcp_listener "$port" && listen="yes"
+      echo "AP$n [$ssid | $net | $subnet] -> $remark | socks:$port listen:$listen"
+    else
+      echo "AP$n [$ssid | $net | $subnet] -> unassigned"
+    fi
+    n=$((n+1))
+  done
+}
+
+case "${1:-}" in
+  start) start_all ;;
+  stop) stop_all ;;
+  restart) stop_all; start_all ;;
+  firewall) firewall ;;
+  killswitch) install_killswitch ;;
+  firewall-check) firewall_check ;;
+  switch) [ $# -eq 3 ] || exit 2; switch_node "$2" "$3" ;;
+  move) [ $# -eq 3 ] || exit 2; move_node "$2" "$3" ;;
+  clear) [ $# -eq 2 ] || exit 2; clear_ap "$2" ;;
+  probe) n="$(ap_num "$2")" || exit 2; probe_ap "$n" ;;
+  status) status ;;
+  discover) lua /usr/libexec/juliang-fastacl-discover.lua ;;
+  repair) repair_all ;;
+  heal) heal_other_aps 0 ;;
+  ensure) ensure_dataplane ;;
+  save-state) save_state ;;
+  restore-state) restore_state ;;
+  router-reload) reload_router ;;
+  dns) [ $# -eq 3 ] || exit 2; set_dns_mode "$2" "$3" ;;
+  *) echo "Usage: juliang-fastacl {start|stop|restart|repair|heal|ensure|killswitch|save-state|restore-state|router-reload|dns AP1 doh|dns AP1 tcp|dns AP1 auto|discover|firewall|firewall-check|switch AP1 nodeid|move AP1 nodeid|clear AP1|probe AP1|status}"; exit 1 ;;
+esac
