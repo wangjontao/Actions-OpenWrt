@@ -56,55 +56,72 @@ enforce_failclosed_firewall(){
 }
 
 health_check_assigned(){
-  local count i node interval threshold failfile fails ip ap now
+  local count i node threshold failfile fails ip ap probedir assigned
   count="$(uci -q get juliang_fastacl.main.ap_count 2>/dev/null || echo 0)"
   case "$count" in ''|*[!0-9]*) count=0 ;; esac
   threshold="$(uci -q get juliang_fastacl.main.health_fail_threshold 2>/dev/null || echo 3)"
   case "$threshold" in ''|*[!0-9]*) threshold=3 ;; esac
   [ "$threshold" -ge 1 ] || threshold=3
 
+  # Probe assigned APs in parallel. Even with 20 WiFi networks, one slow/dead
+  # upstream cannot make the Guardian wait 20x the curl timeout.
+  probedir="/tmp/juliang-fastacl/health-probes"
+  rm -rf "$probedir"
+  mkdir -p "$probedir"
+  assigned=""
+
   i=1
   while [ "$i" -le "$count" ]; do
     node="$(uci -q get juliang_fastacl.ap$i.node 2>/dev/null || true)"
-    failfile="/tmp/juliang-fastacl/ap$i.health_fail"
-
-    if [ -z "$node" ]; then
-      rm -f "$failfile"
-      i=$((i+1))
-      continue
+    if [ -n "$node" ]; then
+      assigned="$assigned $i"
+      (/usr/bin/juliang-fastacl probe "AP$i" >"$probedir/ap$i.out" 2>/dev/null || true) &
+    else
+      rm -f "/tmp/juliang-fastacl/ap$i.health_fail"
     fi
+    i=$((i+1))
+  done
+  wait
 
+  for i in $assigned; do
     ap="AP$i"
-    ip="$(/usr/bin/juliang-fastacl probe "$ap" 2>/dev/null || true)"
+    failfile="/tmp/juliang-fastacl/ap$i.health_fail"
+    ip="$(cat "$probedir/ap$i.out" 2>/dev/null | tr -d '\r\n ' || true)"
+
     if [ -n "$ip" ] && [ "$ip" != "-" ]; then
       printf '%s\n' "$ip" > "/tmp/juliang-fastacl/ap$i.ip"
       rm -f "$failfile"
-    else
-      fails="$(cat "$failfile" 2>/dev/null || echo 0)"
-      case "$fails" in ''|*[!0-9]*) fails=0 ;; esac
-      fails=$((fails+1))
-      printf '%s\n' "$fails" > "$failfile"
-      log "$ap real-exit probe failed ($fails/$threshold)"
-
-      if [ "$fails" -ge "$threshold" ]; then
-        log "$ap real-exit failed $fails consecutive probes; restarting only this relay"
-        if /usr/bin/juliang-fastacl restart-ap "$ap" >/tmp/juliang-fastacl/ap$i.health_restart.log 2>&1; then
-          ip="$(/usr/bin/juliang-fastacl probe "$ap" 2>/dev/null || true)"
-          if [ -n "$ip" ] && [ "$ip" != "-" ]; then
-            printf '%s\n' "$ip" > "/tmp/juliang-fastacl/ap$i.ip"
-            rm -f "$failfile"
-            log "$ap real-exit recovered: $ip"
-          else
-            log "$ap relay restarted but real-exit is still unavailable; fail-closed remains active"
-          fi
-        else
-          log "$ap targeted relay restart failed; fail-closed remains active"
-        fi
-      fi
+      continue
     fi
 
-    i=$((i+1))
+    fails="$(cat "$failfile" 2>/dev/null || echo 0)"
+    case "$fails" in ''|*[!0-9]*) fails=0 ;; esac
+    fails=$((fails+1))
+    printf '%s\n' "$fails" > "$failfile"
+    log "$ap real-exit probe failed ($fails/$threshold)"
+
+    if [ "$fails" -ge "$threshold" ]; then
+      log "$ap real-exit failed $fails consecutive probes; restarting only this relay"
+      if /usr/bin/juliang-fastacl restart-ap "$ap" >/tmp/juliang-fastacl/ap$i.health_restart.log 2>&1; then
+        ip="$(/usr/bin/juliang-fastacl probe "$ap" 2>/dev/null | tr -d '\r\n ' || true)"
+        if [ -n "$ip" ] && [ "$ip" != "-" ]; then
+          printf '%s\n' "$ip" > "/tmp/juliang-fastacl/ap$i.ip"
+          rm -f "$failfile"
+          log "$ap real-exit recovered: $ip"
+        else
+          # Give the upstream another full threshold window before restarting
+          # it again. Fail-closed remains active throughout.
+          printf '0\n' > "$failfile"
+          log "$ap relay restarted but real-exit is still unavailable; fail-closed remains active"
+        fi
+      else
+        printf '0\n' > "$failfile"
+        log "$ap targeted relay restart failed; fail-closed remains active"
+      fi
+    fi
   done
+
+  rm -rf "$probedir"
 }
 
 # Real-exit health is intentionally lower frequency than process checks.
