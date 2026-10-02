@@ -187,7 +187,7 @@ kill_ap(){
     pgrep -af '/tmp/etc/passwall2/bin' 2>/dev/null | awk -v P="$flag" '$0 ~ P {print $1}' | xargs -r kill -9 >/dev/null 2>&1 || true
     pgrep -af "SOCKS_${flag}" 2>/dev/null | awk '!/pgrep/{print $1}' | xargs -r kill -9 >/dev/null 2>&1 || true
   done
-  rm -f "$RUN_DIR/ap$n-direct.json" "$RUN_DIR/ap$n-preproxy-error.log" "$RUN_DIR/ap$n-preproxy-switch.log"
+  rm -f "$RUN_DIR/ap$n-direct.json" "$RUN_DIR/ap$n-preproxy-error.log" "$RUN_DIR/ap$n-preproxy-switch.log" "$RUN_DIR/ap$n-preproxy.ip"
 }
 
 start_ap(){
@@ -765,7 +765,7 @@ lock_acquire(){
     [ "$i" -lt "$tries" ] || return 1
     sleep 1
   done
-  echo "$" > "$OP_LOCK/pid"
+  echo "$$" > "$OP_LOCK/pid"
   return 0
 }
 
