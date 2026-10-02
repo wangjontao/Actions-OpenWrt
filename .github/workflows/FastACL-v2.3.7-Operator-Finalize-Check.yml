@@ -1,0 +1,42 @@
+name: FastACL 2.3.7 Operator Finalize Check
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - juliang-fastacl-v2.3.7-operator-finalize-20261002
+    paths:
+      - profiles/fastacl-v9/root/usr/lib/lua/luci/controller/juliang_fastacl.lua
+      - profiles/fastacl-v9/root/usr/lib/lua/luci/controller/juliang_operator.lua
+      - profiles/fastacl-v9/root/usr/lib/lua/luci/view/juliang_operator/home.htm
+      - profiles/fastacl-v9/root/usr/lib/lua/luci/view/juliang_operator/wireless.htm
+      - profiles/fastacl-v9/root/usr/libexec/juliang-operator-patch.lua
+      - profiles/fastacl-v9/root/usr/share/luci/menu.d/zz-juliang-operator.json
+      - scripts/repair-juliang-operator-v2.3.7-finalize.sh
+      - .github/workflows/FastACL-v2.3.7-Operator-Finalize-Check.yml
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1 jq
+      - name: Validate 2.3.7
+        run: |
+          set -euxo pipefail
+          ROOT=profiles/fastacl-v9/root
+          luac5.1 -p "$ROOT/usr/lib/lua/luci/controller/juliang_fastacl.lua"
+          luac5.1 -p "$ROOT/usr/lib/lua/luci/controller/juliang_operator.lua"
+          luac5.1 -p "$ROOT/usr/libexec/juliang-operator-patch.lua"
+          jq empty "$ROOT/usr/share/luci/menu.d/zz-juliang-operator.json"
+          sh -n scripts/repair-juliang-operator-v2.3.7-finalize.sh
+          grep -q 'require("uci").cursor()' "$ROOT/usr/lib/lua/luci/controller/juliang_fastacl.lua"
+          grep -q 'require("uci").cursor()' "$ROOT/usr/lib/lua/luci/controller/juliang_operator.lua"
+          grep -q 'JULIANG_OPERATOR_HOME_V237' "$ROOT/usr/libexec/juliang-operator-patch.lua"
+          grep -q '无线设置' "$ROOT/usr/lib/lua/luci/view/juliang_operator/wireless.htm"
+          grep -q '"admin/network/wireless_operator"' "$ROOT/usr/share/luci/menu.d/zz-juliang-operator.json"
+          ! grep -q '"admin/network/wireless"' "$ROOT/usr/share/luci/menu.d/zz-juliang-operator.json"
+          echo "FastACL 2.3.7 Operator finalize validation passed."
