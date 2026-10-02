@@ -37,6 +37,8 @@ jobs:
           grep -q 'action == "import"' "$ROOT/usr/lib/lua/luci/controller/juliang_fastacl.lua"
           grep -q "fd.append('action','import')" "$ROOT/usr/lib/lua/luci/view/juliang_fastacl/console.htm"
           grep -q "juliang-wireless-operator" "$ROOT/usr/share/rpcd/acl.d/juliang-operator.json"
+          grep -q '"session"' "$ROOT/usr/share/rpcd/acl.d/juliang-operator.json
+          grep -q '"admin/istorex"' "$ROOT/usr/share/luci/menu.d/zz-juliang-operator.json
           grep -q "LuCI-only restricted account" "$ROOT/usr/bin/juliang-operator"
           ! grep -q "useradd\|adduser\|/etc/passwd.*write" "$ROOT/usr/bin/juliang-operator"
           sh -n scripts/install-juliang-fastacl-v2.3.4-operator.sh
@@ -48,6 +50,8 @@ jobs:
           sudo curl -fsSL -o /usr/lib/lua/luci/controller/istore_backend.lua             https://raw.githubusercontent.com/linkease/nas-packages-luci/main/luci/luci-app-quickstart/luasrc/controller/istore_backend.lua
           sudo curl -fsSL -o /usr/lib/lua/luci/view/quickstart/main.htm             https://raw.githubusercontent.com/linkease/nas-packages-luci/main/luci/luci-app-quickstart/luasrc/view/quickstart/main.htm
           sudo curl -fsSL -o /usr/share/luci/menu.d/luci-mod-network.json             https://raw.githubusercontent.com/openwrt/luci/openwrt-24.10/modules/luci-mod-network/root/usr/share/luci/menu.d/luci-mod-network.json
+          sudo mkdir -p /usr/share/ucode/luci/template/themes/argon
+          sudo curl -fsSL -o /usr/share/ucode/luci/template/themes/argon/sysauth.ut             https://raw.githubusercontent.com/jerrykuku/luci-theme-argon/master/ucode/template/themes/argon/sysauth.ut
 
           cat >/tmp/jfa-lua/nixio/fs.lua <<'LUA'
           local M={}
@@ -64,7 +68,9 @@ jobs:
           luac5.1 -p /usr/lib/lua/luci/controller/istore_backend.lua
           grep -q 'JULIANG_OPERATOR_V234' /usr/lib/lua/luci/controller/quickstart.lua
           grep -q 'JULIANG_OPERATOR_HOME_V234' /usr/lib/lua/luci/view/quickstart/main.htm
-          grep -q 'JULIANG_OPERATOR_ISTORE_V234' /usr/lib/lua/luci/controller/istore_backend.lua
+          grep -q 'a\[href\*="/istorex"\]' /usr/lib/lua/luci/view/quickstart/main.htm
+          ! grep -q 'JULIANG_OPERATOR_ISTORE_V234' /usr/lib/lua/luci/controller/istore_backend.lua
           grep -q 'juliang-wireless-operator' /usr/share/luci/menu.d/luci-mod-network.json
+          grep -q 'name="luci_username" value=""' /usr/share/ucode/luci/template/themes/argon/sysauth.ut
 
           echo "FastACL 2.3.4 Operator validation passed."
