@@ -147,6 +147,129 @@ local function station_list(ifname, hosts)
     return out
 end
 
+
+local function valid_ipv4(ip)
+    if type(ip) ~= "string" then return false end
+    local a,b,c,d = ip:match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$")
+    a,b,c,d = tonumber(a),tonumber(b),tonumber(c),tonumber(d)
+    return a and b and c and d and a <= 255 and b <= 255 and c <= 255 and d <= 255
+end
+
+local function client_ip_list(groups)
+    local seen, ips = {}, {}
+    for _, g in ipairs(groups) do
+        for _, x in ipairs(g.clients or {}) do
+            local ip = x.ip or ""
+            if valid_ipv4(ip) and not seen[ip] then
+                seen[ip] = true
+                ips[#ips + 1] = ip
+            end
+        end
+    end
+    table.sort(ips)
+    return ips
+end
+
+local function shell_quote(s)
+    return "'" .. tostring(s or ""):gsub("'", "'\\''") .. "'"
+end
+
+local function ensure_client_counter_table(ips)
+    local sys = require "luci.sys"
+    local sig = table.concat(ips, "\n")
+    local sigfile = "/tmp/juliang-operator-client-counter.ips"
+    local current = readfile(sigfile) or ""
+
+    if #ips == 0 then
+        if current ~= "" then
+            sys.call("nft delete table inet juliang_operator_stats >/dev/null 2>&1 || true")
+            local f = io.open(sigfile, "w")
+            if f then f:write(""); f:close() end
+        end
+        return
+    end
+
+    if current == sig then
+        return
+    end
+
+    local lines = {
+        "delete table inet juliang_operator_stats",
+        "table inet juliang_operator_stats {",
+        " chain jfa_pre {",
+        "  type filter hook prerouting priority -310; policy accept;"
+    }
+
+    for _, ip in ipairs(ips) do
+        lines[#lines + 1] = '  ip saddr ' .. ip .. ' counter comment "UP:' .. ip .. '"'
+    end
+
+    lines[#lines + 1] = " }"
+    lines[#lines + 1] = " chain jfa_post {"
+    lines[#lines + 1] = "  type filter hook postrouting priority 310; policy accept;"
+
+    for _, ip in ipairs(ips) do
+        lines[#lines + 1] = '  ip daddr ' .. ip .. ' counter comment "DOWN:' .. ip .. '"'
+    end
+
+    lines[#lines + 1] = " }"
+    lines[#lines + 1] = "}"
+
+    local tmp = "/tmp/juliang-operator-client-counter.nft"
+    local fh = io.open(tmp, "w")
+    if not fh then return end
+    fh:write(table.concat(lines, "\n"), "\n")
+    fh:close()
+
+    -- Ignore the first delete-table error when the table does not exist.
+    sys.call("(nft -f " .. shell_quote(tmp) .. " >/tmp/juliang-operator-client-counter.log 2>&1) || " ..
+             "(sed -i '1d' " .. shell_quote(tmp) .. " && nft -f " .. shell_quote(tmp) ..
+             " >/tmp/juliang-operator-client-counter.log 2>&1)")
+
+    local check = sys.call("nft list table inet juliang_operator_stats >/dev/null 2>&1")
+    if check == 0 then
+        local sf = io.open(sigfile, "w")
+        if sf then sf:write(sig); sf:close() end
+    end
+end
+
+local function read_client_counters()
+    local sys = require "luci.sys"
+    local out = sys.exec("nft list table inet juliang_operator_stats 2>/dev/null") or ""
+    local stats = {}
+
+    for line in out:gmatch("[^\r\n]+") do
+        local ip, bytes = line:match('ip saddr (%d+%.%d+%.%d+%.%d+).-counter packets %d+ bytes (%d+).-comment "UP:')
+        if ip and bytes then
+            stats[ip] = stats[ip] or {}
+            stats[ip].up_bytes = tonumber(bytes) or 0
+        end
+
+        ip, bytes = line:match('ip daddr (%d+%.%d+%.%d+%.%d+).-counter packets %d+ bytes (%d+).-comment "DOWN:')
+        if ip and bytes then
+            stats[ip] = stats[ip] or {}
+            stats[ip].down_bytes = tonumber(bytes) or 0
+        end
+    end
+
+    return stats
+end
+
+local function apply_client_counters(groups)
+    local ips = client_ip_list(groups)
+    ensure_client_counter_table(ips)
+    local stats = read_client_counters()
+
+    for _, g in ipairs(groups) do
+        for _, x in ipairs(g.clients or {}) do
+            local s = stats[x.ip or ""] or {}
+            x.router_up_bytes = s.up_bytes
+            x.router_down_bytes = s.down_bytes
+            x.counter_source = (s.up_bytes ~= nil or s.down_bytes ~= nil) and "nft" or "driver"
+        end
+    end
+end
+
 local function wireless_clients(uci)
     local by_section, by_ssid = runtime_wireless_map()
     local hosts = host_map()
@@ -173,6 +296,11 @@ local function wireless_clients(uci)
         if a.device == b.device then return a.section < b.section end
         return a.device < b.device
     end)
+
+    -- Proprietary mt_wifi builds may expose PHY rates but leave per-station
+    -- rx_bytes/tx_bytes at zero. Account routed/TProxy traffic by client IPv4
+    -- in a separate counter-only nftables table as a non-invasive fallback.
+    apply_client_counters(groups)
     return groups
 end
 
