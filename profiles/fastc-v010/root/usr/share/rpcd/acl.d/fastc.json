@@ -1,0 +1,15 @@
+{
+  "fastc": {
+    "description": "Allow access to FastC mihomo controller UI",
+    "read": {
+      "uci": ["fastc"],
+      "ubus": {
+        "session": ["access", "get"],
+        "luci": ["getFeatures"]
+      }
+    },
+    "write": {
+      "uci": ["fastc"]
+    }
+  }
+}
