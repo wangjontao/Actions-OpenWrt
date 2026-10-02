@@ -36,6 +36,8 @@ jobs:
           grep -Fq 'echo "$$" > "$OP_LOCK/pid"' profiles/fastacl-v9/root/usr/bin/juliang-fastacl
           grep -q 'JFA_LOCK_TRIES=1' profiles/fastacl-v9/root/usr/bin/juliang-fastacl-guard
           grep -q 'FINAL_EGRESS_FAILED' profiles/fastacl-v9/root/usr/bin/juliang-fastacl
+          grep -q 'STALE_LISTENER' profiles/fastacl-v9/root/usr/bin/juliang-fastacl
+          grep -q 'rm -f "$RUN_DIR/ap$n.ip"' profiles/fastacl-v9/root/usr/bin/juliang-fastacl
           grep -q 'switch_node "$ap" "$node" 1' profiles/fastacl-v9/root/usr/bin/juliang-fastacl
           grep -q 'jfa_error_text' profiles/fastacl-v9/root/usr/bin/juliang-fastacl-luci-install
           echo "FastACL V9 Fix4 validation passed."
