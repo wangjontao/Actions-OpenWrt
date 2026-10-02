@@ -48,8 +48,10 @@ has_any_listener(){
 
 probe_socks_port(){
   local port="$1" ip
-  ip="$(curl -4 -fsS --connect-timeout 3 --max-time 6 --socks5-hostname "127.0.0.1:$port" https://api.ipify.org 2>/dev/null | tr -d '\r\n ' || true)"
-  [ -n "$ip" ] || ip="$(curl -4 -fsS --connect-timeout 3 --max-time 6 --socks5-hostname "127.0.0.1:$port" https://icanhazip.com 2>/dev/null | tr -d '\r\n ' || true)"
+  # Fast healthy path: most working nodes return within 1-2s. A second service
+  # is only used if the first endpoint fails.
+  ip="$(curl -4 -fsS --connect-timeout 2 --max-time 4 --socks5-hostname "127.0.0.1:$port" https://api.ipify.org 2>/dev/null | tr -d '\r\n ' || true)"
+  [ -n "$ip" ] || ip="$(curl -4 -fsS --connect-timeout 2 --max-time 4 --socks5-hostname "127.0.0.1:$port" https://icanhazip.com 2>/dev/null | tr -d '\r\n ' || true)"
   [ -n "$ip" ] || ip="-"
   printf '%s\n' "$ip"
 }
@@ -152,7 +154,7 @@ start_preproxy(){
   i=0
   while [ "$i" -lt 15 ]; do
     if has_tcp_listener "$port"; then
-      if probe_socks_wait "$port" 3 1 >"$RUN_DIR/ap$n-preproxy.ip"; then
+      if probe_socks_wait "$port" 2 1 >"$RUN_DIR/ap$n-preproxy.ip"; then
         return 0
       fi
       break
@@ -588,7 +590,7 @@ switch_node(){
   t0="$(date +%s)"
   if start_ap "$n" && ensure_dataplane; then
     port="$(uci -q get $CFG.ap$n.socks_port 2>/dev/null || echo $((13100+n)))"
-    if ip="$(probe_socks_wait "$port" 3 1)"; then
+    if ip="$(probe_socks_wait "$port" 2 1)"; then
       printf '%s\n' "$ip" > "$RUN_DIR/ap$n.ip"
 
       # Normal assignment heals unrelated missing relays. MOVE uses skip_heal=1
@@ -751,7 +753,7 @@ status(){
 OP_LOCK="$RUN_DIR/operation.lock"
 
 lock_acquire(){
-  local tries="${1:-30}" i pid
+  local tries="${1:-${JFA_LOCK_TRIES:-30}}" i pid
   i=0
   while ! mkdir "$OP_LOCK" 2>/dev/null; do
     pid="$(cat "$OP_LOCK/pid" 2>/dev/null || true)"
