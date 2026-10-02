@@ -8,7 +8,9 @@ local api = dsp.build_url("admin","network","wireless_operator_api")
 .jow-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:16px}
 .jow-grid{display:grid;grid-template-columns:repeat(2,minmax(360px,1fr));gap:14px}
 .jow-card{border:1px solid rgba(128,128,128,.16);border-radius:14px;padding:16px;background:var(--main-bg-color,#fff)}
+.jow-titleline{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .jow-title{font-size:17px;font-weight:700;margin-bottom:4px}
+.jow-count{font-size:12px;font-weight:700;padding:4px 9px;border-radius:999px;background:rgba(21,153,87,.10);color:#159957;white-space:nowrap}
 .jow-sub{font-size:12px;opacity:.65;margin-bottom:14px}
 .jow-row{display:grid;grid-template-columns:110px 1fr;gap:10px;align-items:center;margin:10px 0}
 .jow-row label{font-size:13px;opacity:.75}
@@ -17,6 +19,17 @@ local api = dsp.build_url("admin","network","wireless_operator_api")
 .jow-msg{min-height:22px;font-weight:700;margin:8px 0}
 .jow-ok{color:#159957}.jow-bad{color:#e43f3b}.jow-warn{color:#e6a23c}
 .jow-note{font-size:12px;opacity:.65;line-height:1.5}
+.jow-clients{margin-top:14px;border-top:1px solid rgba(128,128,128,.14);padding-top:12px}
+.jow-client-title{font-size:13px;font-weight:700;margin-bottom:8px}
+.jow-client-table{width:100%;border-collapse:collapse;font-size:12px}
+.jow-client-table th,.jow-client-table td{padding:7px 5px;border-bottom:1px solid rgba(128,128,128,.10);text-align:left;vertical-align:middle}
+.jow-client-table th{opacity:.65;font-weight:600;white-space:nowrap}
+.jow-client-name{font-weight:700}
+.jow-client-ip{opacity:.72;margin-top:2px}
+.jow-signal{font-weight:700}
+.jow-rate-down{color:#1677ff;font-weight:700;white-space:nowrap}
+.jow-rate-up{color:#16a085;font-weight:700;white-space:nowrap}
+.jow-empty{font-size:12px;opacity:.58;padding:8px 0}
 @media(max-width:900px){.jow-grid{grid-template-columns:1fr}.jow-row{grid-template-columns:90px 1fr}}
 </style>
 
@@ -35,9 +48,30 @@ local api = dsp.build_url("admin","network","wireless_operator_api")
 
 <script type="text/javascript">
 (function(){
-  var API='<%=api%>', devices={}, ifaces=[];
+  var API='<%=api%>', devices={}, ifaces=[], prevClient={}, lastClientPoll=0, clientTimer=null;
 
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+
+  function domKey(s){return String(s||'').replace(/[^A-Za-z0-9_-]/g,'_')}
+  function fmtSpeed(v){
+    v=Math.max(0,Number(v)||0);
+    if(v<1024) return v.toFixed(0)+' B/s';
+    if(v<1024*1024) return (v/1024).toFixed(v<10240?1:0)+' KB/s';
+    return (v/1024/1024).toFixed(2)+' MB/s';
+  }
+  function fmtPhy(v){
+    v=Number(v)||0;
+    if(!v) return '-';
+    if(v>10000) v=v/1000;
+    return v.toFixed(v<100?1:0)+' Mbps';
+  }
+  function signalClass(v){
+    v=Number(v)||0;
+    if(v>=-60) return 'jow-ok';
+    if(v>=-72) return 'jow-warn';
+    return 'jow-bad';
+  }
+
   function msg(t,ok){
     var e=document.getElementById('jow_msg');
     e.textContent=t||'';
@@ -67,14 +101,16 @@ local api = dsp.build_url("admin","network","wireless_operator_api")
     var g=document.getElementById('jow_grid'), html='';
     for(var i=0;i<ifaces.length;i++){
       var f=ifaces[i], d=devices[f.device]||{section:f.device,channel:'auto'};
-      html+='<div class="jow-card" id="card_'+esc(f.section)+'">'+
-        '<div class="jow-title">'+esc(f.ssid||f.section)+'</div>'+
+      var dk=domKey(f.section);
+      html+='<div class="jow-card" id="card_'+dk+'">'+
+        '<div class="jow-titleline"><div class="jow-title">'+esc(f.ssid||f.section)+'</div><div class="jow-count" id="count_'+dk+'">在线 0</div></div>'+
         '<div class="jow-sub">'+esc(bandName(d))+' · '+esc(f.device)+' · '+esc(f.network||'-')+'</div>'+
         '<div class="jow-row"><label>无线名称</label><input class="cbi-input-text" id="ssid_'+esc(f.section)+'" maxlength="32" value="'+esc(f.ssid)+'"></div>'+
         '<div class="jow-row"><label>无线密码</label><input class="cbi-input-password" type="password" id="key_'+esc(f.section)+'" placeholder="留空保持原密码"></div>'+
         '<div class="jow-row"><label>无线信道</label><select class="cbi-input-select" id="ch_'+esc(f.section)+'">'+channelOptions(d.channel||'auto')+'</select></div>'+
         '<div class="jow-note">加密方式：'+esc(f.encryption||'none')+'。同一射频下多个 SSID 共用信道，修改后会一起生效。</div>'+
         '<div class="jow-actions"><input class="btn cbi-button cbi-button-apply" type="button" value="保存并应用" onclick="saveWireless(\''+f.section.replace(/'/g,"\\'")+'\',\''+f.device.replace(/'/g,"\\'")+'\')"></div>'+
+        '<div class="jow-clients"><div class="jow-client-title">已连接设备</div><div id="clients_'+dk+'" class="jow-empty">正在读取…</div></div>'+
       '</div>';
     }
     g.innerHTML=html||'<div class="jow-card">没有找到可用无线接口</div>';
@@ -88,6 +124,67 @@ local api = dsp.build_url("admin","network","wireless_operator_api")
       var ds=r.devices||[];
       for(var i=0;i<ds.length;i++) devices[ds[i].section]=ds[i];
       render(); msg('');
+      loadClients();
+      if(clientTimer) clearInterval(clientTimer);
+      clientTimer=setInterval(loadClients,2000);
+    });
+  }
+
+
+  window.loadClients=function(){
+    xhr({action:'clients'},function(r){
+      if(!r||!r.ok)return;
+      var now=Date.now(), dt=lastClientPoll?Math.max(0.5,(now-lastClientPoll)/1000):0;
+      var next={};
+      var groups=r.groups||[];
+
+      for(var gi=0;gi<groups.length;gi++){
+        var g=groups[gi], dk=domKey(g.section), rows=g.clients||[];
+        var count=document.getElementById('count_'+dk);
+        if(count) count.textContent='在线 '+rows.length;
+
+        var target=document.getElementById('clients_'+dk);
+        if(!target) continue;
+
+        if(!rows.length){
+          target.className='jow-empty';
+          target.innerHTML='暂无设备连接'+(g.ifname?' · '+esc(g.ifname):'');
+          continue;
+        }
+
+        var html='<table class="jow-client-table"><thead><tr>'+
+          '<th>设备 / IP</th><th>MAC</th><th>信号</th><th>下载</th><th>上传</th><th>无线链路</th>'+
+          '</tr></thead><tbody>';
+
+        for(var i=0;i<rows.length;i++){
+          var x=rows[i], key=g.section+'|'+String(x.mac||'').toLowerCase();
+          var old=prevClient[key], down=0, up=0;
+
+          if(old&&dt>0){
+            var dtx=(Number(x.tx_bytes)||0)-(Number(old.tx_bytes)||0);
+            var drx=(Number(x.rx_bytes)||0)-(Number(old.rx_bytes)||0);
+            if(dtx>=0) down=dtx/dt;
+            if(drx>=0) up=drx/dt;
+          }
+          next[key]={tx_bytes:Number(x.tx_bytes)||0,rx_bytes:Number(x.rx_bytes)||0};
+
+          var label=x.name||'手机 / 设备';
+          html+='<tr>'+
+            '<td><div class="jow-client-name">'+esc(label)+'</div><div class="jow-client-ip">'+esc(x.ip||'IP 未获取')+'</div></td>'+
+            '<td>'+esc(x.mac||'-')+'</td>'+
+            '<td class="jow-signal '+signalClass(x.signal)+'">'+esc(x.signal||0)+' dBm</td>'+
+            '<td class="jow-rate-down">↓ '+(old?fmtSpeed(down):'-')+'</td>'+
+            '<td class="jow-rate-up">↑ '+(old?fmtSpeed(up):'-')+'</td>'+
+            '<td>↓ '+esc(fmtPhy(x.tx_rate))+' / ↑ '+esc(fmtPhy(x.rx_rate))+'</td>'+
+          '</tr>';
+        }
+        html+='</tbody></table>';
+        target.className='';
+        target.innerHTML=html;
+      }
+
+      prevClient=next;
+      lastClientPoll=now;
     });
   }
 
