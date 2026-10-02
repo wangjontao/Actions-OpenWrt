@@ -145,12 +145,32 @@ local function patch_quickstart_template()
 #app .card-container {
   pointer-events: none !important;
 }
+a[href*="/istorex"],
+a[href*="/istorerouter"],
+a[href*="/store"],
+a[href*="/istore"] {
+  display: none !important;
+}
 </style>
 <script>
 (function(){
+  function hideClosestCard(el){
+    var p=el;
+    for(var i=0;i<6 && p;i++,p=p.parentElement){
+      var cls=(p.className||'').toString();
+      if(/card|item|module/i.test(cls)){ p.style.setProperty('display','none','important'); return; }
+    }
+    if(el) el.style.setProperty('display','none','important');
+  }
   function jfaOperatorTrim(){
     document.querySelectorAll('#app .model_btn,#app .settings-wrapper,#app .item1.bgcolor1,#app .item1.bgcolor2')
       .forEach(function(el){ el.style.setProperty('display','none','important'); });
+    document.querySelectorAll('a[href*="/istorex"],a[href*="/istorerouter"],a[href*="/store"],a[href*="/istore"]')
+      .forEach(hideClosestCard);
+    document.querySelectorAll('#app *').forEach(function(el){
+      var t=(el.textContent||'').trim();
+      if(t==='iStore' || t==='应用商店') hideClosestCard(el);
+    });
   }
   new MutationObserver(jfaOperatorTrim).observe(document.getElementById('app'), {childList:true,subtree:true});
   jfaOperatorTrim();
@@ -165,33 +185,82 @@ end
 
 local function patch_istore_backend()
     local path = "/usr/lib/lua/luci/controller/istore_backend.lua"
+    local bak = path .. ".juliang-operator.bak"
     local s = read(path)
-    if not s then return false, "istore backend missing" end
-    if s:find("JULIANG_OPERATOR_ISTORE_V234", 1, true) then return true end
-    backup(path)
+    if not s then return true end
 
-    local needle = "  local sid, sdat = get_session()"
-    local inject = needle .. [[
+    -- Fix1: the earlier operator build rejected every POST from iStore backend.
+    -- QuickStart legitimately uses POST for some read/status calls, which LuCI
+    -- surfaced as "session expired". Restore the original backend and enforce
+    -- restrictions at the menu/page layer instead.
+    if s:find("JULIANG_OPERATOR_ISTORE_V234", 1, true) then
+        if fs.access(bak) then
+            assert(fs.copy(bak, path))
+            return true
+        end
 
-  -- JULIANG_OPERATOR_ISTORE_V234
-  -- The restricted operator may view iStore home data but cannot mutate iStore.
-  if sdat ~= nil then
-    local uci = require "luci.model.uci".cursor()
-    local op_user = uci:get("juliang_operator", "main", "username") or ""
-    if op_user ~= "" and sdat.username == op_user then
-      local method = http.getenv("REQUEST_METHOD") or "GET"
-      if method ~= "GET" then
-        http.status(403, "Operator is read-only")
-        sock:close()
-        return
-      end
+        local a = s:find("  %-%- JULIANG_OPERATOR_ISTORE_V234", 1)
+        local b = s:find("  local num = tonumber%(", a or 1)
+        if a and b then
+            s = s:sub(1, a - 1) .. s:sub(b)
+            write(path, s)
+            return true
+        end
+        return false, "cannot remove old iStore POST guard"
     end
-  end
-]]
-    local changed
-    s, changed = replace_once(s, needle, inject)
-    if not changed then return false, "istore backend patch anchor missing" end
-    write(path, s)
+
+    return true
+end
+
+local function patch_istore_routes()
+    local targets = {
+        {
+            path = "/usr/lib/lua/luci/controller/istorex.lua",
+            old = '        entry({"admin", "istorex"}, call("istorex_template")).leaf = true',
+            new = '        local jfa_istorex = entry({"admin", "istorex"}, call("istorex_template"))\n' ..
+                  '        jfa_istorex.leaf = true\n' ..
+                  '        jfa_istorex.acl_depends = { "juliang-quickstart-admin" }'
+        },
+        {
+            path = "/usr/lib/lua/luci/controller/istorerouter.lua",
+            old = '        entry({"admin", "istorerouter"}, call("istorerouter_template")).leaf = true',
+            new = '        local jfa_istorerouter = entry({"admin", "istorerouter"}, call("istorerouter_template"))\n' ..
+                  '        jfa_istorerouter.leaf = true\n' ..
+                  '        jfa_istorerouter.acl_depends = { "juliang-quickstart-admin" }'
+        }
+    }
+
+    for _, t in ipairs(targets) do
+        local s = read(t.path)
+        if s and not s:find("juliang%-quickstart%-admin", 1) then
+            backup(t.path)
+            local changed
+            s, changed = replace_once(s, t.old, t.new)
+            if changed then
+                write(t.path, s)
+            end
+        end
+    end
+    return true
+end
+
+local function patch_blank_login_user()
+    local p = io.popen([[find /usr/share/ucode/luci/template /usr/lib/lua/luci/view -type f \( -name 'sysauth.ut' -o -name 'sysauth.htm' \) 2>/dev/null]])
+    if not p then return true end
+    for path in p:lines() do
+        local s = read(path)
+        if s then
+            local orig = s
+            s = s:gsub('value="{{ entityencode%(duser, true%) }}"', 'value=""')
+            s = s:gsub('value="<%%=.-duser.-%%>"', 'value=""')
+            s = s:gsub("value='<%%=.-duser.-%%>'", "value=''")
+            if s ~= orig then
+                backup(path)
+                write(path, s)
+            end
+        end
+    end
+    p:close()
     return true
 end
 
@@ -214,7 +283,9 @@ end
 local checks = {
     {"quickstart-controller", patch_quickstart_controller},
     {"quickstart-template", patch_quickstart_template},
-    {"istore-backend", patch_istore_backend},
+    {"istore-backend-restore", patch_istore_backend},
+    {"istore-routes", patch_istore_routes},
+    {"blank-login-user", patch_blank_login_user},
     {"wireless-menu", patch_wireless_menu}
 }
 
