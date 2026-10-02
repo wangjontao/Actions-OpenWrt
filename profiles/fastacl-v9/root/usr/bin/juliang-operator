@@ -84,7 +84,7 @@ cmd_setup(){
   valid_user "$user" || die "用户名仅允许字母/数字/._-，且不能为 root"
 
   pass="$(read_secret '普通用户密码: ')"
-  [ "\${#pass}" -ge 6 ] || die "密码至少 6 位"
+  [ "${#pass}" -ge 6 ] || die "密码至少 6 位"
   pass2="$(read_secret '再次输入密码: ')"
   [ "$pass" = "$pass2" ] || die "两次密码不一致"
 
@@ -103,7 +103,7 @@ cmd_passwd(){
   user="$(uci -q get $CFG.main.username 2>/dev/null || true)"
   [ -n "$user" ] || die "operator account is not configured"
   pass="$(read_secret '新密码: ')"
-  [ "\${#pass}" -ge 6 ] || die "密码至少 6 位"
+  [ "${#pass}" -ge 6 ] || die "密码至少 6 位"
   pass2="$(read_secret '再次输入新密码: ')"
   [ "$pass" = "$pass2" ] || die "两次密码不一致"
   hash="$(make_hash "$pass")"
@@ -138,7 +138,7 @@ cmd_status(){
   user="$(uci -q get $CFG.main.username 2>/dev/null || true)"
   enabled="$(uci -q get $CFG.main.enabled 2>/dev/null || echo 0)"
   say "JuLiang Operator"
-  say "username: \${user:--}"
+  say "username: ${user:--}"
   say "enabled: $enabled"
   if [ -n "$user" ] && [ "$(uci -q get rpcd.$RPCSEC.username 2>/dev/null || true)" = "$user" ]; then
     say "rpcd login: present"
@@ -154,7 +154,7 @@ cmd_status(){
   [ -s /usr/share/luci/menu.d/zz-juliang-operator.json ] && say "menu policy: installed" || say "menu policy: missing"
 }
 
-case "\${1:-}" in
+case "${1:-}" in
   setup) cmd_setup ;;
   passwd) cmd_passwd ;;
   disable) cmd_disable ;;
