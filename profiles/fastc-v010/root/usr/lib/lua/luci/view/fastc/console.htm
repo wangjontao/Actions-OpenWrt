@@ -1,0 +1,181 @@
+<%+header%>
+<%
+local dsp = require "luci.dispatcher"
+local api = dsp.build_url("admin", "services", "fastc_api")
+%>
+<style>
+#maincontent{max-width:none!important}
+.fc-wrap{width:100%;max-width:none!important;box-sizing:border-box}
+.fc-titlebar{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.fc-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0}
+.fc-pill{padding:5px 11px;border-radius:16px;background:rgba(128,128,128,.12);font-weight:700}
+.fc-ok{color:#159957}.fc-bad{color:#e43f3b}.fc-warn{color:#e6a23c}
+.fc-table{width:100%;border-collapse:separate;border-spacing:0 8px}
+.fc-table th{padding:8px 10px;text-align:left;white-space:nowrap;border-bottom:1px solid rgba(128,128,128,.22)}
+.fc-table td{padding:12px 10px;background:rgba(128,128,128,.05);border-top:1px solid rgba(128,128,128,.08);border-bottom:1px solid rgba(128,128,128,.08)}
+.fc-actions{display:flex;gap:8px;flex-wrap:wrap}
+.fc-import-primary{border-radius:999px!important;padding:0 24px!important;min-height:44px!important;font-size:15px!important;font-weight:700!important}
+.fc-modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:500}
+.fc-modal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:58rem;max-width:94vw;background:var(--main-bg-color,#fff);padding:22px;border-radius:12px;box-shadow:0 12px 42px rgba(0,0,0,.38)}
+.fc-import-text{width:100%;height:300px;resize:vertical;box-sizing:border-box;font-family:monospace;padding:10px;border:1px solid rgba(128,128,128,.35);border-radius:6px;line-height:1.45}
+.fc-note{font-size:13px;line-height:1.55;opacity:.78;margin-top:8px}
+.fc-small{font-size:12px;opacity:.68}
+#fc_msg,#fc_import_msg{min-height:24px;font-weight:700;margin:8px 0}
+@media(max-width:900px){.fc-table{display:block;overflow-x:auto;white-space:nowrap}}
+</style>
+
+<div class="cbi-map fc-wrap">
+  <div class="fc-titlebar">
+    <div>
+      <h2>FastC 0.1.0 开发控制台</h2>
+      <div class="cbi-map-descr">mihomo 数据面 · 多 SSID 独立策略组 · FastACL 管理思路重构</div>
+    </div>
+    <div class="fc-actions">
+      <input class="btn cbi-button cbi-button-reload" type="button" value="刷新" onclick="loadStatus()"/>
+    </div>
+  </div>
+
+  <div class="fc-head">
+    <input class="btn cbi-button cbi-button-add fc-import-primary" type="button" value="＋ 导入节点" onclick="openImport()"/>
+    <span id="fc_core" class="fc-pill">mihomo：读取中</span>
+    <span id="fc_nodes" class="fc-pill">节点：-</span>
+    <span id="fc_version" class="fc-pill">FastC：0.1.0-dev</span>
+  </div>
+
+  <div id="fc_msg"></div>
+
+  <div class="cbi-section">
+    <table class="fc-table">
+      <thead><tr><th>节点</th><th>协议</th><th>地址</th><th>策略组</th><th>操作</th></tr></thead>
+      <tbody id="fc_body"><tr><td colspan="5">读取中…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="fc_import_bg" class="fc-modal-bg">
+  <div class="fc-modal">
+    <h3>FastC 批量导入节点</h3>
+    <textarea id="fc_import_text" class="fc-import-text" placeholder="每行一个节点，可直接粘贴：
+
+vless://...
+vmess://...
+trojan://...
+ss://...
+socks5://user:pass@host:port
+socks://user:pass@host:port
+http://user:pass@host:port
+hysteria2://...
+tuic://...
+
+兼容 SK5 简写：
+host:port:username:password"></textarea>
+    <div class="fc-note">
+      FastC 0.1.0 先把链接写入独立节点库，不写 PassWall/PassWall2。支持 VLESS / Reality / VMess / Trojan / SS / SOCKS5 / SOCKS / HTTP / Hysteria2 / TUIC 与多行 SK5 简写。
+    </div>
+    <div id="fc_import_msg"></div>
+    <div class="fc-actions">
+      <input id="fc_import_btn" class="btn cbi-button cbi-button-apply" type="button" value="开始导入" onclick="importNodes()"/>
+      <input class="btn cbi-button cbi-button-edit" type="button" value="清空" onclick="document.getElementById('fc_import_text').value=''"/>
+      <input class="btn cbi-button cbi-button-remove" type="button" value="关闭" onclick="closeImport()"/>
+    </div>
+  </div>
+</div>
+
+<script type="text/javascript">
+(function(){
+  var API='<%=api%>', state={nodes:[]};
+
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+  function msg(t,ok){var e=document.getElementById('fc_msg');e.textContent=t||'';e.className=ok===true?'fc-ok':(ok===false?'fc-bad':'fc-warn')}
+  function xhr(params,cb){XHR.get(API,params,function(x,r){cb((x&&x.status===200)?r:null)})}
+
+  function post(data,cb){
+    var fd=new FormData();
+    for(var k in data) if(Object.prototype.hasOwnProperty.call(data,k)) fd.append(k,data[k]);
+    var x=new XMLHttpRequest();
+    x.open('POST',API,true);
+    x.onload=function(){var r=null;try{r=JSON.parse(x.responseText||'{}')}catch(e){};cb(x.status===200?r:null)};
+    x.onerror=function(){cb(null)};
+    x.send(fd);
+  }
+
+  function render(){
+    var body=document.getElementById('fc_body'), html='';
+    for(var i=0;i<state.nodes.length;i++){
+      var n=state.nodes[i];
+      html+='<tr>'+
+        '<td><strong>'+esc(n.name||n.id)+'</strong><div class="fc-small">'+esc(n.id||'')+'</div></td>'+
+        '<td>'+esc(String(n.type||'').toUpperCase())+'</td>'+
+        '<td>'+esc(n.address||'-')+(n.port?':'+esc(n.port):'')+'</td>'+
+        '<td>'+esc(n.group||'未分配')+'</td>'+
+        '<td><input class="btn cbi-button cbi-button-remove" type="button" value="删除" onclick="deleteNode(\''+String(n.id||'').replace(/'/g,"\\'")+'\')"/></td>'+
+      '</tr>';
+    }
+    body.innerHTML=html||'<tr><td colspan="5">暂无节点，点击上方“导入节点”开始。</td></tr>';
+  }
+
+  window.loadStatus=function(){
+    msg('正在读取 FastC…');
+    xhr({action:'status'},function(r){
+      if(!r||!r.ok){msg('读取 FastC 状态失败',false);return}
+      state.nodes=r.nodes||[];
+      var c=r.config||{};
+      var core=document.getElementById('fc_core');
+      core.textContent='mihomo：'+(r.core_running?'运行中':'未运行');
+      core.className='fc-pill '+(r.core_running?'fc-ok':'fc-warn');
+      document.getElementById('fc_nodes').textContent='节点：'+(r.node_count||0);
+      document.getElementById('fc_version').textContent='FastC：'+(c.version||'0.1.0-dev');
+      render();msg('');
+    });
+  }
+
+  window.openImport=function(){
+    document.getElementById('fc_import_bg').style.display='block';
+    document.getElementById('fc_import_msg').textContent='';
+  }
+  window.closeImport=function(){document.getElementById('fc_import_bg').style.display='none'}
+
+  function sendChunk(text,index,total,done){
+    post({action:'import',chunk:text,chunk_index:String(index),total_chunks:String(total)},function(r){
+      if(!r||!r.ok){done(r||{error:'网络请求错误'});return}
+      if(index+1>=total){done(r);return}
+      done(null,r);
+    });
+  }
+
+  window.importNodes=function(){
+    var text=document.getElementById('fc_import_text').value||'';
+    var out=document.getElementById('fc_import_msg');
+    var btn=document.getElementById('fc_import_btn');
+    if(!text.trim()){out.textContent='请先粘贴节点';out.className='fc-bad';return}
+
+    var size=48000, chunks=[];
+    for(var p=0;p<text.length;p+=size) chunks.push(text.slice(p,p+size));
+    var i=0;btn.disabled=true;out.className='fc-warn';out.textContent='正在导入 0/'+chunks.length+'…';
+
+    function next(){
+      sendChunk(chunks[i],i,chunks.length,function(err,r){
+        if(err){btn.disabled=false;out.className='fc-bad';out.textContent='导入失败：'+((err&&err.error)||'ERROR');return}
+        i++;
+        out.textContent='正在导入 '+i+'/'+chunks.length+'…';
+        if(i<chunks.length){next();return}
+        btn.disabled=false;out.className='fc-ok';
+        out.textContent='✓ 导入完成：新增 '+(r.added||0)+'，重复 '+(r.duplicate||0)+'，无法识别 '+((r.rejected||[]).length||0)+'，节点总数 '+(r.total||0);
+        setTimeout(loadStatus,500);
+      });
+    }
+    next();
+  }
+
+  window.deleteNode=function(id){
+    if(!confirm('确定删除 FastC 节点 '+id+'？')) return;
+    post({action:'delete',id:id},function(r){
+      if(r&&r.ok){msg('✓ 节点已删除',true);loadStatus()}
+      else msg('删除失败：'+((r&&r.error)||'ERROR'),false);
+    });
+  }
+
+  loadStatus();
+})();
+</script>
+<%+footer%>
