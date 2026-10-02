@@ -59,7 +59,9 @@ need ip
 need curl
 need sing-box
 need lua
-need ss
+if ! command -v ss >/dev/null 2>&1 && ! command -v netstat >/dev/null 2>&1; then
+  die "required listener tool missing: install ss or netstat"
+fi
 
 [ -x /usr/share/passwall2/app.sh ] || die "PassWall2 backend not found: /usr/share/passwall2/app.sh"
 [ -f "$NODE_LIST" ] || die "PassWall2 node list not found: $NODE_LIST"
@@ -144,16 +146,16 @@ say "[3/8] preparing persistent configuration..."
 touch /etc/config/juliang_fastacl
 uci -q get juliang_fastacl.main >/dev/null 2>&1 || uci set juliang_fastacl.main='main'
 uci set juliang_fastacl.main.enabled='1'
-set_default juliang_fastacl.main.tproxy_port "'12345'"
-set_default juliang_fastacl.main.mark "'0x66'"
-set_default juliang_fastacl.main.route_table "'100'"
-set_default juliang_fastacl.main.dns_mode "'doh'"
-set_default juliang_fastacl.main.dns_server "'1.1.1.1'"
-set_default juliang_fastacl.main.dns_tls_server_name "'cloudflare-dns.com'"
-set_default juliang_fastacl.main.dns_path "'/dns-query'"
-set_default juliang_fastacl.main.health_probe_interval "'120'"
-set_default juliang_fastacl.main.health_fail_threshold "'3'"
-uci set juliang_fastacl.main.version="'$VERSION'"
+set_default juliang_fastacl.main.tproxy_port "12345"
+set_default juliang_fastacl.main.mark "0x66"
+set_default juliang_fastacl.main.route_table "100"
+set_default juliang_fastacl.main.dns_mode "doh"
+set_default juliang_fastacl.main.dns_server "1.1.1.1"
+set_default juliang_fastacl.main.dns_tls_server_name "cloudflare-dns.com"
+set_default juliang_fastacl.main.dns_path "/dns-query"
+set_default juliang_fastacl.main.health_probe_interval "120"
+set_default juliang_fastacl.main.health_fail_threshold "3"
+uci set "juliang_fastacl.main.version=$VERSION"
 uci commit juliang_fastacl
 
 # Discover actual enabled AP networks. The discovery is transactional: if
