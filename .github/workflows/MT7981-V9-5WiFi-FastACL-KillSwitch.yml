@@ -147,7 +147,7 @@ jobs:
           JFA_NODE_LIST_FILE="$PWD/package/passwall2-luci/luci-app-passwall2/luasrc/view/passwall2/node_list/node_list.htm" \
           JFA_CTRL_FILE="$GITHUB_WORKSPACE/profiles/fastacl-v9/root/usr/lib/lua/luci/controller/juliang_fastacl.lua" \
             sh "$GITHUB_WORKSPACE/profiles/fastacl-v9/root/usr/bin/juliang-fastacl-luci-install"
-          grep -q 'JULIANG_FASTACL_V220' package/passwall2-luci/luci-app-passwall2/luasrc/view/passwall2/node_list/node_list.htm
+          grep -q 'JULIANG_FASTACL_V240' package/passwall2-luci/luci-app-passwall2/luasrc/view/passwall2/node_list/node_list.htm
           grep -q 'FastACL 即时分配无线' package/passwall2-luci/luci-app-passwall2/luasrc/view/passwall2/node_list/node_list.htm
           echo 'FastACL LuCI UI baked into PassWall2 package source.'
 
@@ -668,7 +668,7 @@ jobs:
           grep -q "option enabled '1'" "$ROOTFS/etc/config/juliang_fastacl"
           grep -q 'juliang_killswitch' "$ROOTFS/usr/bin/juliang-fastacl"
           grep -q 'enforce_failclosed_firewall' "$ROOTFS/usr/bin/juliang-fastacl-guard"
-          grep -q 'JULIANG_FASTACL_V220' "$ROOTFS/usr/lib/lua/luci/view/passwall2/node_list/node_list.htm"
+          grep -q 'JULIANG_FASTACL_V240' "$ROOTFS/usr/lib/lua/luci/view/passwall2/node_list/node_list.htm"
           grep -q 'FastACL 即时分配无线' "$ROOTFS/usr/lib/lua/luci/view/passwall2/node_list/node_list.htm"
           grep -q 'V9-FIX3 migration applied' "$ROOTFS/etc/uci-defaults/94-juliang-fastacl-v9"
           grep -q 'juliang-v9-fastacl-5wifi.done' "$ROOTFS/usr/libexec/juliang-5wifi-setup"
