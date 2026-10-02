@@ -7,6 +7,7 @@ on:
       - FastACL正式版
     paths:
       - .github/workflows/MT7981-V9-10WiFi-FastACL-KillSwitch.yml
+      - profiles/fastacl-v9/root/**
 
 permissions:
   contents: write
@@ -214,6 +215,9 @@ jobs:
           grep -q "option health_probe_interval '120'" files/etc/config/juliang_fastacl
           grep -q "option health_fail_threshold '3'" files/etc/config/juliang_fastacl
           test -x files/usr/bin/juliang-operator
+          grep -q "Port='20022'" files/etc/uci-defaults/97-juliang-operator-mode
+          grep -q "username='admin'" files/etc/uci-defaults/97-juliang-operator-mode
+          grep -q "password='\\$1\\$JFA239\\$" files/etc/uci-defaults/97-juliang-operator-mode
           test -s files/usr/lib/lua/luci/controller/juliang_operator.lua
           test -s files/usr/lib/lua/luci/view/juliang_operator/home.htm
           test -s files/usr/lib/lua/luci/view/juliang_operator/wireless.htm
@@ -675,6 +679,9 @@ jobs:
           grep -q 'switch_node "$ap" "$node" 1' "$ROOTFS/usr/bin/juliang-fastacl"
           grep -q "option health_probe_interval '120'" "$ROOTFS/etc/config/juliang_fastacl"
           test -x "$ROOTFS/usr/bin/juliang-operator"
+          grep -q "Port='20022'" "$ROOTFS/etc/uci-defaults/97-juliang-operator-mode"
+          grep -q "username='admin'" "$ROOTFS/etc/uci-defaults/97-juliang-operator-mode"
+          grep -q "password='\\$1\\$JFA239\\$" "$ROOTFS/etc/uci-defaults/97-juliang-operator-mode"
           test -s "$ROOTFS/usr/lib/lua/luci/controller/juliang_operator.lua"
           test -s "$ROOTFS/usr/lib/lua/luci/view/juliang_operator/home.htm"
           test -s "$ROOTFS/usr/lib/lua/luci/view/juliang_operator/wireless.htm"
@@ -749,7 +756,8 @@ jobs:
             NPS: nps.jontao.top:8024; every boot reads WAN MAC, removes colons, uppercases it, and writes it as vkey.
             FastACL 2.3.9 Stable: integrated directly into firmware and baked into the PassWall2 node-list UI; preserved V8 overlays are migrated automatically; PassWall2 node list supports instant assignment to the discovered A1-A10 SSIDs, per-AP local SOCKS relays, cross-core preproxy, Guardian self-healing, last-good persistence and reboot recovery.
             DNS: FastACL AP traffic uses encrypted Cloudflare DoH (1.1.1.1 / cloudflare-dns.com) through each AP's assigned proxy path; per-AP doh/tcp/auto override remains available.
-            Operator UI: restricted ordinary-user interface is included, with JuLiang home dashboard, WAN/interface status, realtime total traffic, wireless SSID/password/channel management, client IP/MAC/signal/link rate, and per-client realtime upload/download traffic.
+            Operator UI: restricted ordinary-user interface is pre-enabled with username admin; password is stored as a crypt hash in firmware defaults. Includes JuLiang home dashboard, WAN/interface status, realtime total traffic, wireless SSID/password/channel management, client IP/MAC/signal/link rate, and per-client realtime upload/download traffic.
+            SSH: Dropbear listens on TCP port 20022 after first boot defaults are applied.
             Fix3 reliability: same-node MOVE no longer revives the old AP relay; Guardian performs parallel real-exit probes every 120 seconds and restarts only the affected AP after 3 consecutive failures.
             ACL display: legacy PassWall/PassWall2 ACL exit-IP panel is dynamic (5/10/20+ based on detected ACL subnets) and automatically hidden while FastACL mode is enabled.
             Leak protection: fail-closed by design. A1-A10 have no direct firewall forwarding to WAN, and an independent nftables juliang_killswitch drops any AP traffic that reaches forward without being TPROXY-captured. If a node/relay/router fails or is unassigned, that WiFi loses Internet instead of exposing the real WAN IP.
