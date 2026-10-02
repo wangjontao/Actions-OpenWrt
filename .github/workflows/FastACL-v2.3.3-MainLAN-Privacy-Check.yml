@@ -1,0 +1,29 @@
+name: FastACL 2.3.3 Main LAN Privacy Check
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - juliang-fastacl-v2.3.3-mainlan-privacy-20261002
+    paths:
+      - profiles/fastacl-v9/root/usr/bin/juliang-fastacl-guard
+      - .github/workflows/FastACL-v2.3.3-MainLAN-Privacy-Check.yml
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate main LAN privacy guard
+        run: |
+          set -euxo pipefail
+          F=profiles/fastacl-v9/root/usr/bin/juliang-fastacl-guard
+          sh -n "$F"
+          grep -q 'enforce_mainlan_ipv6_privacy' "$F"
+          grep -q "dhcp.lan.ra='disabled'" "$F"
+          grep -q "dhcp.lan.dhcpv6='disabled'" "$F"
+          grep -q "network.lan.ip6assign='0'" "$F"
+          grep -q 'FastACL block main LAN IPv6 DNS' "$F"
+          grep -q 'is_fastacl_zone' "$F"
+          grep -q 'removed unsafe FastACL -> WAN forwarding' "$F"
+          echo "FastACL 2.3.3 main-LAN privacy validation passed."
