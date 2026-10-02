@@ -1,0 +1,54 @@
+{
+  "admin/quickstart": {
+    "title": "QuickStart",
+    "order": 1,
+    "action": {
+      "type": "template",
+      "path": "quickstart/home"
+    },
+    "depends": {
+      "acl": [ "juliang-operator-home" ]
+    }
+  },
+  "admin/network/wireless": {
+    "title": "Wireless",
+    "order": 15,
+    "action": {
+      "type": "view",
+      "path": "network/wireless"
+    },
+    "depends": {
+      "acl": [ "juliang-wireless-operator" ],
+      "uci": {
+        "wireless": {
+          "@wifi-device": true
+        }
+      }
+    }
+  },
+  "admin/network_guide": {
+    "depends": {
+      "acl": [ "juliang-quickstart-admin" ]
+    }
+  },
+  "admin/quickwifi": {
+    "depends": {
+      "acl": [ "juliang-quickstart-admin" ]
+    }
+  },
+  "admin/nas/raid": {
+    "depends": {
+      "acl": [ "juliang-quickstart-admin" ]
+    }
+  },
+  "admin/nas/smart": {
+    "depends": {
+      "acl": [ "juliang-quickstart-admin" ]
+    }
+  },
+  "admin/network/interfaceconfig": {
+    "depends": {
+      "acl": [ "juliang-quickstart-admin" ]
+    }
+  }
+}
