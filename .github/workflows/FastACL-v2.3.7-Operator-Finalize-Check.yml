@@ -14,6 +14,7 @@ on:
       - profiles/fastacl-v9/root/usr/share/luci/menu.d/zz-juliang-operator.json
       - scripts/repair-juliang-operator-v2.3.7-finalize.sh
       - scripts/repair-juliang-operator-v2.3.7-fix1-home-syntax.sh
+      - scripts/repair-juliang-operator-v2.3.7-fix2-root-home.sh
       - .github/workflows/FastACL-v2.3.7-Operator-Finalize-Check.yml
 
 jobs:
@@ -38,7 +39,8 @@ jobs:
           sh -n scripts/repair-juliang-operator-v2.3.7-finalize.sh
           grep -q 'require("uci").cursor()' "$ROOT/usr/lib/lua/luci/controller/juliang_fastacl.lua"
           grep -q 'require("uci").cursor()' "$ROOT/usr/lib/lua/luci/controller/juliang_operator.lua"
-          grep -q 'JULIANG_OPERATOR_HOME_V237' "$ROOT/usr/libexec/juliang-operator-patch.lua"
+          grep -q 'JULIANG_OPERATOR_HOME_GATE_V237_FIX2' "$ROOT/usr/libexec/juliang-operator-patch.lua"
+          grep -q 'quickstart/main' "$ROOT/usr/libexec/juliang-operator-patch.lua"
           grep -q '无线设置' "$ROOT/usr/lib/lua/luci/view/juliang_operator/wireless.htm"
           grep -q '"admin/network/wireless_operator"' "$ROOT/usr/share/luci/menu.d/zz-juliang-operator.json"
           ! grep -q '"admin/network/wireless"' "$ROOT/usr/share/luci/menu.d/zz-juliang-operator.json"
