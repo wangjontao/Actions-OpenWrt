@@ -108,17 +108,45 @@ end
 
 local function patch_quickstart_template()
     local path = "/usr/lib/lua/luci/view/quickstart/home.htm"
-    local s = read(path)
-    if not s then return false, "quickstart home template missing" end
-    backup(path)
+    local bak = path .. ".juliang-operator.bak"
 
-    local home = [[
-<%
--- JULIANG_OPERATOR_HOME_V237
-luci.template.render("juliang_operator/home")
+    -- Restore the stock QuickStart home first. Root must keep the original
+    -- iStore/QuickStart homepage; only the restricted operator is diverted.
+    local stock = nil
+    if fs.access(bak) then
+        stock = read(bak)
+    end
+    if not stock or stock == "" then
+        stock = [[<%
+local function vue_lang()
+    local i18n = require("luci.i18n")
+    local lang = i18n.translate("quickstart_vue_lang")
+    if lang == "quickstart_vue_lang" or lang == "" then
+        lang = "en"
+    end
+    return lang
+end
+-%>
+<% luci.template.render("quickstart/main", {prefix=luci.dispatcher.build_url("admin", "quickstart"),lang=vue_lang()}) %>
+]]
+    end
+
+    -- Remove any previous operator gate/replacement before applying the new
+    -- per-user gate.
+    local gate = [[<%
+-- JULIANG_OPERATOR_HOME_GATE_V237_FIX2
+local __jfa_uci = require("uci").cursor()
+local __jfa_op = __jfa_uci:get("juliang_operator", "main", "username") or ""
+local __jfa_ctx = luci.dispatcher.context or {}
+local __jfa_user = __jfa_ctx.authuser or ""
+if __jfa_op ~= "" and __jfa_user == __jfa_op then
+    luci.template.render("juliang_operator/home")
+    return
+end
 %>
 ]]
-    write(path, home)
+
+    write(path, gate .. stock)
     return true
 end
 
