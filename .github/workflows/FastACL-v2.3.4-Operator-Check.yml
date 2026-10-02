@@ -12,6 +12,7 @@ on:
       - profiles/fastacl-v9/root/usr/share/luci/menu.d/zz-juliang-operator.json
       - profiles/fastacl-v9/root/usr/lib/lua/luci/controller/juliang_fastacl.lua
       - profiles/fastacl-v9/root/usr/lib/lua/luci/view/juliang_fastacl/console.htm
+      - scripts/install-juliang-fastacl-v2.3.4-operator.sh
       - .github/workflows/FastACL-v2.3.4-Operator-Check.yml
 
 jobs:
@@ -38,4 +39,31 @@ jobs:
           grep -q "juliang-wireless-operator" "$ROOT/usr/share/rpcd/acl.d/juliang-operator.json"
           grep -q "LuCI-only restricted account" "$ROOT/usr/bin/juliang-operator"
           ! grep -q "useradd\|adduser\|/etc/passwd.*write" "$ROOT/usr/bin/juliang-operator"
-          echo "FastACL 2.3.4 Operator static validation passed."
+          sh -n scripts/install-juliang-fastacl-v2.3.4-operator.sh
+
+          echo "=== simulate patcher against upstream QuickStart/LuCI files ==="
+          sudo mkdir -p /usr/lib/lua/luci/controller /usr/lib/lua/luci/view/quickstart /usr/share/luci/menu.d /tmp/jfa-lua/nixio
+          sudo curl -fsSL -o /usr/lib/lua/luci/controller/quickstart.lua             https://raw.githubusercontent.com/linkease/nas-packages-luci/main/luci/luci-app-quickstart/luasrc/controller/quickstart.lua
+          sudo curl -fsSL -o /usr/lib/lua/luci/controller/istore_backend.lua             https://raw.githubusercontent.com/linkease/nas-packages-luci/main/luci/luci-app-quickstart/luasrc/controller/istore_backend.lua
+          sudo curl -fsSL -o /usr/lib/lua/luci/view/quickstart/main.htm             https://raw.githubusercontent.com/linkease/nas-packages-luci/main/luci/luci-app-quickstart/luasrc/view/quickstart/main.htm
+          sudo curl -fsSL -o /usr/share/luci/menu.d/luci-mod-network.json             https://raw.githubusercontent.com/openwrt/luci/openwrt-24.10/modules/luci-mod-network/root/usr/share/luci/menu.d/luci-mod-network.json
+
+          cat >/tmp/jfa-lua/nixio/fs.lua <<'LUA'
+          local M={}
+          function M.readfile(p) local f=io.open(p,"rb"); if not f then return nil end; local s=f:read("*a"); f:close(); return s end
+          function M.writefile(p,s) local f=assert(io.open(p,"wb")); f:write(s); f:close(); return true end
+          function M.access(p) local f=io.open(p,"rb"); if f then f:close(); return true end return false end
+          function M.copy(a,b) local s=M.readfile(a); if not s then return false end return M.writefile(b,s) end
+          function M.rename(a,b) return os.rename(a,b) end
+          return M
+          LUA
+
+          sudo env LUA_PATH="/tmp/jfa-lua/?.lua;/tmp/jfa-lua/?/init.lua;;" lua "$ROOT/usr/libexec/juliang-operator-patch.lua"
+          luac5.1 -p /usr/lib/lua/luci/controller/quickstart.lua
+          luac5.1 -p /usr/lib/lua/luci/controller/istore_backend.lua
+          grep -q 'JULIANG_OPERATOR_V234' /usr/lib/lua/luci/controller/quickstart.lua
+          grep -q 'JULIANG_OPERATOR_HOME_V234' /usr/lib/lua/luci/view/quickstart/main.htm
+          grep -q 'JULIANG_OPERATOR_ISTORE_V234' /usr/lib/lua/luci/controller/istore_backend.lua
+          grep -q 'juliang-wireless-operator' /usr/share/luci/menu.d/luci-mod-network.json
+
+          echo "FastACL 2.3.4 Operator validation passed."
