@@ -5,7 +5,9 @@ local api = dsp.build_url("admin", "services", "juliang_fastacl")
 local import_api = dsp.build_url("admin", "services", "passwall2", "link_add_node")
 %>
 <style>
-.jfa-wrap{width:calc(100vw - 34px);max-width:none;margin:0 0 0 calc((100% - 100vw)/2 + 17px);box-sizing:border-box}
+#maincontent{max-width:none!important}
+.main-right #maincontent{max-width:none!important}
+.jfa-wrap{width:100%;max-width:none!important;margin:0;box-sizing:border-box}
 .jfa-titlebar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .jfa-titlebar h2{margin-bottom:4px}
 .jfa-head{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0 14px}
@@ -221,6 +223,22 @@ host:port:username:password"></textarea>
     var text=(document.getElementById('jfa_import_text').value||'')
       .replace(/\t/g,'').replace(/\r\n|\r/g,'\n').trim();
     if(!text){importMsg('请先粘贴节点内容',false);return}
+
+    // Convert common SK5 shorthand into a standard SOCKS5 URI before sending.
+    // Example: host:port:user:pass -> socks5://user:pass@host:port#SK5-host-port
+    var lines=text.split('\n'), normalized=[];
+    for(var li=0;li<lines.length;li++){
+      var line=(lines[li]||'').trim();
+      if(!line) continue;
+      if(line.indexOf('://')<0){
+        var m=line.match(/^([^:\s]+):(\d+):([^:\s]+):(.+)$/);
+        if(m){
+          line='socks5://'+encodeURIComponent(m[3])+':'+encodeURIComponent(m[4])+'@'+m[1]+':'+m[2]+'#'+encodeURIComponent('SK5-'+m[1]+'-'+m[2]);
+        }
+      }
+      normalized.push(line);
+    }
+    text=normalized.join('\n');
 
     var btn=document.getElementById('jfa_import_btn');
     btn.disabled=true;
