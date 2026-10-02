@@ -1,0 +1,199 @@
+<%+header%>
+<%
+local dsp = require "luci.dispatcher"
+local api = dsp.build_url("admin", "services", "juliang_fastacl")
+%>
+<style>
+.jfa-wrap{max-width:1500px;margin:0 auto}
+.jfa-head{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:10px 0 14px}
+.jfa-pill{padding:5px 10px;border-radius:16px;background:rgba(128,128,128,.12);font-weight:600}
+.jfa-ok{color:#159957}.jfa-bad{color:#e43f3b}.jfa-warn{color:#e6a23c}
+.jfa-table{width:100%;border-collapse:collapse}
+.jfa-table th,.jfa-table td{padding:9px 7px;border-bottom:1px solid rgba(128,128,128,.18);vertical-align:middle}
+.jfa-table th{text-align:left;white-space:nowrap}
+.jfa-actions{display:flex;gap:6px;flex-wrap:wrap}
+.jfa-filter{min-width:260px}
+#jfa_msg{min-height:24px;font-weight:600;margin:8px 0}
+.jfa-small{font-size:12px;opacity:.72}
+.jfa-modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:500}
+.jfa-modal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:36rem;max-width:94vw;background:var(--main-bg-color,#fff);padding:20px;border-radius:12px;box-shadow:0 12px 42px rgba(0,0,0,.38)}
+</style>
+
+<div class="cbi-map jfa-wrap">
+  <h2>FastACL 控制台</h2>
+  <div class="cbi-map-descr">单独管理节点、无线分配、链式前置和实际出口。无线数量自动读取，不固定 5/10/20。</div>
+
+  <div class="jfa-head">
+    <span id="st_engine" class="jfa-pill">FastACL：读取中</span>
+    <span id="st_guard" class="jfa-pill">Guardian：读取中</span>
+    <span id="st_kill" class="jfa-pill">Kill-switch：读取中</span>
+    <span id="st_count" class="jfa-pill">无线：-</span>
+    <input id="jfa_filter" class="cbi-input-text jfa-filter" placeholder="搜索节点 / IP / 协议" oninput="renderNodes()"/>
+    <input class="btn cbi-button cbi-button-reload" type="button" value="刷新" onclick="loadStatus()"/>
+  </div>
+  <div id="jfa_msg"></div>
+
+  <div class="cbi-section">
+    <table class="jfa-table">
+      <thead>
+        <tr>
+          <th>节点</th><th>协议</th><th>当前无线</th><th>实际出口 IP</th><th>前置</th><th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="jfa_body"><tr><td colspan="6">读取中…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="jfa_modal_bg" class="jfa-modal-bg">
+  <div class="jfa-modal">
+    <h3 id="modal_title">FastACL 操作</h3>
+    <input type="hidden" id="modal_node"/>
+    <div style="margin:10px 0">
+      <label>无线 AP</label>
+      <select id="modal_ap" class="cbi-input-select" style="width:100%;margin-top:5px"></select>
+    </div>
+    <label style="display:block;margin:8px 0">
+      <input id="modal_exclusive" type="checkbox" checked="checked"/> 唯一绑定（同一个节点只分配给一个无线）
+    </label>
+    <div style="margin:12px 0;padding-top:10px;border-top:1px solid rgba(128,128,128,.2)">
+      <label>链式前置</label>
+      <select id="modal_pre" class="cbi-input-select" style="width:100%;margin-top:5px">
+        <option value="">不使用前置代理</option>
+      </select>
+      <div class="jfa-small" style="margin-top:5px">跨协议：VLESS/Xray 前置 → SOCKS5/HTTP 落地。切换成功前会验证真实出口。</div>
+    </div>
+    <div id="modal_msg" style="min-height:24px;font-weight:600;margin:8px 0"></div>
+    <div class="jfa-actions">
+      <input class="btn cbi-button cbi-button-apply" type="button" value="分配无线" onclick="applyAssign()"/>
+      <input class="btn cbi-button cbi-button-apply" type="button" value="应用前置" onclick="applyPreproxy()"/>
+      <input class="btn cbi-button cbi-button-remove" type="button" value="解除绑定" onclick="clearNode()"/>
+      <input class="btn cbi-button cbi-button-edit" type="button" value="关闭" onclick="closeModal()"/>
+    </div>
+  </div>
+</div>
+
+<script type="text/javascript">
+(function(){
+  var API='<%=api%>', state={nodes:[],aps:[],map:{},ips:{},preproxy:{}};
+
+  window.jfaState=state;
+
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+  function msg(t,ok){var e=document.getElementById('jfa_msg');e.textContent=t||'';e.className=ok===true?'jfa-ok':(ok===false?'jfa-bad':'jfa-warn')}
+  function errText(r){
+    var e=(r&&r.error)||'ERROR';
+    if(e==='BUSY') return 'FastACL 正在执行另一个切换，请稍后重试';
+    if(e==='FINAL_EGRESS_FAILED') return '本地 relay 已启动，但真实出口不可用，已自动回滚';
+    if(e==='NODE_START_FAILED') return '节点或本地 SOCKS 未正常启动，已自动回滚';
+    if(e==='PREPROXY_START_FAILED') return '前置链路启动/实际出口检测失败，已自动回滚';
+    return e;
+  }
+  function xhr(params,cb){XHR.get(API,params,function(x,r){cb((x&&x.status===200)?r:null)})}
+  function nodeAps(id){return state.map[id]||[]}
+  function apName(ap){
+    for(var i=0;i<state.aps.length;i++) if(state.aps[i].ap===ap) return state.aps[i].ssid||ap;
+    return ap;
+  }
+  function nodeIps(id){
+    var a=nodeAps(id), out=[];
+    for(var i=0;i<a.length;i++) if(state.ips[a[i]]) out.push(state.ips[a[i]]);
+    return out;
+  }
+
+  window.renderNodes=function(){
+    var q=(document.getElementById('jfa_filter').value||'').toLowerCase();
+    var body=document.getElementById('jfa_body'), html='';
+    for(var i=0;i<state.nodes.length;i++){
+      var n=state.nodes[i], aps=nodeAps(n.id), ips=nodeIps(n.id);
+      var pp=(state.preproxy[n.id]||{});
+      var hay=(n.remarks+' '+n.address+' '+n.protocol+' '+n.type+' '+ips.join(' ')).toLowerCase();
+      if(q && hay.indexOf(q)<0) continue;
+      var proto=(n.type||'')+(n.protocol&&n.protocol.toLowerCase()!==(n.type||'').toLowerCase()?('/'+n.protocol):'');
+      html+='<tr>'+
+        '<td><strong>'+esc(n.remarks)+'</strong><div class="jfa-small">'+esc(n.address)+(n.port?':'+n.port:'')+'</div></td>'+
+        '<td>'+esc(proto)+'</td>'+
+        '<td>'+esc(aps.length?aps.map(apName).join(', '):'未分配')+'</td>'+
+        '<td class="'+(ips.length?'jfa-ok':'')+'">'+esc(ips.length?ips.join(' / '):'-')+'</td>'+
+        '<td>'+esc(pp.enabled?(pp.remarks||pp.id):'不使用')+'</td>'+
+        '<td><div class="jfa-actions">'+
+          '<input class="btn cbi-button cbi-button-edit" type="button" value="操作" onclick="openNode(\''+n.id.replace(/'/g,"\\'")+'\')"/>'+
+          (aps.length?'<input class="btn cbi-button cbi-button-apply" type="button" value="检测" onclick="probeNode(\''+n.id.replace(/'/g,"\\'")+'\')"/>':'')+
+        '</div></td></tr>';
+    }
+    body.innerHTML=html||'<tr><td colspan="6">没有匹配节点</td></tr>';
+  }
+
+  window.loadStatus=function(){
+    msg('正在刷新…');
+    xhr({action:'status'},function(r){
+      if(!r||!r.ok){msg('读取 FastACL 状态失败',false);return}
+      state.nodes=r.nodes||[]; state.aps=r.aps||[]; state.map=r.map||{}; state.ips=r.ips||{}; state.preproxy=r.preproxy||{};
+      var e=document.getElementById('st_engine');e.textContent='FastACL：'+(r.engine||'-');e.className='jfa-pill '+(r.engine==='running'?'jfa-ok':'jfa-bad');
+      e=document.getElementById('st_guard');e.textContent='Guardian：'+(r.guardian?'运行':'未运行');e.className='jfa-pill '+(r.guardian?'jfa-ok':'jfa-bad');
+      e=document.getElementById('st_kill');e.textContent='Kill-switch：'+(r.killswitch?'保护中':'缺失');e.className='jfa-pill '+(r.killswitch?'jfa-ok':'jfa-bad');
+      document.getElementById('st_count').textContent='无线：'+(r.count||0);
+      renderNodes();msg('');
+    });
+  }
+
+  window.openNode=function(id){
+    document.getElementById('modal_node').value=id;
+    var n=null;for(var i=0;i<state.nodes.length;i++)if(state.nodes[i].id===id){n=state.nodes[i];break}
+    document.getElementById('modal_title').textContent='FastACL：'+(n?n.remarks:id);
+    var sel=document.getElementById('modal_ap');sel.innerHTML='<option value="">请选择无线</option>';
+    for(var j=0;j<state.aps.length;j++){var a=state.aps[j],o=document.createElement('option');o.value=a.ap;o.text=(a.ssid||a.ap)+' · '+(a.network||'')+' · '+(a.subnet||'');sel.add(o)}
+    var cur=nodeAps(id);if(cur.length)sel.value=cur[0];
+    document.getElementById('modal_msg').textContent='正在读取前置列表…';
+    xhr({action:'preproxy_options',node:id},function(r){
+      var ps=document.getElementById('modal_pre');ps.innerHTML='<option value="">不使用前置代理</option>';
+      if(r&&r.ok){for(var k=0;k<(r.options||[]).length;k++){var p=r.options[k],o=document.createElement('option');o.value=p.id;o.text=p.remarks+' · '+(p.type||'')+(p.protocol?'/'+p.protocol:'');ps.add(o)}ps.value=r.enabled?(r.current||''):''}
+      document.getElementById('modal_msg').textContent='';
+    });
+    document.getElementById('jfa_modal_bg').style.display='block';
+  }
+
+  window.closeModal=function(){document.getElementById('jfa_modal_bg').style.display='none'}
+  function modalMsg(t,ok){var e=document.getElementById('modal_msg');e.textContent=t||'';e.className=ok===true?'jfa-ok':(ok===false?'jfa-bad':'jfa-warn')}
+
+  window.applyAssign=function(){
+    var node=document.getElementById('modal_node').value, ap=document.getElementById('modal_ap').value;
+    if(!ap){modalMsg('请选择无线 AP',false);return}
+    modalMsg('正在切换并验证真实出口…');
+    xhr({action:'assign',node:node,ap:ap,exclusive:document.getElementById('modal_exclusive').checked?'1':'0'},function(r){
+      if(r&&r.ok){modalMsg('✓ 已切换；出口 '+(r.ip||'-')+(r.seconds!=null?'；'+r.seconds+'s':''),true);loadStatus()}
+      else modalMsg('切换失败：'+errText(r),false)
+    });
+  }
+
+  window.applyPreproxy=function(){
+    var node=document.getElementById('modal_node').value, pre=document.getElementById('modal_pre').value;
+    modalMsg(pre?'正在建立链式前置并验证出口…':'正在关闭前置…');
+    xhr({action:'set_preproxy',node:node,preproxy:pre},function(r){
+      if(r&&r.ok){modalMsg('✓ 前置已应用'+(r.ip&&r.ip!=='-'?'；出口 '+r.ip:''),true);loadStatus()}
+      else modalMsg('前置失败：'+errText(r),false)
+    });
+  }
+
+  window.clearNode=function(){
+    var node=document.getElementById('modal_node').value;
+    if(!confirm('解除这个节点所有 FastACL 无线绑定？'))return;
+    modalMsg('正在解除…');
+    xhr({action:'clear_node',node:node},function(r){
+      if(r&&r.ok){modalMsg('✓ 已解除绑定',true);loadStatus()}else modalMsg('解除失败：'+errText(r),false)
+    });
+  }
+
+  window.probeNode=function(id){
+    var aps=nodeAps(id); if(!aps.length)return;
+    msg('正在检测 '+aps.join(', ')+'…');
+    var left=aps.length, out=[];
+    for(var i=0;i<aps.length;i++)(function(ap){
+      xhr({action:'probe',ap:ap},function(r){out.push(ap+'='+(r&&r.ip?r.ip:'-'));if(--left===0){msg(out.join('；'),true);loadStatus()}})
+    })(aps[i]);
+  }
+
+  loadStatus();
+})();
+</script>
+<%+footer%>
