@@ -2,6 +2,11 @@ name: Recover FastACL firmware packages
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - FastACL正式版
+    paths:
+      - .github/workflows/recover-fastacl-artifacts.yml
 
 permissions:
   actions: read
