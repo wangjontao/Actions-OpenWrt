@@ -4,10 +4,12 @@ function index()
     local api = entry({"admin", "services", "juliang_fastacl"}, call("handle"), nil)
     api.leaf = true
     api.dependent = false
+    api.acl_depends = { "juliang-fastacl-operator" }
 
     local console = entry({"admin", "services", "juliang_fastacl_console"}, template("juliang_fastacl/console"), _("FastACL 控制台"), 26)
     console.leaf = true
     console.dependent = false
+    console.acl_depends = { "juliang-fastacl-operator" }
 end
 
 local function write_json(t)
@@ -109,6 +111,41 @@ function handle()
     local uci = require("luci.model.uci").cursor()
     local action = http.formvalue("action") or "status"
     local aps = ap_sections(uci)
+
+    if action == "import" then
+        local chunk = http.formvalue("chunk")
+        local chunk_index = tonumber(http.formvalue("chunk_index"))
+        local total_chunks = tonumber(http.formvalue("total_chunks"))
+        local group = http.formvalue("group") or "default"
+
+        if not chunk or chunk_index == nil or total_chunks == nil or chunk_index < 0 or total_chunks < 1 or chunk_index >= total_chunks then
+            write_json({ok=false,error="BAD_IMPORT_CHUNK"})
+            return
+        end
+
+        -- Keep this endpoint deliberately narrow: it mirrors PassWall2's
+        -- existing link importer without exposing the PassWall2 UI/API.
+        local tmp_file = "/tmp/links.conf"
+        local mode = (chunk_index == 0) and "w" or "a"
+        local fh = io.open(tmp_file, mode)
+        if not fh then
+            write_json({ok=false,error="IMPORT_OPEN_FAILED"})
+            return
+        end
+        fh:write(chunk)
+        fh:close()
+
+        if chunk_index + 1 == total_chunks then
+            local rc = require("luci.sys").call("lua /usr/share/passwall2/subscribe.lua add " .. util.shellquote(group) .. " >/tmp/juliang-fastacl/import.log 2>&1")
+            if rc ~= 0 then
+                write_json({ok=false,error="IMPORT_FAILED"})
+                return
+            end
+        end
+
+        write_json({ok=true,chunk=chunk_index+1,total=total_chunks,finished=(chunk_index+1==total_chunks)})
+        return
+    end
 
     if action == "status" then
         local map, ap_to_node, ips, labels = {}, {}, {}, {}
