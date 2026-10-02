@@ -46,6 +46,30 @@ has_any_listener(){
   return 1
 }
 
+probe_socks_port(){
+  local port="$1" ip
+  ip="$(curl -4 -fsS --connect-timeout 3 --max-time 6 --socks5-hostname "127.0.0.1:$port" https://api.ipify.org 2>/dev/null | tr -d '\r\n ' || true)"
+  [ -n "$ip" ] || ip="$(curl -4 -fsS --connect-timeout 3 --max-time 6 --socks5-hostname "127.0.0.1:$port" https://icanhazip.com 2>/dev/null | tr -d '\r\n ' || true)"
+  [ -n "$ip" ] || ip="-"
+  printf '%s\n' "$ip"
+}
+
+probe_socks_wait(){
+  local port="$1" tries="${2:-3}" delay="${3:-1}" i ip
+  i=0
+  while [ "$i" -lt "$tries" ]; do
+    ip="$(probe_socks_port "$port")"
+    if [ -n "$ip" ] && [ "$ip" != "-" ]; then
+      printf '%s\n' "$ip"
+      return 0
+    fi
+    i=$((i+1))
+    [ "$i" -lt "$tries" ] && sleep "$delay"
+  done
+  echo "-"
+  return 1
+}
+
 ap_count(){
   local c
   c="$(uci -q get $CFG.main.ap_count 2>/dev/null || echo 0)"
@@ -126,14 +150,20 @@ start_preproxy(){
   /usr/share/passwall2/app.sh socks_node_switch flag="$sec" new_node="$pre" >"$plog" 2>&1 || true
 
   i=0
-  while [ "$i" -lt 6 ]; do
-    has_tcp_listener "$port" && return 0
+  while [ "$i" -lt 15 ]; do
+    if has_tcp_listener "$port"; then
+      if probe_socks_wait "$port" 3 1 >"$RUN_DIR/ap$n-preproxy.ip"; then
+        return 0
+      fi
+      break
+    fi
     sleep 1
     i=$((i+1))
   done
 
   {
-    echo "AP$n preproxy SOCKS port $port not ready"
+    echo "AP$n preproxy SOCKS port $port not healthy"
+    echo "preproxy_exit=$(cat "$RUN_DIR/ap$n-preproxy.ip" 2>/dev/null || echo -)"
     echo "preproxy=$pre"
     echo "===== switch log ====="
     cat "$plog" 2>/dev/null || true
@@ -199,7 +229,7 @@ start_ap(){
     /usr/share/passwall2/app.sh socks_node_switch flag="jfa_ap$n" new_node="$landing_node" >"$swlog" 2>&1 || true
   fi
   i=0
-  while [ "$i" -lt 5 ]; do
+  while [ "$i" -lt 15 ]; do
     has_tcp_listener "$port" && return 0
     sleep 1; i=$((i+1))
   done
@@ -222,16 +252,10 @@ start_ap(){
 }
 
 probe_ap(){
-  local n port ip
+  local n port
   n="$1"
   port="$(uci -q get $CFG.ap$n.socks_port 2>/dev/null || echo $((13100+n)))"
-
-  # Probe through the exact AP local SOCKS path. Two independent IP services
-  # avoid declaring a healthy node dead because one public service is blocked.
-  ip="$(curl -4 -fsS --connect-timeout 3 --max-time 6 --socks5-hostname "127.0.0.1:$port" https://api.ipify.org 2>/dev/null | tr -d '\r\n ' || true)"
-  [ -n "$ip" ] || ip="$(curl -4 -fsS --connect-timeout 3 --max-time 6 --socks5-hostname "127.0.0.1:$port" https://icanhazip.com 2>/dev/null | tr -d '\r\n ' || true)"
-  [ -n "$ip" ] || ip="-"
-  echo "$ip"
+  probe_socks_port "$port"
 }
 
 write_router(){
@@ -563,20 +587,29 @@ switch_node(){
 
   t0="$(date +%s)"
   if start_ap "$n" && ensure_dataplane; then
-    # Normal assignment heals unrelated missing relays. MOVE uses skip_heal=1
-    # until old source mappings have been removed, otherwise the source relay
-    # can be accidentally restarted while its old mapping still exists.
-    if [ "$skip_heal" != "1" ]; then
-      heal_other_aps "$n" >/dev/null 2>&1 || true
-      ensure_dataplane || true
+    port="$(uci -q get $CFG.ap$n.socks_port 2>/dev/null || echo $((13100+n)))"
+    if ip="$(probe_socks_wait "$port" 3 1)"; then
+      printf '%s\n' "$ip" > "$RUN_DIR/ap$n.ip"
+
+      # Normal assignment heals unrelated missing relays. MOVE uses skip_heal=1
+      # until old source mappings have been removed.
+      if [ "$skip_heal" != "1" ]; then
+        heal_other_aps "$n" >/dev/null 2>&1 || true
+        ensure_dataplane || true
+      fi
+
+      t1="$(date +%s)"; sec=$((t1-t0))
+      remark="$(uci -q get $APP.$node.remarks 2>/dev/null || echo "$node")"
+      save_state
+      printf '{"ok":true,"ap":"AP%s","node":"%s","remark":"%s","ip":"%s","seconds":%s,"dataplane":"running"}\n' "$n" "$node" "$(echo "$remark" | sed 's/"/\\"/g')" "$ip" "$sec"
+      return 0
     fi
-    ip="$(probe_ap "$n")"
-    printf '%s\n' "$ip" > "$RUN_DIR/ap$n.ip"
-    t1="$(date +%s)"; sec=$((t1-t0))
-    remark="$(uci -q get $APP.$node.remarks 2>/dev/null || echo "$node")"
-    save_state
-    printf '{"ok":true,"ap":"AP%s","node":"%s","remark":"%s","ip":"%s","seconds":%s,"dataplane":"running"}\n' "$n" "$node" "$(echo "$remark" | sed 's/"/\\"/g')" "$ip" "$sec"
-  else
+    log "AP$n listener exists but real egress probe failed; rolling back"
+    echo "FINAL_EGRESS_FAILED" > "$RUN_DIR/ap$n-last-error"
+  fi
+
+  # Start/listener/dataplane/real-egress failure: restore previous binding.
+  {
     if [ -n "$old" ]; then
       uci set $CFG.ap$n.node="$old"
       ensure_socks_section "$n" "$old"
@@ -589,10 +622,11 @@ switch_node(){
     fi
     uci commit "$CFG"; uci commit "$APP"
     [ -n "$old" ] && start_ap "$n" >/dev/null 2>&1 || kill_ap "$n"
-    printf '{"ok":false,"ap":"AP%s","node":"%s","error":"NODE_START_FAILED","rolled_back":true}\n' "$n" "$node"
+    reason="$(cat "$RUN_DIR/ap$n-last-error" 2>/dev/null || echo NODE_START_FAILED)"
+    rm -f "$RUN_DIR/ap$n-last-error"
+    printf '{"ok":false,"ap":"AP%s","node":"%s","error":"%s","rolled_back":true}\n' "$n" "$node" "$reason"
     return 4
-  fi
-}
+  }
 
 move_node(){
   ap="$1"; node="$2"; n="$(ap_num "$ap")" || { echo '{"ok":false,"error":"BAD_AP"}'; return 2; }
@@ -715,26 +749,60 @@ status(){
   done
 }
 
+OP_LOCK="$RUN_DIR/operation.lock"
+
+lock_acquire(){
+  local tries="${1:-30}" i pid
+  i=0
+  while ! mkdir "$OP_LOCK" 2>/dev/null; do
+    pid="$(cat "$OP_LOCK/pid" 2>/dev/null || true)"
+    if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+      rm -rf "$OP_LOCK" >/dev/null 2>&1 || true
+      continue
+    fi
+    i=$((i+1))
+    [ "$i" -lt "$tries" ] || return 1
+    sleep 1
+  done
+  echo $ > "$OP_LOCK/pid"
+  return 0
+}
+
+lock_release(){
+  rm -rf "$OP_LOCK" >/dev/null 2>&1 || true
+}
+
+run_locked(){
+  lock_acquire 30 || {
+    echo '{"ok":false,"error":"BUSY","detail":"another FastACL operation is running"}'
+    return 75
+  }
+  "$@"
+  rc=$?
+  lock_release
+  return "$rc"
+}
+
 case "${1:-}" in
   start) start_all ;;
   stop) stop_all ;;
-  restart) stop_all; start_all ;;
-  firewall) firewall ;;
-  killswitch) install_killswitch ;;
+  restart) run_locked restart_all ;;
+  firewall) run_locked firewall ;;
+  killswitch) run_locked install_killswitch ;;
   firewall-check) firewall_check ;;
-  switch) [ $# -eq 3 ] || exit 2; switch_node "$2" "$3" ;;
-  move) [ $# -eq 3 ] || exit 2; move_node "$2" "$3" ;;
-  clear) [ $# -eq 2 ] || exit 2; clear_ap "$2" ;;
-  restart-ap) [ $# -eq 2 ] || exit 2; restart_ap "$2" ;;
+  switch) [ $# -eq 3 ] || exit 2; run_locked switch_node "$2" "$3" ;;
+  move) [ $# -eq 3 ] || exit 2; run_locked move_node "$2" "$3" ;;
+  clear) [ $# -eq 2 ] || exit 2; run_locked clear_ap "$2" ;;
+  restart-ap) [ $# -eq 2 ] || exit 2; run_locked restart_ap "$2" ;;
   probe) n="$(ap_num "$2")" || exit 2; probe_ap "$n" ;;
   status) status ;;
-  discover) lua /usr/libexec/juliang-fastacl-discover.lua ;;
-  repair) repair_all ;;
-  heal) heal_other_aps 0 ;;
-  ensure) ensure_dataplane ;;
+  discover) run_locked lua /usr/libexec/juliang-fastacl-discover.lua ;;
+  repair) run_locked repair_all ;;
+  heal) run_locked heal_other_aps 0 ;;
+  ensure) run_locked ensure_dataplane ;;
   save-state) save_state ;;
-  restore-state) restore_state ;;
-  router-reload) reload_router ;;
-  dns) [ $# -eq 3 ] || exit 2; set_dns_mode "$2" "$3" ;;
+  restore-state) run_locked restore_state ;;
+  router-reload) run_locked reload_router ;;
+  dns) [ $# -eq 3 ] || exit 2; run_locked set_dns_mode "$2" "$3" ;;
   *) echo "Usage: juliang-fastacl {start|stop|restart|repair|heal|ensure|killswitch|save-state|restore-state|router-reload|dns AP1 doh|dns AP1 tcp|dns AP1 auto|discover|firewall|firewall-check|switch AP1 nodeid|move AP1 nodeid|clear AP1|restart-ap AP1|probe AP1|status}"; exit 1 ;;
 esac
