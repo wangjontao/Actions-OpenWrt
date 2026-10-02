@@ -181,6 +181,22 @@ local function patch_istore_routes()
     return true
 end
 
+local function patch_istore_menu_json()
+    local path = "/usr/share/luci/menu.d/luci-app-istorex.json"
+    local s = read(path)
+    if not s then return true end
+    if s:find("juliang%-quickstart%-admin", 1) then return true end
+    backup(path)
+
+    local old = '"admin/istorex": {'
+    local new = '"admin/istorex": {\n        "depends": { "acl": [ "juliang-quickstart-admin" ] },'
+    local changed
+    s, changed = replace_once(s, old, new)
+    if not changed then return false, "iStore menu anchor missing" end
+    write(path, s)
+    return true
+end
+
 local function patch_blank_login_user()
     local p = io.popen([[find /usr/share/ucode/luci/template /usr/lib/lua/luci/view -type f \( -name 'sysauth.ut' -o -name 'sysauth.htm' \) 2>/dev/null]])
     if not p then return true end
@@ -222,6 +238,7 @@ local checks = {
     {"quickstart-template", patch_quickstart_template},
     {"istore-backend-restore", patch_istore_backend},
     {"istore-routes", patch_istore_routes},
+    {"istore-menu-json", patch_istore_menu_json},
     {"blank-login-user", patch_blank_login_user},
     {"wireless-menu", patch_wireless_menu}
 }
