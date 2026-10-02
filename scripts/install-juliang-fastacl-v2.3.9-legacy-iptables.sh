@@ -85,7 +85,10 @@ fi
 
 /usr/bin/juliang-fastacl save-state >/dev/null 2>&1 || true
 /etc/init.d/juliang-fastacl enable >/dev/null 2>&1 || true
-/etc/init.d/juliang-fastacl restart >/dev/null 2>&1 || true
+# repair already built a working dataplane. Do not use restart here because
+# stop_service -> stop_all would immediately delete the freshly built chains.
+# Start Guardian without tearing down the active FastACL dataplane.
+/etc/init.d/juliang-fastacl start >/dev/null 2>&1 || true
 /etc/init.d/rpcd restart >/dev/null 2>&1 || true
 /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
 
@@ -97,11 +100,11 @@ echo "===== FastACL status ====="
 
 echo
 echo "===== iptables TProxy ====="
-iptables -t mangle -S JULIANG_FASTACL 2>/dev/null | head -40
+iptables -t mangle -S JULIANG_FASTACL 2>/dev/null | head -40 || true
 
 echo
 echo "===== kill-switch ====="
-iptables -t filter -S JULIANG_KILLSWITCH 2>/dev/null
+iptables -t filter -S JULIANG_KILLSWITCH 2>/dev/null || true
 
 /usr/bin/juliang-fastacl status | grep -q '^router: running$' || {
   echo "[ERROR] router is not running"
