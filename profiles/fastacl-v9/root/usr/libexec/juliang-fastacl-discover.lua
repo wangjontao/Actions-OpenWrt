@@ -92,8 +92,10 @@ do
   lan_cidr = cidr_from(ip, mask)
 end
 
+local include_lan = (uci:get("juliang_fastacl", "main", "include_lan") or "1") ~= "0"
+
 local ignore = {
-  lan=true, wan=true, wan6=true, loopback=true, wwan=true
+  wan=true, wan6=true, loopback=true, wwan=true
 }
 
 local by_net = {}
@@ -101,16 +103,17 @@ uci:foreach("wireless", "wifi-iface", function(s)
   if tostring(s.disabled or "0") ~= "1" and tostring(s.mode or "ap") == "ap" then
     local ssid = s.ssid or s[".name"] or "WiFi"
     for _, net in ipairs(split_words(s.network)) do
-      if not ignore[net] then
+      if not ignore[net] and (net ~= "lan" or include_lan) then
         local cidr, router_ip = network_ipv4(net)
-        if cidr and cidr ~= lan_cidr then
+        if cidr and (net == "lan" or cidr ~= lan_cidr) then
           local item = by_net[net]
           if not item then
             item = {
               network = net,
               subnet = cidr,
               router_ip = router_ip or "",
-              ssids = {}
+              ssids = {},
+              is_lan = (net == "lan")
             }
             by_net[net] = item
           end
@@ -123,14 +126,42 @@ uci:foreach("wireless", "wifi-iface", function(s)
   end
 end)
 
+-- The main LAN also represents wired LAN clients. Include it even if the
+-- main SSID is temporarily down, as long as the LAN IPv4 network exists.
+if include_lan and lan_cidr and not by_net.lan then
+  local cidr, router_ip = network_ipv4("lan")
+  if cidr then
+    by_net.lan = {
+      network = "lan",
+      subnet = cidr,
+      router_ip = router_ip or "",
+      ssids = {},
+      is_lan = true
+    }
+  end
+end
+
 local items = {}
 for _, item in pairs(by_net) do
-  item.ssid = table.concat(item.ssids, " / ")
+  if item.is_lan then
+    local wifi = table.concat(item.ssids, " / ")
+    if wifi ~= "" then
+      item.ssid = "主网络 · " .. wifi .. " · 有线LAN"
+    else
+      item.ssid = "主网络 · 有线LAN"
+    end
+    item._main_lan = true
+  else
+    item.ssid = table.concat(item.ssids, " / ")
+    item._main_lan = false
+  end
   item._sort = ip_to_num((item.subnet or ""):match("^([^/]+)$") or (item.subnet or ""):match("^([^/]+)/")) or 0
   items[#items+1] = item
 end
 
+-- Keep the main LAN last so existing A1..An slot numbers/ports do not shift.
 table.sort(items, function(a,b)
+  if a._main_lan ~= b._main_lan then return not a._main_lan end
   if a._sort == b._sort then return a.network < b.network end
   return a._sort < b._sort
 end)
