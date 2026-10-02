@@ -1,0 +1,37 @@
+name: FastACL V9 Fix4 Check
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - jontaoNpS-mt7981-v9-fix3-fastacl-stable-20261002
+    paths:
+      - profiles/fastacl-v9/root/usr/bin/juliang-fastacl
+      - profiles/fastacl-v9/root/usr/bin/juliang-fastacl-luci-install
+      - profiles/fastacl-v9/root/usr/libexec/juliang-fastacl-relay.lua
+      - profiles/fastacl-v9/root/usr/lib/lua/luci/controller/juliang_fastacl.lua
+      - profiles/fastacl-v9/root/usr/lib/lua/luci/view/juliang_fastacl/console.htm
+      - .github/workflows/FastACL-V9-Fix4-Check.yml
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1
+      - name: Validate FastACL Fix4
+        run: |
+          set -euxo pipefail
+          sh -n profiles/fastacl-v9/root/usr/bin/juliang-fastacl
+          sh -n profiles/fastacl-v9/root/usr/bin/juliang-fastacl-luci-install
+          luac5.1 -p profiles/fastacl-v9/root/usr/libexec/juliang-fastacl-relay.lua
+          luac5.1 -p profiles/fastacl-v9/root/usr/lib/lua/luci/controller/juliang_fastacl.lua
+          grep -q 'probe_socks_wait "$port" 3 1' profiles/fastacl-v9/root/usr/bin/juliang-fastacl
+          grep -q 'OP_LOCK=' profiles/fastacl-v9/root/usr/bin/juliang-fastacl
+          grep -q 'FINAL_EGRESS_FAILED' profiles/fastacl-v9/root/usr/bin/juliang-fastacl
+          grep -q 'switch_node "$ap" "$node" 1' profiles/fastacl-v9/root/usr/bin/juliang-fastacl
+          grep -q 'jfa_error_text' profiles/fastacl-v9/root/usr/bin/juliang-fastacl-luci-install
+          echo "FastACL V9 Fix4 validation passed."
