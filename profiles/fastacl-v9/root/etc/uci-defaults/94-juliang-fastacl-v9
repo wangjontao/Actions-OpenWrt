@@ -1,9 +1,10 @@
 #!/bin/sh
-# JuLiangTK V9 FastACL defaults
-# PassWall2 remains installed for node/subscription/UI management, but its
-# transparent-proxy dataplane is disabled. FastACL owns A1..An traffic.
-uci -q delete juliang_fastacl.main
-uci set juliang_fastacl.main='main'
+# JuLiangTK V9 FastACL migration/defaults.
+# This intentionally runs on sysupgrade too, including when old V8 settings
+# and /etc/juliang-5wifi.done were preserved.
+
+touch /etc/config/juliang_fastacl
+uci -q get juliang_fastacl.main >/dev/null || uci set juliang_fastacl.main='main'
 uci set juliang_fastacl.main.enabled='1'
 uci set juliang_fastacl.main.tproxy_port='12345'
 uci set juliang_fastacl.main.mark='0x66'
@@ -12,22 +13,46 @@ uci set juliang_fastacl.main.dns_mode='doh'
 uci set juliang_fastacl.main.dns_server='1.1.1.1'
 uci set juliang_fastacl.main.dns_tls_server_name='cloudflare-dns.com'
 uci set juliang_fastacl.main.dns_path='/dns-query'
-uci set juliang_fastacl.main.version='V9'
+uci set juliang_fastacl.main.version='V9-FIX1'
 uci commit juliang_fastacl
 
-uci -q set passwall2.@global[0].enabled='0'
-uci -q set passwall2.@global[0].acl_enable='0'
-uci -q set passwall2.@global[0].socks_enabled='0'
-uci commit passwall2
+# Remove every legacy A1..A10 -> WAN forwarding, including anonymous sections
+# left by an earlier V8 sysupgrade. Do not depend on section names.
+changed=0
+for sec in $(uci -q show firewall | sed -n "s/^firewall\.\([^.=]*\)=forwarding$/\1/p"); do
+    src="$(uci -q get firewall.$sec.src 2>/dev/null || true)"
+    dest="$(uci -q get firewall.$sec.dest 2>/dev/null || true)"
+    case "$src:$dest" in
+        a1:wan|a2:wan|a3:wan|a4:wan|a5:wan|a6:wan|a7:wan|a8:wan|a9:wan|a10:wan)
+            uci -q delete firewall.$sec
+            changed=1
+        ;;
+    esac
+done
+for i in 1 2 3 4 5 6 7 8 9 10; do
+    if [ "$(uci -q get firewall.a$i 2>/dev/null || true)" = "zone" ]; then
+        uci set firewall.a$i.forward='REJECT'
+        changed=1
+    fi
+done
+[ "$changed" -eq 0 ] || { uci commit firewall; /etc/init.d/firewall restart >/dev/null 2>&1 || true; }
+
+# PassWall2 remains node database/LuCI only; FastACL owns A1..A10 dataplane.
+uci -q get passwall2.@global[0] >/dev/null && {
+    uci -q set passwall2.@global[0].enabled='0'
+    uci -q set passwall2.@global[0].acl_enable='0'
+    uci -q set passwall2.@global[0].socks_enabled='0'
+    uci commit passwall2
+}
 /etc/init.d/passwall2 stop >/dev/null 2>&1 || true
 /etc/init.d/passwall2 disable >/dev/null 2>&1 || true
 
 chmod 0755 /usr/bin/juliang-fastacl /usr/bin/juliang-fastacl-guard /usr/bin/juliang-fastacl-luci-install >/dev/null 2>&1 || true
 chmod 0755 /etc/init.d/juliang-fastacl /etc/hotplug.d/iface/99-juliang-fastacl >/dev/null 2>&1 || true
 
-/usr/bin/juliang-fastacl-luci-install >/tmp/juliang-fastacl-luci-install.log 2>&1 || logger -t juliang-fastacl "LuCI patch deferred/failed; see /tmp/juliang-fastacl-luci-install.log"
+/usr/bin/juliang-fastacl-luci-install >/tmp/juliang-fastacl-luci-install.log 2>&1 || logger -t juliang-fastacl "LuCI patch failed; Guardian will still start; see /tmp/juliang-fastacl-luci-install.log"
 /etc/init.d/juliang-fastacl enable >/dev/null 2>&1 || true
 /etc/init.d/juliang-fastacl restart >/dev/null 2>&1 || true
 
-logger -t juliang-fastacl "V9 FastACL guardian enabled; DoH enabled; fail-closed kill-switch active after AP discovery"
+logger -t juliang-fastacl "V9-FIX1 migration applied: config present, old A->WAN forwarding removed, Guardian enabled"
 exit 0
