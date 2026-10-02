@@ -2,37 +2,87 @@
   "juliang-operator-home": {
     "description": "Allow the restricted operator to view the iStore/QuickStart home page",
     "read": {
-      "uci": [ "quickstart" ]
+      "uci": [
+        "quickstart"
+      ],
+      "ubus": {
+        "session": [
+          "access",
+          "get"
+        ]
+      }
     }
   },
   "juliang-fastacl-operator": {
     "description": "Allow access to the restricted FastACL console",
     "read": {
-      "uci": [ "juliang_fastacl" ]
+      "uci": [
+        "juliang_fastacl"
+      ],
+      "ubus": {
+        "session": [
+          "access",
+          "get"
+        ]
+      }
     }
   },
   "juliang-wireless-operator": {
     "description": "Read-only wireless status and configuration view for restricted operators",
     "read": {
       "file": {
-        "/proc/sys/net/ipv6/conf/*/mtu": [ "read" ],
-        "/proc/sys/net/ipv6/conf/*/hop_limit": [ "read" ],
-        "/proc/sys/net/ipv[46]/conf/*": [ "read" ],
-        "/sys/class/net/*/brport/*": [ "read" ]
+        "/proc/sys/net/ipv6/conf/*/mtu": [
+          "read"
+        ],
+        "/proc/sys/net/ipv6/conf/*/hop_limit": [
+          "read"
+        ],
+        "/proc/sys/net/ipv[46]/conf/*": [
+          "read"
+        ],
+        "/sys/class/net/*/brport/*": [
+          "read"
+        ]
       },
       "ubus": {
-        "iwinfo": [ "assoclist", "countrylist", "freqlist", "txpowerlist" ],
-        "luci-rpc": [ "getBoardJSON", "getHostHints", "getNetworkDevices", "getWirelessDevices" ],
-        "network": [ "get_proto_handlers" ],
-        "network.interface": [ "dump" ]
+        "iwinfo": [
+          "assoclist",
+          "countrylist",
+          "freqlist",
+          "txpowerlist"
+        ],
+        "luci-rpc": [
+          "getBoardJSON",
+          "getHostHints",
+          "getNetworkDevices",
+          "getWirelessDevices"
+        ],
+        "network": [
+          "get_proto_handlers"
+        ],
+        "network.interface": [
+          "dump"
+        ],
+        "session": [
+          "access",
+          "get"
+        ]
       },
-      "uci": [ "dhcp", "firewall", "network", "wireless", "system" ]
+      "uci": [
+        "dhcp",
+        "firewall",
+        "network",
+        "wireless",
+        "system"
+      ]
     }
   },
   "juliang-quickstart-admin": {
     "description": "Keep QuickStart configuration pages restricted to administrators",
     "read": {
-      "uci": [ "quickstart" ]
+      "uci": [
+        "quickstart"
+      ]
     }
   }
 }
