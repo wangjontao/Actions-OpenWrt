@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-PIN="fda3a94335445aeecf9ea7fb0742501c93982052"
+PIN="2049b19f87b7832d1d40edd7798001024ae91bc2"
 ARCHIVE="https://codeload.github.com/wangjontao/Actions-OpenWrt/tar.gz/$PIN"
 TMP="/tmp/jfa239-full-$$"
 TGZ="/tmp/jfa239-full-$$.tar.gz"
@@ -29,6 +29,21 @@ echo " FastACL + Operator UI + SSH 20022"
 echo "=================================================="
 
 mkdir -p "$TMP" "$BACKUP"
+
+if ! command -v nft >/dev/null 2>&1; then
+  echo "[INFO] nft command missing; installing nftables userspace..."
+  command -v opkg >/dev/null 2>&1 || {
+    echo "[ERROR] nft is missing and opkg is unavailable" >&2
+    exit 1
+  }
+  opkg update
+  opkg install nftables-json >/dev/null 2>&1 || opkg install nftables-nojson
+fi
+command -v nft >/dev/null 2>&1 || {
+  echo "[ERROR] nft installation failed" >&2
+  exit 1
+}
+
 fetch
 [ -s "$TGZ" ] || { echo "[ERROR] download failed"; exit 1; }
 tar -xzf "$TGZ" -C "$TMP"
@@ -74,6 +89,17 @@ rm -rf /tmp/luci-modulecache /tmp/luci-templatecache 2>/dev/null || true
 /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
 /etc/init.d/dropbear restart >/dev/null 2>&1 || true
 
+echo "[INFO] Discovering wireless topology..."
+/usr/bin/juliang-fastacl discover >/tmp/juliang-fastacl-install-discover.json 2>/tmp/juliang-fastacl-install-discover.log
+
+echo "[INFO] Building FastACL dataplane and kill-switch..."
+if ! /usr/bin/juliang-fastacl repair >/tmp/juliang-fastacl-install-repair.log 2>&1; then
+  echo "[ERROR] FastACL repair failed:"
+  cat /tmp/juliang-fastacl-install-repair.log 2>/dev/null || true
+  exit 1
+fi
+/usr/bin/juliang-fastacl save-state >/dev/null 2>&1 || true
+
 grep -q 'install_killswitch' /usr/bin/juliang-fastacl
 grep -q 'move_node(){' /usr/bin/juliang-fastacl
 grep -q 'enforce_failclosed_firewall' /usr/bin/juliang-fastacl-guard
@@ -87,6 +113,21 @@ for sec in $(uci -q show dropbear 2>/dev/null | sed -n "s/^dropbear\.\([^.=]*\)=
   [ "$(uci -q get dropbear.$sec.Port || true)" = "20022" ] && DROP_OK=1
 done
 [ "$DROP_OK" = "1" ]
+
+nft list table inet juliang_killswitch >/dev/null 2>&1 || {
+  echo "[ERROR] juliang_killswitch was not created" >&2
+  exit 1
+}
+if ! /usr/bin/juliang-fastacl status | grep -q '^router: runningecho "[OK] Operator UI installed and enabled"
+echo "[OK] SSH port: 20022"
+echo "[OK] Operator username: admin"
+echo "[OK] Backup: $BACKUP"
+echo "[INFO] Root SSH example: ssh -p 20022 root@<router-ip>"
+; then
+  echo "[ERROR] FastACL router is not running" >&2
+  /usr/bin/juliang-fastacl status || true
+  exit 1
+fi
 
 echo
 echo "[OK] JuLiang FastACL 2.3.9 Stable installed"
