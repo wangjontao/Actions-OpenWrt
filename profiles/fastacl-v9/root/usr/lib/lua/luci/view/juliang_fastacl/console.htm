@@ -2,7 +2,7 @@
 <%
 local dsp = require "luci.dispatcher"
 local api = dsp.build_url("admin", "services", "juliang_fastacl")
-local import_api = dsp.build_url("admin", "services", "passwall2", "link_add_node")
+local import_api = dsp.build_url("admin", "services", "juliang_fastacl")
 %>
 <style>
 #maincontent{max-width:none!important}
@@ -277,6 +277,7 @@ host:port:username:password"></textarea>
       }
 
       var fd=new FormData();
+      fd.append('action','import');
       fd.append('chunk',text.substring(idx*chunkSize,(idx+1)*chunkSize));
       fd.append('chunk_index',idx);
       fd.append('total_chunks',total);
