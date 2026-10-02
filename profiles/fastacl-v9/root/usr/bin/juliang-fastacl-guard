@@ -17,37 +17,100 @@ disable_passwall2_runtime(){
 }
 
 enforce_failclosed_firewall(){
-  local sec src dest i changed
+  local sec src dest apsec net changed
   changed=0
 
-  # Never permit any A1..A10 zone to forward directly to WAN. This catches
-  # named and anonymous sections preserved from old firmware upgrades.
+  # Remove direct WAN forwarding for every network currently discovered by
+  # FastACL. This is intentionally dynamic: 5, 10, 20 or any later AP count.
   for sec in $(uci -q show firewall | sed -n "s/^firewall\.\([^.=]*\)=forwarding$/\1/p"); do
     src="$(uci -q get firewall.$sec.src 2>/dev/null || true)"
     dest="$(uci -q get firewall.$sec.dest 2>/dev/null || true)"
-    case "$src:$dest" in
-      a1:wan|a2:wan|a3:wan|a4:wan|a5:wan|a6:wan|a7:wan|a8:wan|a9:wan|a10:wan)
+    [ "$dest" = "wan" ] || continue
+
+    for apsec in $(uci -q show juliang_fastacl | sed -n "s/^juliang_fastacl\.\([^.=]*\)=ap$/\1/p"); do
+      net="$(uci -q get juliang_fastacl.$apsec.network 2>/dev/null || true)"
+      if [ -n "$net" ] && [ "$src" = "$net" ]; then
         uci -q delete firewall.$sec
         changed=1
-      ;;
-    esac
+        break
+      fi
+    done
   done
 
-  i=1
-  while [ "$i" -le 10 ]; do
-    if [ "$(uci -q get firewall.a$i 2>/dev/null || true)" = "zone" ] &&        [ "$(uci -q get firewall.a$i.forward 2>/dev/null || true)" != "REJECT" ]; then
-      uci set firewall.a$i.forward='REJECT'
+  # Every FastACL AP firewall zone must itself remain REJECT for forwarding.
+  for apsec in $(uci -q show juliang_fastacl | sed -n "s/^juliang_fastacl\.\([^.=]*\)=ap$/\1/p"); do
+    net="$(uci -q get juliang_fastacl.$apsec.network 2>/dev/null || true)"
+    [ -n "$net" ] || continue
+    if [ "$(uci -q get firewall.$net 2>/dev/null || true)" = "zone" ] && \
+       [ "$(uci -q get firewall.$net.forward 2>/dev/null || true)" != "REJECT" ]; then
+      uci set firewall.$net.forward='REJECT'
       changed=1
     fi
-    i=$((i+1))
   done
 
   if [ "$changed" -ne 0 ]; then
     uci commit firewall
     /etc/init.d/firewall restart >/dev/null 2>&1 || true
-    log "removed unsafe A->WAN forwarding / restored REJECT zones"
+    log "removed unsafe FastACL AP -> WAN forwarding / restored REJECT zones"
   fi
 }
+
+health_check_assigned(){
+  local count i node interval threshold failfile fails ip ap now
+  count="$(uci -q get juliang_fastacl.main.ap_count 2>/dev/null || echo 0)"
+  case "$count" in ''|*[!0-9]*) count=0 ;; esac
+  threshold="$(uci -q get juliang_fastacl.main.health_fail_threshold 2>/dev/null || echo 3)"
+  case "$threshold" in ''|*[!0-9]*) threshold=3 ;; esac
+  [ "$threshold" -ge 1 ] || threshold=3
+
+  i=1
+  while [ "$i" -le "$count" ]; do
+    node="$(uci -q get juliang_fastacl.ap$i.node 2>/dev/null || true)"
+    failfile="/tmp/juliang-fastacl/ap$i.health_fail"
+
+    if [ -z "$node" ]; then
+      rm -f "$failfile"
+      i=$((i+1))
+      continue
+    fi
+
+    ap="AP$i"
+    ip="$(/usr/bin/juliang-fastacl probe "$ap" 2>/dev/null || true)"
+    if [ -n "$ip" ] && [ "$ip" != "-" ]; then
+      printf '%s\n' "$ip" > "/tmp/juliang-fastacl/ap$i.ip"
+      rm -f "$failfile"
+    else
+      fails="$(cat "$failfile" 2>/dev/null || echo 0)"
+      case "$fails" in ''|*[!0-9]*) fails=0 ;; esac
+      fails=$((fails+1))
+      printf '%s\n' "$fails" > "$failfile"
+      log "$ap real-exit probe failed ($fails/$threshold)"
+
+      if [ "$fails" -ge "$threshold" ]; then
+        log "$ap real-exit failed $fails consecutive probes; restarting only this relay"
+        if /usr/bin/juliang-fastacl restart-ap "$ap" >/tmp/juliang-fastacl/ap$i.health_restart.log 2>&1; then
+          ip="$(/usr/bin/juliang-fastacl probe "$ap" 2>/dev/null || true)"
+          if [ -n "$ip" ] && [ "$ip" != "-" ]; then
+            printf '%s\n' "$ip" > "/tmp/juliang-fastacl/ap$i.ip"
+            rm -f "$failfile"
+            log "$ap real-exit recovered: $ip"
+          else
+            log "$ap relay restarted but real-exit is still unavailable; fail-closed remains active"
+          fi
+        else
+          log "$ap targeted relay restart failed; fail-closed remains active"
+        fi
+      fi
+    fi
+
+    i=$((i+1))
+  done
+}
+
+# Real-exit health is intentionally lower frequency than process checks.
+# Default: one real probe every 120 seconds; 3 consecutive failures before
+# restarting only the affected AP relay.
+last_health=0
 
 # Wait for network/wireless services. Persistent UCI bindings are kept intact
 # while we wait; discovery itself is transactional and cannot erase them.
@@ -89,6 +152,15 @@ while true; do
 
   if ! /usr/bin/juliang-fastacl heal >/tmp/juliang-fastacl/guard-heal.log 2>&1; then
     log "one or more AP relays were missing; heal attempted"
+  fi
+
+  interval="$(uci -q get juliang_fastacl.main.health_probe_interval 2>/dev/null || echo 120)"
+  case "$interval" in ''|*[!0-9]*) interval=120 ;; esac
+  [ "$interval" -ge 60 ] || interval=60
+  now="$(date +%s)"
+  if [ "$last_health" -eq 0 ] || [ $((now-last_health)) -ge "$interval" ]; then
+    health_check_assigned
+    last_health="$now"
   fi
 
   sleep 20
