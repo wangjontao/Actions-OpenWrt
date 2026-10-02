@@ -40,7 +40,7 @@ jobs:
             src="raw-${variant}"
             dst="FastACL-V9-${variant}"
             mkdir -p "$dst"
-            find "$src" -type f \( -iname '*.bin' -o -iname '*.itb' -o -iname '*.config' -o -name 'sha256sums' -o -name 'profiles.json' \) -exec cp -a {} "$dst/" \;
+            find "$src" -type f \( -iname '*jcg_q30-pro*squashfs-sysupgrade.bin' -o -iname '*.config' \) -exec cp -a {} "$dst/" \;
             test "$(find "$dst" -type f \( -iname '*.bin' -o -iname '*.itb' \) | wc -l)" -gt 0
             (cd "$dst" && sha256sum * > SHA256SUMS.txt)
           done
