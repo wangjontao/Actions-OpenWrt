@@ -1,0 +1,144 @@
+name: MT7981 V9 Fix3 5WiFi Rescue Release
+
+on:
+  push:
+    branches:
+      - jontaoNpS-mt7981-v9-fix3-fastacl-stable-20261002
+    paths:
+      - .github/workflows/MT7981-V9-5WiFi-Rescue-Release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  SOURCE_RUN_ID: "36954117476"
+  SOURCE_SHA: "baafb5bd907cd28bfaae6870337edd2721fc7097"
+  RAW_ARTIFACT: "MT7981-V9-5WiFi-NPS-jontao-top-raw-2026.10.02-10.09.32"
+  RELEASE_TAG: "MT7981-V9-FIX3-5WiFi-NPS-jontao-top-2026.10.02-10.09.32"
+  RELEASE_TITLE: "MT7981 V9 Fix3 5WiFi NPS nps.jontao.top 2026.10.02-10.09.32"
+
+jobs:
+  rescue-release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Download preserved 5WiFi raw firmware
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.RAW_ARTIFACT }}
+          path: raw
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+
+      - name: Verify and collect firmware
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Downloaded files:"
+          find raw -type f -printf '%p %s bytes\n' | sort
+
+          mkdir -p upload
+          for pattern in \
+            philips_hy3000 \
+            cmcc_rax3000m-nand-mtk \
+            cmcc_rax3000m-emmc-mtk \
+            qihoo_360t7 \
+            aigo_ags21 \
+            cmcc_a10-ubootmod \
+            konka_komi-a31 \
+            newland_nl-wr8103 \
+            newland_nl-wr9103 \
+            abt_asr3000 \
+            jcg_q30-pro \
+            zbtlink_zbt-z8103ax-c \
+            zbtlink_zbt-z8103ax-c-nmbm \
+            zbtlink_zbt-z8103ax-c-ubootmod
+          do
+            mapfile -t files < <(find raw -type f -iname "*${pattern}*" \( -iname "*.bin" -o -iname "*.itb" \) -size +5M | sort -u)
+            if [ "${#files[@]}" -eq 0 ]; then
+              echo "ERROR: ${pattern} firmware missing from preserved artifact"
+              exit 1
+            fi
+            printf 'Collecting %s:\n' "${pattern}"
+            printf '  %s\n' "${files[@]}"
+            cp -a "${files[@]}" upload/
+          done
+
+          for f in upload/*konka_komi-a31*; do
+            [ -f "$f" ] || continue
+            cp -a "$f" "${f/konka_komi-a31/etr631-t}"
+            cp -a "$f" "${f/konka_komi-a31/etr635-u}"
+          done
+
+          # Keep useful target metadata when present.
+          find raw -type f \( -name 'config.buildinfo' -o -name 'profiles.json' -o -name 'sha256sums' \) -exec cp -a {} upload/ \; || true
+
+          sha256sum upload/* | tee upload/SHA256SUMS
+          echo "Final release payload:"
+          ls -lh upload
+
+      - name: Create release with retry
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > release-notes.txt <<'EOF'
+          Recovered release from the already-successful MT7981 V9 Fix3 5WiFi build.
+
+          Source workflow run: 36954117476
+          Source commit: baafb5bd907cd28bfaae6870337edd2721fc7097
+          Original build completed successfully through compile, FastACL rootfs verification, raw target preservation, and firmware collection. Only the original GitHub Release API call failed with HTTP 403.
+
+          5WiFi layout: A1-A5 on 5GHz, isolated subnets 172.16.1.0/24 through 172.16.5.0/24.
+          FastACL V9 Fix3 Guardian + fail-closed kill-switch included.
+          NPS: nps.jontao.top:8024.
+          PassWall / PassWall2 SK5 and HTTP import support retained.
+          EOF
+
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            created=0
+            for attempt in 1 2 3 4 5; do
+              echo "Create release attempt ${attempt}/5"
+              if gh release create "$RELEASE_TAG" \
+                --repo "$GITHUB_REPOSITORY" \
+                --target "$SOURCE_SHA" \
+                --title "$RELEASE_TITLE" \
+                --notes-file release-notes.txt; then
+                created=1
+                break
+              fi
+              sleep $((attempt * 15))
+            done
+            [ "$created" -eq 1 ] || {
+              echo "ERROR: release creation failed after retries"
+              exit 1
+            }
+          else
+            echo "Release already exists; uploading with --clobber"
+          fi
+
+          gh release upload "$RELEASE_TAG" upload/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
+
+      - name: Verify published asset count
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          local_count="$(find upload -maxdepth 1 -type f | wc -l)"
+          remote_count="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets | length')"
+          echo "Local assets:  $local_count"
+          echo "Remote assets: $remote_count"
+          [ "$remote_count" -ge "$local_count" ] || {
+            echo "ERROR: published asset count is smaller than local payload"
+            exit 1
+          }
