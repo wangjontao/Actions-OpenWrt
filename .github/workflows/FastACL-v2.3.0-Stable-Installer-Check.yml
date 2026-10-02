@@ -53,14 +53,9 @@ jobs:
             sh -n "/tmp/jfa-check/$tag.sh"
           done
 
-          for tag in ROUTER RELAY DISCOVER CTRL; do
+          for tag in ROUTER RELAY DISCOVER CTRL PW2_ACL_JSON PW_ACL_JSON; do
             extract "$tag" "/tmp/jfa-check/$tag.lua"
             luac5.1 -p "/tmp/jfa-check/$tag.lua"
-          done
-
-          for tag in PW2_ACL_JSON PW_ACL_JSON; do
-            extract "$tag" "/tmp/jfa-check/$tag.sh"
-            sh -n "/tmp/jfa-check/$tag.sh"
           done
 
           echo "FastACL 2.3.0 Stable installer verification passed."
