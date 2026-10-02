@@ -33,13 +33,15 @@ lua -e 'assert(loadfile("'"$TMP"'/juliang_fastacl.lua"))'
 cp -af /usr/lib/lua/luci/controller/juliang_fastacl.lua "$BK/juliang_fastacl.lua.pre-operator" 2>/dev/null || true
 cp -af /usr/lib/lua/luci/view/juliang_fastacl/console.htm "$BK/console.htm.pre-operator" 2>/dev/null || true
 
-install -m 0755 "$TMP/juliang-operator" /usr/bin/juliang-operator
-install -m 0644 "$TMP/juliang-operator-patch.lua" /usr/libexec/juliang-operator-patch.lua
+cp -af "$TMP/juliang-operator" /usr/bin/juliang-operator
+cp -af "$TMP/juliang-operator-patch.lua" /usr/libexec/juliang-operator-patch.lua
 mkdir -p /usr/share/rpcd/acl.d /usr/share/luci/menu.d /usr/lib/lua/luci/view/juliang_fastacl
-install -m 0644 "$TMP/juliang-operator.json" /usr/share/rpcd/acl.d/juliang-operator.json
-install -m 0644 "$TMP/zz-juliang-operator.json" /usr/share/luci/menu.d/zz-juliang-operator.json
-install -m 0644 "$TMP/juliang_fastacl.lua" /usr/lib/lua/luci/controller/juliang_fastacl.lua
-install -m 0644 "$TMP/console.htm" /usr/lib/lua/luci/view/juliang_fastacl/console.htm
+cp -af "$TMP/juliang-operator.json" /usr/share/rpcd/acl.d/juliang-operator.json
+cp -af "$TMP/zz-juliang-operator.json" /usr/share/luci/menu.d/zz-juliang-operator.json
+cp -af "$TMP/juliang_fastacl.lua" /usr/lib/lua/luci/controller/juliang_fastacl.lua
+cp -af "$TMP/console.htm" /usr/lib/lua/luci/view/juliang_fastacl/console.htm
+chmod 0755 /usr/bin/juliang-operator
+chmod 0644 /usr/libexec/juliang-operator-patch.lua /usr/share/rpcd/acl.d/juliang-operator.json /usr/share/luci/menu.d/zz-juliang-operator.json /usr/lib/lua/luci/controller/juliang_fastacl.lua /usr/lib/lua/luci/view/juliang_fastacl/console.htm
 
 echo "[INFO] patching QuickStart/iStore/Wireless menu..."
 lua /usr/libexec/juliang-operator-patch.lua
