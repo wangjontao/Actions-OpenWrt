@@ -1,0 +1,35 @@
+name: FastACL 2.3.2 Main LAN Check
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - juliang-fastacl-v2.3.2-main-lan-20261002
+    paths:
+      - profiles/fastacl-v9/root/usr/bin/juliang-fastacl
+      - profiles/fastacl-v9/root/usr/libexec/juliang-fastacl-discover.lua
+      - profiles/fastacl-v9/root/usr/lib/lua/luci/view/juliang_fastacl/console.htm
+      - profiles/fastacl-v9/root/etc/config/juliang_fastacl
+      - .github/workflows/FastACL-v2.3.2-MainLAN-Check.yml
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1
+      - name: Validate Main LAN support
+        run: |
+          set -euxo pipefail
+          sh -n profiles/fastacl-v9/root/usr/bin/juliang-fastacl
+          luac5.1 -p profiles/fastacl-v9/root/usr/libexec/juliang-fastacl-discover.lua
+          grep -q "option include_lan '1'" profiles/fastacl-v9/root/etc/config/juliang_fastacl
+          grep -q '主网络 · ' profiles/fastacl-v9/root/usr/libexec/juliang-fastacl-discover.lua
+          grep -q 'Keep the main LAN last' profiles/fastacl-v9/root/usr/libexec/juliang-fastacl-discover.lua
+          grep -q 'topology_ready' profiles/fastacl-v9/root/usr/bin/juliang-fastacl
+          grep -q '同时支持 SOCKS5/SOCKS/HTTP 与多行 SK5 简写。' profiles/fastacl-v9/root/usr/lib/lua/luci/view/juliang_fastacl/console.htm
+          ! grep -q '直接调用 PassWall2 原生导入后端' profiles/fastacl-v9/root/usr/lib/lua/luci/view/juliang_fastacl/console.htm
+          echo "FastACL 2.3.2 Main LAN validation passed."
