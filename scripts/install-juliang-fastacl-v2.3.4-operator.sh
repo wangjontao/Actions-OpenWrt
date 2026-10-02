@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-PIN="48ecf2453eb6f023d6bdcb8843fe07b315ae2d51"
+PIN="e947ca314b5ea1ae7f30e1bf8e2c0b1ea7aac022"
 BASE="https://raw.githubusercontent.com/wangjontao/Actions-OpenWrt/$PIN/profiles/fastacl-v9/root"
 TMP="/tmp/jfa-operator-$$"
 BK="/etc/juliang-fastacl/operator-backup"
