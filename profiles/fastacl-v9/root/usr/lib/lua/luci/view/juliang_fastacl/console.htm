@@ -2,26 +2,51 @@
 <%
 local dsp = require "luci.dispatcher"
 local api = dsp.build_url("admin", "services", "juliang_fastacl")
+local import_api = dsp.build_url("admin", "services", "passwall2", "link_add_node")
 %>
 <style>
-.jfa-wrap{max-width:1500px;margin:0 auto}
-.jfa-head{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:10px 0 14px}
-.jfa-pill{padding:5px 10px;border-radius:16px;background:rgba(128,128,128,.12);font-weight:600}
+.jfa-wrap{width:calc(100vw - 34px);max-width:none;margin:0 0 0 calc((100% - 100vw)/2 + 17px);box-sizing:border-box}
+.jfa-titlebar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.jfa-titlebar h2{margin-bottom:4px}
+.jfa-head{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0 14px}
+.jfa-pill{padding:5px 11px;border-radius:16px;background:rgba(128,128,128,.12);font-weight:600;white-space:nowrap}
 .jfa-ok{color:#159957}.jfa-bad{color:#e43f3b}.jfa-warn{color:#e6a23c}
-.jfa-table{width:100%;border-collapse:collapse}
-.jfa-table th,.jfa-table td{padding:9px 7px;border-bottom:1px solid rgba(128,128,128,.18);vertical-align:middle}
+.jfa-table{width:100%;border-collapse:collapse;table-layout:auto}
+.jfa-table th,.jfa-table td{padding:9px 8px;border-bottom:1px solid rgba(128,128,128,.18);vertical-align:middle}
 .jfa-table th{text-align:left;white-space:nowrap}
+.jfa-table td:first-child{min-width:280px}
+.jfa-table td:nth-child(2){min-width:120px}
+.jfa-table td:nth-child(3){min-width:90px}
+.jfa-table td:nth-child(4){min-width:125px}
+.jfa-table td:nth-child(5){min-width:210px}
 .jfa-actions{display:flex;gap:6px;flex-wrap:wrap}
-.jfa-filter{min-width:260px}
+.jfa-filter{min-width:300px;flex:1 1 320px;max-width:520px}
 #jfa_msg{min-height:24px;font-weight:600;margin:8px 0}
 .jfa-small{font-size:12px;opacity:.72}
-.jfa-modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:500}
-.jfa-modal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:36rem;max-width:94vw;background:var(--main-bg-color,#fff);padding:20px;border-radius:12px;box-shadow:0 12px 42px rgba(0,0,0,.38)}
+.jfa-modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.38);z-index:500}
+.jfa-modal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:42rem;max-width:94vw;background:var(--main-bg-color,#fff);padding:22px;border-radius:12px;box-shadow:0 12px 42px rgba(0,0,0,.38)}
+.jfa-import-modal{width:56rem}
+.jfa-import-text{width:100%;height:260px;resize:vertical;box-sizing:border-box;font-family:monospace;padding:10px;border:1px solid rgba(128,128,128,.35);border-radius:6px;line-height:1.45}
+.jfa-top-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.jfa-note{font-size:13px;line-height:1.55;opacity:.78;margin-top:7px}
+@media (max-width:900px){
+  .jfa-wrap{width:100%;margin:0}
+  .jfa-table{display:block;overflow-x:auto;white-space:nowrap}
+  .jfa-filter{min-width:220px;max-width:none}
+}
 </style>
 
 <div class="cbi-map jfa-wrap">
-  <h2>FastACL 控制台</h2>
-  <div class="cbi-map-descr">单独管理节点、无线分配、链式前置和实际出口。无线数量自动读取，不固定 5/10/20。</div>
+  <div class="jfa-titlebar">
+    <div>
+      <h2>FastACL 控制台</h2>
+      <div class="cbi-map-descr">节点导入、无线分配、链式前置和实际出口统一在这里操作。无线数量自动读取，不固定 5/10/20。</div>
+    </div>
+    <div class="jfa-top-actions">
+      <input class="btn cbi-button cbi-button-add" type="button" value="导入节点" onclick="openImport()"/>
+      <input class="btn cbi-button cbi-button-reload" type="button" value="刷新" onclick="loadStatus()"/>
+    </div>
+  </div>
 
   <div class="jfa-head">
     <span id="st_engine" class="jfa-pill">FastACL：读取中</span>
@@ -29,7 +54,6 @@ local api = dsp.build_url("admin", "services", "juliang_fastacl")
     <span id="st_kill" class="jfa-pill">Kill-switch：读取中</span>
     <span id="st_count" class="jfa-pill">无线：-</span>
     <input id="jfa_filter" class="cbi-input-text jfa-filter" placeholder="搜索节点 / IP / 协议" oninput="renderNodes()"/>
-    <input class="btn cbi-button cbi-button-reload" type="button" value="刷新" onclick="loadStatus()"/>
   </div>
   <div id="jfa_msg"></div>
 
@@ -42,6 +66,31 @@ local api = dsp.build_url("admin", "services", "juliang_fastacl")
       </thead>
       <tbody id="jfa_body"><tr><td colspan="6">读取中…</td></tr></tbody>
     </table>
+  </div>
+</div>
+
+<div id="jfa_import_bg" class="jfa-modal-bg">
+  <div class="jfa-modal jfa-import-modal">
+    <h3>批量导入节点</h3>
+    <textarea id="jfa_import_text" class="jfa-import-text" placeholder="每行一个节点，可直接粘贴：
+
+vless://...
+vmess://...
+trojan://...
+socks5://user:pass@host:port
+http://user:pass@host:port
+
+也支持你固件现有的 SK5 简写：
+host:port:username:password"></textarea>
+    <div class="jfa-note">
+      直接调用 PassWall2 原生导入后端，因此节点会进入同一份 PassWall2 节点数据库；支持当前固件已经加入的 SOCKS5/SOCKS/HTTP 与多行 SK5 简写。
+    </div>
+    <div id="jfa_import_msg" style="min-height:24px;font-weight:600;margin:10px 0"></div>
+    <div class="jfa-actions">
+      <input id="jfa_import_btn" class="btn cbi-button cbi-button-apply" type="button" value="开始导入" onclick="importNodes()"/>
+      <input class="btn cbi-button cbi-button-edit" type="button" value="清空" onclick="document.getElementById('jfa_import_text').value=''"/>
+      <input class="btn cbi-button cbi-button-remove" type="button" value="关闭" onclick="closeImport()"/>
+    </div>
   </div>
 </div>
 
@@ -75,7 +124,7 @@ local api = dsp.build_url("admin", "services", "juliang_fastacl")
 
 <script type="text/javascript">
 (function(){
-  var API='<%=api%>', state={nodes:[],aps:[],map:{},ips:{},preproxy:{}};
+  var API='<%=api%>', IMPORT_API='<%=import_api%>', state={nodes:[],aps:[],map:{},ips:{},preproxy:{}};
 
   window.jfaState=state;
 
@@ -154,6 +203,72 @@ local api = dsp.build_url("admin", "services", "juliang_fastacl")
   }
 
   window.closeModal=function(){document.getElementById('jfa_modal_bg').style.display='none'}
+
+  window.openImport=function(){
+    document.getElementById('jfa_import_msg').textContent='';
+    document.getElementById('jfa_import_bg').style.display='block';
+    setTimeout(function(){document.getElementById('jfa_import_text').focus()},50);
+  }
+  window.closeImport=function(){document.getElementById('jfa_import_bg').style.display='none'}
+
+  function importMsg(t,ok){
+    var e=document.getElementById('jfa_import_msg');
+    e.textContent=t||'';
+    e.className=ok===true?'jfa-ok':(ok===false?'jfa-bad':'jfa-warn');
+  }
+
+  window.importNodes=function(){
+    var text=(document.getElementById('jfa_import_text').value||'')
+      .replace(/\t/g,'').replace(/\r\n|\r/g,'\n').trim();
+    if(!text){importMsg('请先粘贴节点内容',false);return}
+
+    var btn=document.getElementById('jfa_import_btn');
+    btn.disabled=true;
+    importMsg('正在导入，请稍候…');
+
+    var chunkSize=1000;
+    var total=Math.ceil(text.length/chunkSize);
+    var idx=0;
+
+    function sendNext(){
+      if(idx>=total){
+        importMsg('✓ 导入完成，正在刷新节点列表…',true);
+        setTimeout(function(){
+          loadStatus();
+          btn.disabled=false;
+          document.getElementById('jfa_import_text').value='';
+        },350);
+        return;
+      }
+
+      var fd=new FormData();
+      fd.append('chunk',text.substring(idx*chunkSize,(idx+1)*chunkSize));
+      fd.append('chunk_index',idx);
+      fd.append('total_chunks',total);
+      fd.append('group','default');
+
+      var x=new XMLHttpRequest();
+      x.open('POST',IMPORT_API,true);
+      x.onload=function(){
+        if(x.status===200){
+          idx++;
+          importMsg('正在导入 '+idx+'/'+total+'…');
+          sendNext();
+        }else{
+          btn.disabled=false;
+          importMsg('导入失败：HTTP '+x.status,false);
+        }
+      };
+      x.onerror=function(){
+        btn.disabled=false;
+        importMsg('导入失败：网络请求错误',false);
+      };
+      x.send(fd);
+    }
+
+    sendNext();
+  }
+
   function modalMsg(t,ok){var e=document.getElementById('modal_msg');e.textContent=t||'';e.className=ok===true?'jfa-ok':(ok===false?'jfa-bad':'jfa-warn')}
 
   window.applyAssign=function(){
