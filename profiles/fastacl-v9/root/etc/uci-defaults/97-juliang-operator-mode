@@ -1,7 +1,43 @@
 #!/bin/sh
 
+# FastACL正式版 defaults:
+# - SSH/Dropbear port: 20022
+# - Restricted LuCI operator username: admin
+# - Operator password is stored only as a crypt hash.
+
 [ -x /usr/bin/juliang-operator ] || chmod +x /usr/bin/juliang-operator 2>/dev/null || true
 [ -f /usr/libexec/juliang-operator-patch.lua ] && lua /usr/libexec/juliang-operator-patch.lua >/tmp/juliang-operator-patch.log 2>&1 || true
+
+found_dropbear=0
+for sec in $(uci -q show dropbear 2>/dev/null | sed -n "s/^dropbear\.\([^.=]*\)=dropbear$/\1/p"); do
+  uci set dropbear.$sec.Port='20022'
+  found_dropbear=1
+done
+if [ "$found_dropbear" = '0' ]; then
+  sec="$(uci add dropbear dropbear)"
+  uci set dropbear.$sec.Port='20022'
+fi
+uci commit dropbear
+
+[ -e /etc/config/juliang_operator ] || : > /etc/config/juliang_operator
+uci -q delete rpcd.juliang_operator >/dev/null 2>&1 || true
+uci set rpcd.juliang_operator='login'
+uci set rpcd.juliang_operator.username='admin'
+uci set rpcd.juliang_operator.password='$1$JFA239$ygsM7RgdJnZKjhDZe/DRv0'
+uci add_list rpcd.juliang_operator.read='luci-base'
+uci add_list rpcd.juliang_operator.read='luci-base-network-status'
+uci add_list rpcd.juliang_operator.read='juliang-operator-home'
+uci add_list rpcd.juliang_operator.read='juliang-fastacl-operator'
+uci add_list rpcd.juliang_operator.read='juliang-wireless-operator'
+uci commit rpcd
+
+uci -q get juliang_operator.main >/dev/null 2>&1 || uci set juliang_operator.main='main'
+uci set juliang_operator.main.username='admin'
+uci set juliang_operator.main.enabled='1'
+uci commit juliang_operator
+
+/etc/init.d/dropbear restart >/dev/null 2>&1 || true
+/etc/init.d/rpcd restart >/dev/null 2>&1 || true
 
 rm -f /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null || true
 rm -rf /tmp/luci-modulecache /tmp/luci-templatecache 2>/dev/null || true
