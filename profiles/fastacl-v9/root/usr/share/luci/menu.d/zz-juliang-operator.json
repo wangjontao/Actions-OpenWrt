@@ -12,24 +12,6 @@
       ]
     }
   },
-  "admin/network/wireless": {
-    "title": "Wireless",
-    "order": 15,
-    "action": {
-      "type": "view",
-      "path": "network/wireless"
-    },
-    "depends": {
-      "acl": [
-        "juliang-wireless-operator"
-      ],
-      "uci": {
-        "wireless": {
-          "@wifi-device": true
-        }
-      }
-    }
-  },
   "admin/network_guide": {
     "depends": {
       "acl": [
