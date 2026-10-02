@@ -110,22 +110,15 @@ local function patch_quickstart_template()
     local path = "/usr/lib/lua/luci/view/quickstart/home.htm"
     local s = read(path)
     if not s then return false, "quickstart home template missing" end
-    if s:find("JULIANG_OPERATOR_HOME_GATE_V236", 1, true) then return true end
     backup(path)
 
-    local gate = [[
+    local home = [[
 <%
--- JULIANG_OPERATOR_HOME_GATE_V236
-local __jfa_uci = require "luci.model.uci".cursor()
-local __jfa_op = __jfa_uci:get("juliang_operator", "main", "username") or ""
-local __jfa_user = (luci.dispatcher.context and luci.dispatcher.context.authuser) or ""
-if __jfa_op ~= "" and __jfa_user == __jfa_op then
-    luci.template.render("juliang_operator/home")
-    return
-end
+-- JULIANG_OPERATOR_HOME_V237
+luci.template.render("juliang_operator/home")
 %>
 ]]
-    write(path, gate .. s)
+    write(path, home)
     return true
 end
 
@@ -226,6 +219,26 @@ local function patch_blank_login_user()
     return true
 end
 
+local function patch_operator_menu()
+    local path = "/usr/share/luci/menu.d/zz-juliang-operator.json"
+    local s = read(path)
+    if not s then return true end
+    local ok, json = pcall(require("luci.jsonc").parse, s)
+    if not ok or type(json) ~= "table" then return false, "operator menu json parse failed" end
+
+    json["admin/network/wireless"] = nil
+    json["admin/network/wireless_operator"] = {
+        title = "无线",
+        order = 15,
+        action = { type = "template", path = "juliang_operator/wireless" },
+        depends = { acl = { "juliang-wireless-operator" } }
+    }
+
+    local encoded = require("luci.jsonc").stringify(json, true)
+    write(path, encoded .. "\n")
+    return true
+end
+
 local function patch_wireless_menu()
     local path = "/usr/share/luci/menu.d/luci-mod-network.json"
     local bak = path .. ".juliang-operator.bak"
@@ -245,6 +258,7 @@ local checks = {
     {"istore-routes", patch_istore_routes},
     {"istore-menu-json", patch_istore_menu_json},
     {"blank-login-user", patch_blank_login_user},
+    {"operator-menu", patch_operator_menu},
     {"wireless-menu", patch_wireless_menu}
 }
 
