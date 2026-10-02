@@ -1,4 +1,4 @@
-name: MT7981 V9 5WiFi FastACL Guardian KillSwitch NPS nps.jontao.top
+name: MT7981 V9 Fix1 5WiFi FastACL Guardian KillSwitch NPS nps.jontao.top
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 env:
-  BUILD_VERSION: V9
+  BUILD_VERSION: V9-FIX1
   SOURCE_REPO: https://github.com/padavanonly/immortalwrt-mt798x-24.10.git
   SOURCE_BRANCH: openwrt-24.10-6.6
   TZ: Asia/Shanghai
@@ -141,6 +141,15 @@ jobs:
           ! grep -q '\\\\d+' package/passwall2-luci/luci-app-passwall2/luasrc/view/passwall2/node_list/link_add_node.htm
           echo 'PassWall + PassWall2 SK5/HTTP importer and frontend validation verified.'
 
+          # Bake FastACL buttons/modal directly into PassWall2 node_list.htm.
+          JFA_OFFLINE=1 \
+          JFA_NODE_LIST_FILE="$PWD/package/passwall2-luci/luci-app-passwall2/luasrc/view/passwall2/node_list/node_list.htm" \
+          JFA_CTRL_FILE="$GITHUB_WORKSPACE/profiles/fastacl-v9/root/usr/lib/lua/luci/controller/juliang_fastacl.lua" \
+            sh "$GITHUB_WORKSPACE/profiles/fastacl-v9/root/usr/bin/juliang-fastacl-luci-install"
+          grep -q 'JULIANG_FASTACL_V220' package/passwall2-luci/luci-app-passwall2/luasrc/view/passwall2/node_list/node_list.htm
+          grep -q 'FastACL 即时分配无线' package/passwall2-luci/luci-app-passwall2/luasrc/view/passwall2/node_list/node_list.htm
+          echo 'FastACL LuCI UI baked into PassWall2 package source.'
+
       - name: Preinstall tested PassWall and PassWall2 realtime IP suite
         working-directory: openwrt
         run: |
@@ -186,7 +195,11 @@ jobs:
           grep -q 'juliang_killswitch' files/usr/bin/juliang-fastacl
           grep -q 'dns_mode.*doh' files/etc/uci-defaults/94-juliang-fastacl-v9
           grep -q 'juliang-fastacl-guard' files/etc/init.d/juliang-fastacl
-          echo 'FastACL V9 runtime, Guardian, DoH and fail-closed kill-switch staged into rootfs.'
+          test -s files/etc/config/juliang_fastacl
+          grep -q "option enabled '1'" files/etc/config/juliang_fastacl
+          grep -q "option version 'V9-FIX1'" files/etc/config/juliang_fastacl
+          grep -q 'removed unsafe A->WAN forwarding' files/usr/bin/juliang-fastacl-guard
+          echo 'FastACL V9 Fix1 runtime, Guardian, DoH and fail-closed kill-switch staged into rootfs.'
 
       - name: Apply package compiler compatibility fixes
         working-directory: openwrt
@@ -423,7 +436,7 @@ jobs:
           cat > files/usr/libexec/juliang-5wifi-setup <<'TENWIFI'
           #!/bin/sh
           set -eu
-          MARKER=/etc/juliang-5wifi.done
+          MARKER=/etc/juliang-v9-fastacl-5wifi.done
           [ -e "$MARKER" ] && exit 0
 
           radio2=''
@@ -613,6 +626,25 @@ jobs:
           df -h /
           make -j"$(nproc)" || { df -h /; make -j1 V=s; }
 
+      - name: Verify FastACL V9 Fix1 inside final rootfs
+        working-directory: openwrt
+        run: |
+          ROOTFS="$(find build_dir -type d -name root-mediatek | head -n1)"
+          [ -n "$ROOTFS" ] || { echo 'ERROR: root-mediatek not found'; exit 1; }
+          test -x "$ROOTFS/usr/bin/juliang-fastacl"
+          test -x "$ROOTFS/usr/bin/juliang-fastacl-guard"
+          test -x "$ROOTFS/etc/init.d/juliang-fastacl"
+          test -s "$ROOTFS/etc/config/juliang_fastacl"
+          grep -q "option enabled '1'" "$ROOTFS/etc/config/juliang_fastacl"
+          grep -q 'juliang_killswitch' "$ROOTFS/usr/bin/juliang-fastacl"
+          grep -q 'enforce_failclosed_firewall' "$ROOTFS/usr/bin/juliang-fastacl-guard"
+          grep -q 'JULIANG_FASTACL_V220' "$ROOTFS/usr/lib/lua/luci/view/passwall2/node_list/node_list.htm"
+          grep -q 'FastACL 即时分配无线' "$ROOTFS/usr/lib/lua/luci/view/passwall2/node_list/node_list.htm"
+          grep -q 'V9-FIX1 migration applied' "$ROOTFS/etc/uci-defaults/94-juliang-fastacl-v9"
+          grep -q 'juliang-v9-fastacl-5wifi.done' "$ROOTFS/usr/libexec/juliang-5wifi-setup"
+          ! grep -q "firewall.\${net}_wan.dest='wan'" "$ROOTFS/usr/libexec/juliang-5wifi-setup"
+          echo "Verified: FastACL UI/runtime/default config/Guardian/kill-switch are physically present in final rootfs."
+
       - name: Save download cache
         if: ${{ always() && steps.downloads.outcome == 'success' }}
         continue-on-error: true
@@ -651,15 +683,16 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: MT7981-V9-5WiFi-NPS-jontao-top-${{ env.BUILD_DATE }}
-          name: MT7981 V9 5WiFi NPS nps.jontao.top ${{ env.BUILD_DATE }}
+          tag_name: MT7981-V9-FIX1-5WiFi-NPS-jontao-top-${{ env.BUILD_DATE }}
+          name: MT7981 V9 Fix1 5WiFi NPS nps.jontao.top ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
+          target_commitish: ${{ github.sha }}
           body: |
             Experimental ImmortalWrt 24.10 kernel 6.6 closed MTWiFi build.
             Devices (MT7981 group only): Philips HY3000, CMCC RAX3000M NAND/eMMC, Qihoo 360T7, AGS21, CMCC A10 U-Boot mod, ETR631-T/ETR635-U (KOMI A31), Newland 8103/9103, Ambit ASR3000, JCG Q30 Pro, and ZBT-Z8103AX-C/D family (standard, NMBM and OpenWrt U-Boot layouts).
             Z8103AX-C/D: compiled only in this MT7981 workflow; the NMBM image is included for NAND layouts that require NMBM, and the OpenWrt U-Boot layout is supplied separately.
             Driver: mt_wifi 7.6.6.1 with matching WARP. Management: 192.168.7.1, root password @password@.
-            System: JulLiangTK; firmware description: JuLiangTK OS V9 5WiFi DHCP-MAC-Fix by:jontao.
+            System: JulLiangTK; firmware description: JuLiangTK OS V9 Fix1 5WiFi DHCP-MAC-Fix by:jontao.
             DHCP/MAC Lease Fix: clean rebuild from successful V5; V6 is preserved as a failed workflow-parser attempt. Pins the first-seen WAN MAC, enables DHCP broadcast mode, renews DHCP automatically, restarts WAN only when needed, and performs WAN-link recovery with a 180-second cooldown.
             WiFi: JuLiang-2.4G (channel 9) and JuLiang-5G (channel 48), password a1111111.
             5WiFi: A1-A5 on 5GHz; password a1111111; isolated subnets 172.16.1.0/24 through 172.16.5.0/24.
@@ -669,7 +702,7 @@ jobs:
             DNS: removed the custom forced-DNS/DoT/bootstrap layer that caused node-timeout interactions; standard PassWall/PassWall2 DNS behavior is retained. IPv6 DHCP/RA remains disabled on A1-A5.
             Plugins: iStore, QuickStart, Passwall 26.3.6-1, Passwall2 26.3.5-1, OpenClash, HomeProxy, original ehang NPS/NPC 0.26.10. Theme: Argon.
             NPS: nps.jontao.top:8024; every boot reads WAN MAC, removes colons, uppercases it, and writes it as vkey.
-            FastACL V9: integrated directly into firmware; PassWall2 node list supports instant assignment to the discovered A1-A5 SSIDs, per-AP local SOCKS relays, cross-core preproxy, Guardian self-healing, last-good persistence and reboot recovery.
+            FastACL V9 Fix1: integrated directly into firmware and baked into the PassWall2 node-list UI; preserved V8 overlays are migrated automatically; PassWall2 node list supports instant assignment to the discovered A1-A5 SSIDs, per-AP local SOCKS relays, cross-core preproxy, Guardian self-healing, last-good persistence and reboot recovery.
             DNS: FastACL AP traffic uses encrypted Cloudflare DoH (1.1.1.1 / cloudflare-dns.com) through each AP's assigned proxy path; per-AP doh/tcp/auto override remains available.
             Leak protection: fail-closed by design. A1-A5 have no direct firewall forwarding to WAN, and an independent nftables juliang_killswitch drops any AP traffic that reaches forward without being TPROXY-captured. If a node/relay/router fails or is unassigned, that WiFi loses Internet instead of exposing the real WAN IP.
 
