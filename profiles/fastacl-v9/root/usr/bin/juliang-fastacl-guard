@@ -38,6 +38,24 @@ find_zone_section_for_network(){
   return 1
 }
 
+find_zone_name_for_network(){
+  local net="$1" z
+  z="$(find_zone_section_for_network "$net" 2>/dev/null || true)"
+  [ -n "$z" ] || return 1
+  uci -q get firewall.$z.name 2>/dev/null || true
+}
+
+is_fastacl_zone(){
+  local zone="$1" apsec net zname
+  for apsec in $(uci -q show juliang_fastacl | sed -n "s/^juliang_fastacl\.\([^.=]*\)=ap$/\1/p"); do
+    net="$(uci -q get juliang_fastacl.$apsec.network 2>/dev/null || true)"
+    [ -n "$net" ] || continue
+    zname="$(find_zone_name_for_network "$net" 2>/dev/null || true)"
+    [ -n "$zname" ] && [ "$zname" = "$zone" ] && return 0
+  done
+  return 1
+}
+
 enforce_mainlan_ipv6_privacy(){
   local apsec net has_lan changed zone
   has_lan=0
@@ -57,11 +75,28 @@ enforce_mainlan_ipv6_privacy(){
   [ "$(uci -q get dhcp.lan.ndp 2>/dev/null || true)" = "disabled" ] || { uci set dhcp.lan.ndp='disabled'; changed=1; }
   [ "$(uci -q get network.lan.ip6assign 2>/dev/null || true)" = "0" ] || { uci set network.lan.ip6assign='0'; changed=1; }
 
+  zone="$(find_zone_name_for_network lan 2>/dev/null || true)"
+  if [ -n "$zone" ]; then
+    [ "$(uci -q get firewall.jfa_mainlan_ipv6_dns 2>/dev/null || true)" = "rule" ] || {
+      uci -q delete firewall.jfa_mainlan_ipv6_dns >/dev/null 2>&1 || true
+      uci set firewall.jfa_mainlan_ipv6_dns='rule'
+      changed=1
+    }
+    [ "$(uci -q get firewall.jfa_mainlan_ipv6_dns.name 2>/dev/null || true)" = "FastACL block main LAN IPv6 DNS" ] || { uci set firewall.jfa_mainlan_ipv6_dns.name='FastACL block main LAN IPv6 DNS'; changed=1; }
+    [ "$(uci -q get firewall.jfa_mainlan_ipv6_dns.src 2>/dev/null || true)" = "$zone" ] || { uci set firewall.jfa_mainlan_ipv6_dns.src="$zone"; changed=1; }
+    [ "$(uci -q get firewall.jfa_mainlan_ipv6_dns.family 2>/dev/null || true)" = "ipv6" ] || { uci set firewall.jfa_mainlan_ipv6_dns.family='ipv6'; changed=1; }
+    uci set firewall.jfa_mainlan_ipv6_dns.proto='tcp udp'
+    uci set firewall.jfa_mainlan_ipv6_dns.dest_port='53'
+    uci set firewall.jfa_mainlan_ipv6_dns.target='REJECT'
+  fi
+
   if [ "$changed" -ne 0 ]; then
     uci commit dhcp
     uci commit network
+    uci commit firewall
     /etc/init.d/odhcpd restart >/dev/null 2>&1 || true
-    log "main LAN IPv6 RA/DHCPv6/NDP disabled for FastACL privacy"
+    /etc/init.d/firewall restart >/dev/null 2>&1 || true
+    log "main LAN IPv6 RA/DHCPv6/NDP disabled and IPv6 DNS input blocked"
   fi
 }
 
@@ -75,7 +110,7 @@ enforce_failclosed_firewall(){
     src="$(uci -q get firewall.$sec.src 2>/dev/null || true)"
     dest="$(uci -q get firewall.$sec.dest 2>/dev/null || true)"
     [ "$dest" = "wan" ] || continue
-    if is_fastacl_network "$src"; then
+    if is_fastacl_zone "$src"; then
       uci -q delete firewall.$sec
       changed=1
     fi
