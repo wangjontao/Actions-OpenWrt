@@ -62,10 +62,10 @@ for _, a in ipairs(aps) do
       server = a.dns_server,
       server_port = 443,
       path = a.dns_path,
-      -- Keep DoH compatible with sing-box builds that accept typed HTTPS
-      -- DNS servers but reject the nested tls object. Cloudflare's
-      -- https://1.1.1.1/dns-query endpoint works without an explicit SNI
-      -- override, so this remains encrypted DoH through the assigned detour.
+      tls = {
+        enabled = true,
+        server_name = a.dns_tls_server_name
+      },
       detour = tag
     }
   end
