@@ -15,7 +15,11 @@ local api = dsp.build_url("admin","network","wireless_operator_api")
 .jow-row{display:grid;grid-template-columns:110px 1fr;gap:10px;align-items:center;margin:10px 0}
 .jow-row label{font-size:13px;opacity:.75}
 .jow-row input,.jow-row select{width:100%;box-sizing:border-box}
-.jow-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+.jow-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;flex-wrap:wrap}
+.jow-head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.jow-state{font-size:12px;font-weight:700;padding:4px 9px;border-radius:999px;white-space:nowrap}
+.jow-state-on{background:rgba(21,153,87,.10);color:#159957}
+.jow-state-off{background:rgba(230,162,60,.12);color:#e6a23c}
 .jow-msg{min-height:22px;font-weight:700;margin:8px 0}
 .jow-ok{color:#159957}.jow-bad{color:#e43f3b}.jow-warn{color:#e6a23c}
 .jow-note{font-size:12px;opacity:.65;line-height:1.5}
@@ -38,7 +42,10 @@ local api = dsp.build_url("admin","network","wireless_operator_api")
     <div>
       <h2>无线设置</h2>
     </div>
-    <input class="btn cbi-button cbi-button-reload" type="button" value="刷新" onclick="loadWireless()"/>
+    <div class="jow-head-actions">
+      <input id="jow_all_visibility" class="btn cbi-button cbi-button-action" type="button" value="一键隐藏全部" onclick="toggleAllVisibility()"/>
+      <input class="btn cbi-button cbi-button-reload" type="button" value="刷新" onclick="loadWireless()"/>
+    </div>
   </div>
 
   <div id="jow_msg" class="jow-msg"></div>
@@ -101,18 +108,27 @@ local api = dsp.build_url("admin","network","wireless_operator_api")
     for(var i=0;i<ifaces.length;i++){
       var f=ifaces[i], d=devices[f.device]||{section:f.device,channel:'auto'};
       var dk=domKey(f.section);
+      var hidden=(f.hidden===true);
+      var sec=f.section.replace(/'/g,"\\'");
       html+='<div class="jow-card" id="card_'+dk+'">'+
-        '<div class="jow-titleline"><div class="jow-title">'+esc(f.ssid||f.section)+'</div><div class="jow-count" id="count_'+dk+'">在线 0</div></div>'+
+        '<div class="jow-titleline"><div class="jow-title">'+esc(f.ssid||f.section)+'</div><div style="display:flex;gap:8px;align-items:center"><div class="jow-state '+(hidden?'jow-state-off':'jow-state-on')+'">'+(hidden?'已隐藏':'广播中')+'</div><div class="jow-count" id="count_'+dk+'">在线 0</div></div></div>'+
         '<div class="jow-sub">'+esc(bandName(d))+' · '+esc(f.device)+' · '+esc(f.network||'-')+'</div>'+
         '<div class="jow-row"><label>无线名称</label><input class="cbi-input-text" id="ssid_'+esc(f.section)+'" maxlength="32" value="'+esc(f.ssid)+'"></div>'+
         '<div class="jow-row"><label>无线密码</label><input class="cbi-input-password" type="password" id="key_'+esc(f.section)+'" placeholder="留空保持原密码"></div>'+
         '<div class="jow-row"><label>无线信道</label><select class="cbi-input-select" id="ch_'+esc(f.section)+'">'+channelOptions(d.channel||'auto')+'</select></div>'+
-        '<div class="jow-note">加密方式：'+esc(f.encryption||'none')+'。同一射频下多个 SSID 共用信道，修改后会一起生效。</div>'+
-        '<div class="jow-actions"><input class="btn cbi-button cbi-button-apply" type="button" value="保存并应用" onclick="saveWireless(\''+f.section.replace(/'/g,"\\'")+'\',\''+f.device.replace(/'/g,"\\'")+'\')"></div>'+
+        '<div class="jow-note">加密方式：'+esc(f.encryption||'none')+'。隐藏只控制 SSID 广播，不会关闭无线、网段、DHCP 或 FastACL。</div>'+
+        '<div class="jow-actions">'+
+          '<input class="btn cbi-button '+(hidden?'cbi-button-action':'')+'" type="button" value="'+(hidden?'显示无线':'隐藏无线')+'" onclick="toggleVisibility(\''+sec+'\','+(hidden?'false':'true')+')">'+
+          '<input class="btn cbi-button cbi-button-apply" type="button" value="保存并应用" onclick="saveWireless(\''+sec+'\',\''+f.device.replace(/'/g,"\\'")+'\')">'+
+        '</div>'+
         '<div class="jow-clients"><div class="jow-client-title">已连接设备</div><div id="clients_'+dk+'" class="jow-empty">正在读取…</div></div>'+
       '</div>';
     }
     g.innerHTML=html||'<div class="jow-card">没有找到可用无线接口</div>';
+    var allHidden=ifaces.length>0;
+    for(var j=0;j<ifaces.length;j++) if(ifaces[j].hidden!==true){allHidden=false;break}
+    var b=document.getElementById('jow_all_visibility');
+    if(b) b.value=allHidden?'一键显示全部':'一键隐藏全部';
   }
 
   window.loadWireless=function(){
@@ -190,6 +206,46 @@ local api = dsp.build_url("admin","network","wireless_operator_api")
 
       prevClient=next;
       lastClientPoll=now;
+    });
+  }
+
+  function postAction(data,cb){
+    var fd=new FormData();
+    for(var k in data) if(Object.prototype.hasOwnProperty.call(data,k)) fd.append(k,data[k]);
+    var x=new XMLHttpRequest();
+    x.open('POST',API,true);
+    x.onload=function(){
+      var r=null;try{r=JSON.parse(x.responseText||'{}')}catch(e){}
+      cb(x.status===200?r:null);
+    };
+    x.onerror=function(){cb(null)};
+    x.send(fd);
+  }
+
+  window.toggleVisibility=function(section,hidden){
+    msg((hidden?'正在隐藏无线…':'正在显示无线…')+' 无线会短暂重载');
+    postAction({action:'visibility',section:section,hidden:hidden?'1':'0'},function(r){
+      if(r&&r.ok){
+        msg(hidden?'✓ 已隐藏该无线 SSID':'✓ 已恢复该无线 SSID 广播',true);
+        setTimeout(loadWireless,1800);
+      }else{
+        msg('操作失败：'+((r&&r.error)||'网络请求错误'),false);
+      }
+    });
+  }
+
+  window.toggleAllVisibility=function(){
+    var allHidden=ifaces.length>0;
+    for(var i=0;i<ifaces.length;i++) if(ifaces[i].hidden!==true){allHidden=false;break}
+    var hide=!allHidden;
+    msg(hide?'正在一键隐藏全部无线…':'正在一键显示全部无线…');
+    postAction({action:'visibility_all',hidden:hide?'1':'0'},function(r){
+      if(r&&r.ok){
+        msg((hide?'✓ 已隐藏全部无线 SSID':'✓ 已恢复全部无线 SSID 广播')+' · 共 '+(r.count||0)+' 个',true);
+        setTimeout(loadWireless,1800);
+      }else{
+        msg('批量操作失败：'+((r&&r.error)||'网络请求错误'),false);
+      }
     });
   }
 
