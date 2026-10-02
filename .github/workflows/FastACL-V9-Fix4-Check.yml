@@ -31,9 +31,9 @@ jobs:
           sh -n profiles/fastacl-v9/root/usr/bin/juliang-fastacl-luci-install
           luac5.1 -p profiles/fastacl-v9/root/usr/libexec/juliang-fastacl-relay.lua
           luac5.1 -p profiles/fastacl-v9/root/usr/lib/lua/luci/controller/juliang_fastacl.lua
-          grep -q 'probe_socks_wait "$port" 3 1' profiles/fastacl-v9/root/usr/bin/juliang-fastacl
+          grep -q 'probe_socks_wait "$port" 2 1' profiles/fastacl-v9/root/usr/bin/juliang-fastacl
           grep -q 'OP_LOCK=' profiles/fastacl-v9/root/usr/bin/juliang-fastacl
-          grep -q 'echo "$" > "$OP_LOCK/pid"' profiles/fastacl-v9/root/usr/bin/juliang-fastacl
+          grep -Fq 'echo "$$" > "$OP_LOCK/pid"' profiles/fastacl-v9/root/usr/bin/juliang-fastacl
           grep -q 'JFA_LOCK_TRIES=1' profiles/fastacl-v9/root/usr/bin/juliang-fastacl-guard
           grep -q 'FINAL_EGRESS_FAILED' profiles/fastacl-v9/root/usr/bin/juliang-fastacl
           grep -q 'switch_node "$ap" "$node" 1' profiles/fastacl-v9/root/usr/bin/juliang-fastacl
