@@ -92,6 +92,19 @@ fi
 /etc/init.d/rpcd restart >/dev/null 2>&1 || true
 /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
 
+echo "[INFO] Applying legacy PassWall/PassWall2 SK5 + HTTP import patch..."
+SK5PATCH="/tmp/jfa239-legacy-sk5-http.sh"
+if command -v curl >/dev/null 2>&1; then
+  curl -4 -fL --connect-timeout 10 --max-time 120 --retry 2 \
+    -o "$SK5PATCH" \
+    "https://cdn.jsdelivr.net/gh/wangjontao/Actions-OpenWrt@8dd7f880c2a3fc13be559aef9733ab3e298b8e44/scripts/repair-legacy-passwall-sk5-http.sh"
+else
+  wget -O "$SK5PATCH" \
+    "https://cdn.jsdelivr.net/gh/wangjontao/Actions-OpenWrt@8dd7f880c2a3fc13be559aef9733ab3e298b8e44/scripts/repair-legacy-passwall-sk5-http.sh"
+fi
+chmod +x "$SK5PATCH"
+sh "$SK5PATCH"
+
 sleep 2
 
 echo
