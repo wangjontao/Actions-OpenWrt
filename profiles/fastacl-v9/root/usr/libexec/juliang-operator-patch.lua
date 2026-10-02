@@ -30,34 +30,57 @@ local function patch_quickstart_controller()
     if s:find("JULIANG_OPERATOR_V234", 1, true) then return true end
     backup(path)
 
-    s = s:gsub(
-        'entry%(%{"admin", "quickstart"%}, template%("quickstart/home"%), _%("QuickStart"%), 1%)%.leaf = true',
-        'local jfa_home = entry({"admin", "quickstart"}, template("quickstart/home"), _("QuickStart"), 1)\n        jfa_home.leaf = true\n        jfa_home.acl_depends = { "juliang-operator-home" }',
-        1
-    )
+    local changed = false
+    local old, new
 
-    local admin_paths = {
-        '{"admin", "network_guide"}',
-        '{"admin", "quickwifi"}',
-        '{"admin", "nas", "raid"}',
-        '{"admin", "nas", "smart"}',
-        '{"admin", "network", "interfaceconfig"}'
+    old = '        entry({"admin", "quickstart"}, template("quickstart/home"), _("QuickStart"), 1).leaf = true'
+    new = '        local jfa_home = entry({"admin", "quickstart"}, template("quickstart/home"), _("QuickStart"), 1)\n' ..
+          '        jfa_home.leaf = true\n' ..
+          '        jfa_home.acl_depends = { "juliang-operator-home" }'
+    s, changed = replace_once(s, old, new)
+    if not changed then return false, "quickstart home anchor missing" end
+
+    local entries = {
+        {
+            '        entry({"admin", "network_guide"}, call("networkguide_index"), _("NetworkGuide"), 2)',
+            '        local jfa_network_guide = entry({"admin", "network_guide"}, call("networkguide_index"), _("NetworkGuide"), 2)\n' ..
+            '        jfa_network_guide.acl_depends = { "juliang-quickstart-admin" }'
+        },
+        {
+            '            entry({"admin", "quickwifi"}, call("quickwifi_index"), _("Wireless"), 3)',
+            '            local jfa_quickwifi = entry({"admin", "quickwifi"}, call("quickwifi_index"), _("Wireless"), 3)\n' ..
+            '            jfa_quickwifi.acl_depends = { "juliang-quickstart-admin" }'
+        },
+        {
+            '        entry({"admin", "nas", "raid"}, call("quickstart_index", {index={"admin", "nas"}}), _("RAID"), 10).leaf = true',
+            '        local jfa_raid = entry({"admin", "nas", "raid"}, call("quickstart_index", {index={"admin", "nas"}}), _("RAID"), 10)\n' ..
+            '        jfa_raid.leaf = true\n' ..
+            '        jfa_raid.acl_depends = { "juliang-quickstart-admin" }'
+        },
+        {
+            '        entry({"admin", "nas", "smart"}, call("quickstart_index", {index={"admin", "nas"}}), _("S.M.A.R.T."), 11).leaf = true',
+            '        local jfa_smart = entry({"admin", "nas", "smart"}, call("quickstart_index", {index={"admin", "nas"}}), _("S.M.A.R.T."), 11)\n' ..
+            '        jfa_smart.leaf = true\n' ..
+            '        jfa_smart.acl_depends = { "juliang-quickstart-admin" }'
+        },
+        {
+            '        entry({"admin", "network", "interfaceconfig"}, call("quickstart_index", {index={"admin", "network"}}), _("NetworkPort"), 11).leaf = true',
+            '        local jfa_port = entry({"admin", "network", "interfaceconfig"}, call("quickstart_index", {index={"admin", "network"}}), _("NetworkPort"), 11)\n' ..
+            '        jfa_port.leaf = true\n' ..
+            '        jfa_port.acl_depends = { "juliang-quickstart-admin" }'
+        }
     }
 
-    -- Add a helper once, then wrap the selected configuration entries.
-    local marker = [[
--- JULIANG_OPERATOR_V234
-local function jfa_admin_only(e)
-    e.acl_depends = { "juliang-quickstart-admin" }
-    return e
-end
-]]
-    s = s:gsub('module%("luci%.controller%.quickstart", package%.seeall%)%s*', '%0\n' .. marker .. '\n', 1)
-
-    for _, p in ipairs(admin_paths) do
-        local esc = p:gsub("([^%w])", "%%%1")
-        s = s:gsub('entry%(' .. esc .. '([^\n]-)%)', 'jfa_admin_only(entry(' .. p .. '%1))', 1)
+    for _, pair in ipairs(entries) do
+        local did
+        s, did = replace_once(s, pair[1], pair[2])
+        if not did then
+            return false, "quickstart admin route anchor missing"
+        end
     end
+
+    s = s:gsub('module%("luci%.controller%.quickstart", package%.seeall%)',
+        'module("luci.controller.quickstart", package.seeall)\n\n-- JULIANG_OPERATOR_V234', 1)
 
     write(path, s)
     return true
