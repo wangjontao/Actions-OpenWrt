@@ -2,7 +2,7 @@
 set -eu
 
 REPO="wangjontao/Actions-OpenWrt"
-PIN="0d94363d187a6d31691c0b4f8d039074b66f87d9"
+PIN="b14c29fa25f53a3ee339ecf16feba878e1edc923"
 API="https://api.github.com/repos/$REPO/contents/profiles/fastc-v010/root"
 TMP="/tmp/fastc020-$$"
 BACKUP="/etc/fastc/v020-backup-$(date +%Y%m%d-%H%M%S)"
@@ -42,6 +42,7 @@ need "CHAIN_LOOP" "$TMP/usr/libexec/fastc-state.lua" "chain loop protection"
 need "SELECTOR_APPLY_FAILED" "$TMP/usr/libexec/fastc-hotctl.lua" "selector-only wireless switching"
 need "configs?force=true" "$TMP/usr/libexec/fastc-reload.lua" "no-restart config hot reload"
 need "FastC 0.2.0-dev" "$TMP/usr/libexec/fastc-generate.lua" "0.2.0 generator"
+need "Migration is first-run only" "$TMP/usr/libexec/fastc-generate.lua" "last-good snapshot preservation"
 need "one shared diagnostic listener" "$TMP/usr/libexec/fastc-generate.lua" "single shared probe listener"
 need "FastC 0.2.0 重构控制台" "$TMP/usr/lib/lua/luci/view/fastc/console_v020.htm" "node-first UI"
 for f in "$TMP/usr/libexec/fastc-state.lua" "$TMP/usr/libexec/fastc-hotctl.lua" "$TMP/usr/libexec/fastc-reload.lua" "$TMP/usr/libexec/fastc-generate.lua" "$TMP/usr/lib/lua/luci/controller/fastc_v020.lua"; do lua_check "$f"; done
