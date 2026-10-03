@@ -6,6 +6,7 @@ MODE="/usr/bin/fastc-mode"
 SYNC="/usr/libexec/fastc-sync.lua"
 LOG="/tmp/fastc-guard.log"
 FAIL="/tmp/fastc-guard.fail"
+LOCK="/tmp/fastc-transaction.lock"
 INTERVAL="$(uci -q get fastc.main.guard_interval 2>/dev/null || echo 15)"
 case "$INTERVAL" in ''|*[!0-9]*) INTERVAL=15 ;; esac
 [ "$INTERVAL" -ge 10 ] 2>/dev/null || INTERVAL=10
@@ -14,70 +15,57 @@ log(){
   [ -f "$LOG" ] && [ "$(wc -c < "$LOG" 2>/dev/null || echo 0)" -gt 65536 ] && tail -n 200 "$LOG" > "$LOG.tmp" 2>/dev/null && mv -f "$LOG.tmp" "$LOG"
   echo "$(date '+%F %T') [FastC-GUARD] $*" >> "$LOG"
 }
-
-selectors_ok(){
-  [ -x "$SYNC" ] || return 1
-  lua "$SYNC" >/tmp/fastc-guard-sync.json 2>/tmp/fastc-guard-sync.log || return 1
-  grep -q '"synced":false' /tmp/fastc-guard-sync.json 2>/dev/null && return 1
-  grep -q '"ok":true' /tmp/fastc-guard-sync.json 2>/dev/null || return 1
-  return 0
-}
-
+api_ready(){ curl -fsS --connect-timeout 1 --max-time 1 http://127.0.0.1:9097/version >/dev/null 2>&1; }
+selectors_ok(){ [ -x "$SYNC" ] && lua "$SYNC" >/tmp/fastc-guard-sync.json 2>/tmp/fastc-guard-sync.log; }
 healthy(){
   [ "$(uci -q get fastc.main.mode 2>/dev/null || echo fastacl)" = "fastc" ] || return 1
   pidof mihomo >/dev/null 2>&1 || return 1
+  api_ready || return 1
   "$DP" check >/dev/null 2>&1 || return 1
   selectors_ok || return 1
   return 0
 }
-
-heal(){
+heal_without_restart(){
+  # FastACL-style hot recovery: never restart a live mihomo instance.
+  pidof mihomo >/dev/null 2>&1 || return 2
+  api_ready || return 1
   "$DP" killswitch >/dev/null 2>&1 || return 1
-  /etc/init.d/fastc restart >/tmp/fastc-guard-restart.log 2>&1 || true
-  sleep 2
-  pidof mihomo >/dev/null 2>&1 || return 1
-  lua "$SYNC" >/tmp/fastc-guard-sync.json 2>/tmp/fastc-guard-sync.log || return 1
+  selectors_ok || return 1
   "$DP" up >/tmp/fastc-guard-dataplane.log 2>&1 || return 1
   "$DP" check >/dev/null 2>&1
+}
+start_only_if_dead(){
+  pidof mihomo >/dev/null 2>&1 && return 0
+  /etc/init.d/fastc start >/tmp/fastc-guard-start.log 2>&1 || return 1
+  sleep 2
+  pidof mihomo >/dev/null 2>&1 && api_ready
 }
 
 sleep 8
 while true; do
   mode="$(uci -q get fastc.main.mode 2>/dev/null || echo fastacl)"
-  if [ "$mode" != "fastc" ]; then
-    rm -f "$FAIL" 2>/dev/null || true
-    sleep "$INTERVAL"
-    continue
-  fi
+  if [ "$mode" != "fastc" ]; then rm -f "$FAIL" 2>/dev/null || true; sleep "$INTERVAL"; continue; fi
 
-  if healthy; then
-    rm -f "$FAIL" 2>/dev/null || true
-    sleep "$INTERVAL"
-    continue
-  fi
+  # Transactions/upgrades own the control plane. Observe only; never interfere.
+  if [ -e "$LOCK" ]; then sleep "$INTERVAL"; continue; fi
 
-  n="$(cat "$FAIL" 2>/dev/null || echo 0)"
-  case "$n" in ''|*[!0-9]*) n=0 ;; esac
-  n=$((n+1))
-  echo "$n" > "$FAIL"
-  log "dataplane or selector state unhealthy, recovery attempt $n"
+  if healthy; then rm -f "$FAIL" 2>/dev/null || true; sleep "$INTERVAL"; continue; fi
 
-  if heal; then
-    log "FastC dataplane/selectors recovered"
-    rm -f "$FAIL" 2>/dev/null || true
-    sleep "$INTERVAL"
-    continue
+  n="$(cat "$FAIL" 2>/dev/null || echo 0)"; case "$n" in ''|*[!0-9]*) n=0 ;; esac; n=$((n+1)); echo "$n" > "$FAIL"
+  log "health drift detected, hot recovery attempt $n"
+
+  if pidof mihomo >/dev/null 2>&1; then
+    if heal_without_restart; then log "hot recovery succeeded without mihomo restart"; rm -f "$FAIL" 2>/dev/null || true; sleep "$INTERVAL"; continue; fi
+  else
+    log "mihomo process is actually dead; starting service"
+    if start_only_if_dead && "$DP" up >/tmp/fastc-guard-dataplane.log 2>&1 && selectors_ok; then log "dead core recovered by start"; rm -f "$FAIL" 2>/dev/null || true; sleep "$INTERVAL"; continue; fi
   fi
 
   if [ "$n" -ge 3 ]; then
-    log "three recovery attempts failed; rolling back to FastACL"
+    log "three hot recovery attempts failed; rolling back to FastACL"
     "$DP" killswitch >/dev/null 2>&1 || true
-    if "$MODE" fastacl >/tmp/fastc-guard-rollback.log 2>&1; then
-      log "rollback to FastACL succeeded"
-      rm -f "$FAIL" 2>/dev/null || true
-    else
-      log "rollback failed; fail-closed guard retained"
-    fi
+    if "$MODE" fastacl >/tmp/fastc-guard-rollback.log 2>&1; then log "rollback to FastACL succeeded"; rm -f "$FAIL" 2>/dev/null || true
+    else log "rollback failed; fail-closed guard retained"; fi
   fi
   sleep "$INTERVAL"
 done
