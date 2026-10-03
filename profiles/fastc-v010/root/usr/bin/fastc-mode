@@ -13,6 +13,11 @@ has_listener(){
   return 1
 }
 
+core_healthy(){
+  pidof mihomo >/dev/null 2>&1 || return 1
+  has_listener
+}
+
 start_core(){
   lua "$GEN" >/tmp/fastc-generate.json 2>/tmp/fastc-generate.log || {
     log "config generation failed"; cat /tmp/fastc-generate.log 2>/dev/null || true; return 1;
@@ -23,12 +28,13 @@ start_core(){
   /etc/init.d/fastc enable >/dev/null 2>&1 || true
   /etc/init.d/fastc restart >/tmp/fastc-start.log 2>&1 || true
   i=0
-  while [ "$i" -lt 8 ]; do
-    has_listener && return 0
+  while [ "$i" -lt 10 ]; do
+    core_healthy && return 0
     sleep 1; i=$((i+1))
   done
   log "mihomo TProxy port $TPORT did not become ready"
   cat /tmp/fastc-start.log 2>/dev/null || true
+  cat /tmp/fastc-mihomo-check.log 2>/dev/null || true
   return 1
 }
 
@@ -70,34 +76,42 @@ switch_fastc(){
   [ -x /usr/bin/mihomo ] || { log "mihomo core missing"; return 1; }
   [ -x "$DP" ] || { log "FastC dataplane helper missing"; return 1; }
 
-  log "1/6 generating and starting FastC mihomo..."
+  log "1/7 generating and starting FastC mihomo..."
   start_core || return 1
 
-  log "2/6 installing FastC fail-closed kill-switch..."
+  log "2/7 installing FastC fail-closed kill-switch..."
   "$DP" killswitch || return 1
 
-  log "3/6 stopping FastACL dataplane while old kill-switch stays active..."
+  log "3/7 stopping FastACL dataplane while old kill-switch stays active..."
   stop_fastacl_dataplane
 
-  log "4/6 installing FastC TProxy nftables + fwmark route..."
+  log "4/7 installing FastC TProxy nftables + fwmark route..."
   if ! "$DP" up; then
     log "FastC dataplane activation failed; rolling back to FastACL"
     restore_fastacl || true
     return 1
   fi
 
-  log "5/6 validating FastC dataplane..."
-  if ! "$DP" check; then
+  log "5/7 validating FastC dataplane..."
+  if ! core_healthy || ! "$DP" check; then
     log "FastC dataplane validation failed; rolling back to FastACL"
     restore_fastacl || true
     return 1
   fi
 
-  log "6/6 releasing old FastACL kill-switch and committing mode..."
-  nft list table inet juliang_killswitch >/dev/null 2>&1 && nft delete table inet juliang_killswitch >/dev/null 2>&1 || true
+  log "6/7 committing FastC mode..."
   uci set fastc.main.mode='fastc'
   uci set fastc.main.enabled='1'
   uci commit fastc
+  sleep 1
+
+  log "7/7 final health verification and old guard release..."
+  if ! core_healthy || ! "$DP" check; then
+    log "FastC lost health after mode commit; rolling back to FastACL"
+    restore_fastacl || true
+    return 1
+  fi
+  nft list table inet juliang_killswitch >/dev/null 2>&1 && nft delete table inet juliang_killswitch >/dev/null 2>&1 || true
   log "FastC now owns A1-A20 traffic"
 }
 
@@ -137,6 +151,8 @@ switch_fastacl(){
 status(){
   mode="$(uci -q get fastc.main.mode 2>/dev/null || echo fastacl)"
   echo "mode=$mode"
+  echo "mihomo=$(pidof mihomo >/dev/null 2>&1 && echo 1 || echo 0)"
+  echo "listener=$(has_listener && echo 1 || echo 0)"
   echo "fastc_tproxy=$(nft list table inet fastc_tproxy >/dev/null 2>&1 && echo 1 || echo 0)"
   echo "fastc_killswitch=$(nft list table inet fastc_killswitch >/dev/null 2>&1 && echo 1 || echo 0)"
   echo "fastacl_tproxy=$(nft list table inet juliang_fastacl >/dev/null 2>&1 && echo 1 || echo 0)"
