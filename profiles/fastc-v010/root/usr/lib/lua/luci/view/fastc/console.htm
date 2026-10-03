@@ -15,6 +15,7 @@ local api = dsp.build_url("admin", "services", "fastc_api")
 .fc-table td{padding:12px 10px;background:rgba(128,128,128,.05);border-top:1px solid rgba(128,128,128,.08);border-bottom:1px solid rgba(128,128,128,.08)}
 .fc-actions{display:flex;gap:8px;flex-wrap:wrap}
 .fc-import-primary{border-radius:999px!important;padding:0 24px!important;min-height:44px!important;font-size:15px!important;font-weight:700!important}
+.fc-core-btn{border-radius:999px!important;padding:0 18px!important;min-height:38px!important;font-weight:700!important}
 .fc-modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:500}
 .fc-modal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:58rem;max-width:94vw;background:var(--main-bg-color,#fff);padding:22px;border-radius:12px;box-shadow:0 12px 42px rgba(0,0,0,.38)}
 .fc-import-text{width:100%;height:300px;resize:vertical;box-sizing:border-box;font-family:monospace;padding:10px;border:1px solid rgba(128,128,128,.35);border-radius:6px;line-height:1.45}
@@ -27,7 +28,7 @@ local api = dsp.build_url("admin", "services", "fastc_api")
 <div class="cbi-map fc-wrap">
   <div class="fc-titlebar">
     <div>
-      <h2>FastC 0.1.1 开发控制台</h2>
+      <h2>FastC 0.1.2 开发控制台</h2>
       <div class="cbi-map-descr">mihomo 数据面 · 多 SSID 独立策略组 · FastACL 管理思路重构</div>
     </div>
     <div class="fc-actions">
@@ -39,8 +40,9 @@ local api = dsp.build_url("admin", "services", "fastc_api")
     <input class="btn cbi-button cbi-button-add fc-import-primary" type="button" value="＋ 导入节点" onclick="openImport()"/>
     <span id="fc_mode" class="fc-pill">模式：读取中</span>
     <span id="fc_core" class="fc-pill">mihomo：读取中</span>
+    <input id="fc_core_btn" class="btn cbi-button cbi-button-action fc-core-btn" type="button" value="安装 mihomo 内核" onclick="installCore()"/>
     <span id="fc_nodes" class="fc-pill">节点：-</span>
-    <span id="fc_version" class="fc-pill">FastC：0.1.1-dev</span>
+    <span id="fc_version" class="fc-pill">FastC：0.1.2-dev</span>
   </div>
 
   <div id="fc_msg"></div>
@@ -71,7 +73,7 @@ tuic://...
 兼容 SK5 简写：
 host:port:username:password"></textarea>
     <div class="fc-note">
-      FastC 0.1.1 先把链接写入独立节点库，不写 PassWall/PassWall2。导入本身不依赖 mihomo 是否运行。
+      FastC 0.1.2 将链接写入独立节点库，不写 PassWall/PassWall2。节点导入不依赖 mihomo 是否运行。
     </div>
     <div id="fc_import_msg"></div>
     <div class="fc-actions">
@@ -84,7 +86,7 @@ host:port:username:password"></textarea>
 
 <script type="text/javascript">
 (function(){
-  var API='<%=api%>', state={nodes:[]};
+  var API='<%=api%>', state={nodes:[],corePresent:false};
 
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   function msg(t,ok){var e=document.getElementById('fc_msg');e.textContent=t||'';e.className=ok===true?'fc-ok':(ok===false?'fc-bad':'fc-warn')}
@@ -119,24 +121,45 @@ host:port:username:password"></textarea>
     msg('正在读取 FastC…');
     xhr({action:'status'},function(r){
       if(!r||!r.ok){msg('读取 FastC 状态失败',false);return}
-      state.nodes=r.nodes||[];
+      state.nodes=r.nodes||[];state.corePresent=!!r.core_present;
       var c=r.config||{}, fa=r.fastacl||{};
       var core=document.getElementById('fc_core');
+      var ver=r.core_version||'';
       if(r.core_running){
-        core.textContent='mihomo：运行中';core.className='fc-pill fc-ok';
+        core.textContent='mihomo：运行中'+(ver?' · '+ver:'');core.className='fc-pill fc-ok';
       }else if(r.core_present){
-        core.textContent='mihomo：已检测 / 未运行';core.className='fc-pill fc-warn';
+        core.textContent='mihomo：已安装 / 未运行'+(ver?' · '+ver:'');core.className='fc-pill fc-warn';
         core.title=r.core_path||'';
       }else{
         core.textContent='mihomo：未检测到内核';core.className='fc-pill fc-bad';
       }
+      var coreBtn=document.getElementById('fc_core_btn');
+      coreBtn.value=r.core_present?'更新 mihomo 内核':'安装 mihomo 内核';
       var mode=document.getElementById('fc_mode');
       var modeName=(c.mode==='fastc')?'FastC':'FastACL';
       mode.textContent='模式：'+modeName;
       mode.className='fc-pill '+((modeName==='FastACL'&&fa.running)||(modeName==='FastC'&&r.core_running)?'fc-ok':'fc-warn');
       document.getElementById('fc_nodes').textContent='节点：'+(r.node_count||0);
-      document.getElementById('fc_version').textContent='FastC：'+(c.version||'0.1.1-dev');
+      document.getElementById('fc_version').textContent='FastC：'+(c.version||'0.1.2-dev');
       render();msg('');
+    });
+  }
+
+  window.installCore=function(){
+    var btn=document.getElementById('fc_core_btn');
+    var verb=state.corePresent?'更新':'安装';
+    if(!confirm(verb+' FastC 官方 mihomo 内核？\n\n只安装核心文件，不会关闭 FastACL，也不会接管当前流量。')) return;
+    btn.disabled=true;
+    msg('正在'+verb+' mihomo v1.19.32… 官方 ARM64 文件约 20 MB，请稍候。');
+    post({action:'install_core'},function(r){
+      btn.disabled=false;
+      if(r&&r.ok){
+        msg('✓ mihomo 内核'+verb+'成功\n'+(r.core_version||'')+'\n'+(r.core_path||'/usr/bin/mihomo'),true);
+        loadStatus();
+      }else{
+        var detail=(r&&r.detail)?('\n'+String(r.detail).slice(-1800)):'';
+        msg('mihomo 内核'+verb+'失败：'+((r&&r.error)||'网络请求错误')+detail,false);
+      }
     });
   }
 
