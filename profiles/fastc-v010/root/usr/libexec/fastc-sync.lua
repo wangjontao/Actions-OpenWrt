@@ -15,19 +15,19 @@ local function read_json(path,fallback)
 end
 local function shq(s) return "'"..tostring(s or ""):gsub("'","'\\''").."'" end
 local function api_ready()
-  return os.execute("curl -fsS --max-time 1 "..shq(API.."/version").." >/dev/null 2>&1")==0
+  return os.execute("curl -fsS --connect-timeout 1 --max-time 1 "..shq(API.."/version").." >/dev/null 2>&1")==0
 end
 local function wait_api()
-  for _=1,20 do if api_ready() then return true end os.execute("sleep 0.25") end
+  for _=1,12 do if api_ready() then return true end os.execute("sleep 0.2") end
   return false
 end
 local function put_select(group,node)
   local payload=jsonc.stringify({name=node})
-  local cmd="curl -fsS --max-time 2 -o /dev/null -X PUT -H 'Content-Type: application/json' --data "..shq(payload).." "..shq(API.."/proxies/FASTC-"..group)
+  local cmd="curl -fsS --connect-timeout 1 --max-time 2 -o /dev/null -X PUT -H 'Content-Type: application/json' --data "..shq(payload).." "..shq(API.."/proxies/FASTC-"..group)
   return os.execute(cmd)==0
 end
 local function get_now(group)
-  local p=io.popen("curl -fsS --max-time 2 "..shq(API.."/proxies/FASTC-"..group).." 2>/dev/null")
+  local p=io.popen("curl -fsS --connect-timeout 1 --max-time 2 "..shq(API.."/proxies/FASTC-"..group).." 2>/dev/null")
   if not p then return nil end
   local raw=p:read("*a") or ""; p:close()
   local ok,obj=pcall(jsonc.parse,raw)
@@ -59,17 +59,26 @@ if not wait_api() then
   os.exit(1)
 end
 
-local out={ok=true,groups={}}
+local out={ok=true,changed=0,groups={}}
 for _,ap in ipairs(aps) do
   local g=tostring(ap.group or ("A"..tostring(ap.slot or "")))
   local wanted=tostring(groups[g] or "")
   local exists=false
   for _,id in ipairs(members[g] or {}) do if id==wanted then exists=true break end end
   if not exists then wanted=((members[g] or {})[1] or "REJECT") end
-  local ok=put_select(g,wanted)
-  os.execute("sleep 0.03")
+
   local now=get_now(g) or ""
-  out.groups[g]={wanted=wanted,now=now,synced=(ok and now==wanted) and true or false,ssid=ap.ssid or g,subnet=ap.subnet or ""}
+  local changed=false
+  local ok=true
+  if now~=wanted then
+    ok=put_select(g,wanted)
+    if ok then
+      changed=true
+      out.changed=out.changed+1
+      now=get_now(g) or ""
+    end
+  end
+  out.groups[g]={wanted=wanted,now=now,synced=(ok and now==wanted) and true or false,changed=changed,ssid=ap.ssid or g,subnet=ap.subnet or ""}
 end
 
 io.write(jsonc.stringify(out,true),"\n")
