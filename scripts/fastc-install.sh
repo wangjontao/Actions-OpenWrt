@@ -1,9 +1,9 @@
 #!/bin/sh
 set -eu
 
-PIN="0dc54891eb78d2b9bc8835453fa718939394aa76"
+PIN="55dc84c2b15cc7daef27c743705cdad422e27c58"
 BASE="https://cdn.jsdelivr.net/gh/wangjontao/Actions-OpenWrt@$PIN/profiles/fastc-v010/root"
-TMP="/tmp/fastc010-$$"
+TMP="/tmp/fastc011-$$"
 BACKUP="/etc/fastc/install-backup-$(date +%Y%m%d-%H%M%S)"
 
 cleanup(){ rm -rf "$TMP" 2>/dev/null || true; }
@@ -23,7 +23,8 @@ fetch_one(){
 }
 
 echo "=================================================="
-echo " FastC 0.1.0-dev Installer"
+echo " FastC 0.1.1-dev Installer"
+echo " import fix + core detection + mode status"
 echo " jsDelivr transport / no raw.githubusercontent"
 echo "=================================================="
 
@@ -59,8 +60,9 @@ test -s "$TMP/console.htm"
 test -s "$TMP/fastc-import.lua"
 test -s "$TMP/fastc.json"
 grep -q 'module("luci.controller.fastc"' "$TMP/fastc.lua"
-grep -q 'FastC 0.1.0' "$TMP/console.htm"
-grep -q 'standalone node-link importer\|local jsonc' "$TMP/fastc-import.lua" || true
+grep -q 'FastC 0.1.1' "$TMP/console.htm"
+grep -q 's = s:gsub("%+", " ")' "$TMP/fastc-import.lua"
+grep -q 'core_present' "$TMP/fastc.lua"
 
 cp -af "$TMP/fastc.config" /etc/config/fastc
 cp -af "$TMP/fastc.lua" /usr/lib/lua/luci/controller/fastc.lua
@@ -79,17 +81,25 @@ rm -rf /tmp/luci-modulecache /tmp/luci-templatecache 2>/dev/null || true
 /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
 
 echo
-if command -v mihomo >/dev/null 2>&1; then
-  echo "[OK] mihomo detected: $(mihomo -v 2>/dev/null | head -n1 || true)"
-elif command -v clash >/dev/null 2>&1; then
-  echo "[OK] clash-compatible core detected: $(clash -v 2>/dev/null | head -n1 || true)"
+CORE=""
+command -v mihomo >/dev/null 2>&1 && CORE="$(command -v mihomo)"
+[ -n "$CORE" ] || { command -v clash >/dev/null 2>&1 && CORE="$(command -v clash)"; }
+[ -n "$CORE" ] || [ ! -x /etc/openclash/core/clash_meta ] || CORE="/etc/openclash/core/clash_meta"
+[ -n "$CORE" ] || [ ! -x /etc/openclash/core/clash ] || CORE="/etc/openclash/core/clash"
+[ -n "$CORE" ] || [ ! -x /usr/bin/clash_meta ] || CORE="/usr/bin/clash_meta"
+
+if [ -n "$CORE" ]; then
+  echo "[OK] mihomo-compatible core detected: $CORE"
+  "$CORE" -v 2>/dev/null | head -n1 || true
 else
-  echo "[WARN] mihomo core not detected yet; UI/import can still be tested"
+  echo "[WARN] mihomo-compatible core not detected yet; node import still works"
 fi
 
-echo "[OK] FastC 0.1.0-dev UI installed"
-echo "[OK] Import window enabled"
+echo "[OK] FastC 0.1.1-dev UI installed"
+echo "[OK] Import callback fixed"
+echo "[OK] Lua URL decoder fixed"
+echo "[OK] FastACL/FastC mode status enabled"
 echo "[OK] Node database: /etc/fastc/nodes.json"
 echo "[INFO] LuCI: Services -> FastC"
 echo "[INFO] Backup: $BACKUP"
-echo "[INFO] This development build imports nodes but does not yet take over traffic."
+echo "[INFO] FastC dataplane is not enabled yet; FastACL remains the active mode."
