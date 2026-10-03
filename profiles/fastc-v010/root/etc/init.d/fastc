@@ -8,6 +8,7 @@ PROG="/usr/bin/mihomo"
 CFG_DIR="/etc/fastc"
 CFG_FILE="/etc/fastc/config.yaml"
 GEN="/usr/libexec/fastc-generate.lua"
+RELOAD="/usr/libexec/fastc-reload.lua"
 SYNC="/usr/libexec/fastc-sync.lua"
 DP="/usr/bin/fastc-dataplane"
 GUARD="/usr/bin/fastc-guard"
@@ -20,7 +21,7 @@ start_service() {
 	[ -s "$CFG_FILE" ] || return 1
 	"$PROG" -t -d "$CFG_DIR" -f "$CFG_FILE" >/tmp/fastc-mihomo-check.log 2>&1 || return 1
 
-	mode="$(uci -q get fastc.main.mode 2>/dev/null || echo fastacl)"
+	mode="$(uci -q get fastc.main.mode 2>/dev/null || echo fastc)"
 	if [ "$mode" = "fastc" ] && [ -x "$DP" ]; then
 		"$DP" killswitch >/tmp/fastc-boot-killswitch.log 2>&1 || return 1
 	fi
@@ -59,9 +60,19 @@ start_service() {
 }
 
 reload_service() {
-	stop
+	# FastC development rule: never restart a live mihomo just to apply config.
+	# Regenerate, validate, hot-reload over the mihomo API, then resync selectors.
+	[ -x "$GEN" ] || return 1
+	lua "$GEN" >/tmp/fastc-reload-generate.json 2>/tmp/fastc-reload-generate.log || return 1
+	"$PROG" -t -d "$CFG_DIR" -f "$CFG_FILE" >/tmp/fastc-reload-check.log 2>&1 || return 1
+	if pidof mihomo >/dev/null 2>&1 && curl -fsS --connect-timeout 1 --max-time 1 http://127.0.0.1:9097/version >/dev/null 2>&1; then
+		lua "$RELOAD" >/tmp/fastc-service-reload.json 2>/tmp/fastc-service-reload.log || return 1
+		[ -x "$SYNC" ] && lua "$SYNC" >/tmp/fastc-service-sync.json 2>/tmp/fastc-service-sync.log || true
+		[ -x "$DP" ] && "$DP" up >/tmp/fastc-service-dataplane.log 2>&1 || true
+		return 0
+	fi
+	# If the core is really dead, procd start is allowed once.
 	start
 }
 
-# No UCI reload trigger: FastC updates explicitly regenerate/restart and
-# validate the dataplane, avoiding races during FastACL/FastC handoff.
+# No automatic FastACL interaction. FastC owns its own lifecycle during development.
