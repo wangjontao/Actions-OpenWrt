@@ -160,6 +160,7 @@ end
 LUA
 
 cp -af "$TMP/routing.js" "$ROUTE_JS"
+sed -i 's/juliang-fastacl-v242-routing\.js?v=2422/juliang-fastacl-v242-routing.js?v=2423/g' "$CONSOLE"
 chmod 0755 "$CORE"
 chmod 0644 "$CONSOLE" "$ROUTE_JS"
 
@@ -173,6 +174,7 @@ sh -n "$CORE" || {
 grep -q 'FastACL 2.4.2 hot-switch async probe' "$CORE"
 grep -q 'probe_async' "$CORE"
 grep -q '出口IP后台检测中' "$CONSOLE"
+grep -q 'juliang-fastacl-v242-routing.js?v=2423' "$CONSOLE"
 grep -q '节点分配（链式代理）' "$ROUTE_JS"
 
 rm -f /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null || true
@@ -184,4 +186,4 @@ echo '[OK] wireless mode panel is collapsible; node table labelled 节点分配�
 echo '[OK] exit-IP probe moved to background; successful switching no longer waits up to 6s for ipify'
 echo '[OK] local listener uses fast polling with an 8s slow-start grace window to reduce false rollback'
 echo "[INFO] Backup: $BK"
-echo '[INFO] No FastACL dataplane restart was performed; Ctrl+F5 the console'
+echo '[INFO] No FastACL dataplane restart was performed; browser cache key bumped to 2423'
