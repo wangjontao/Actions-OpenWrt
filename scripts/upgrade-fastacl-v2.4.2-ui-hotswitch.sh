@@ -2,7 +2,7 @@
 set -eu
 
 REPO="wangjontao/Actions-OpenWrt"
-PIN="5e0be15b9d0d8d58009ed2a8547bdc9db6066490"
+PIN="7c0e7a3532c5b4f486459555bfd9e2aa51886cb3"
 API="https://api.github.com/repos/$REPO/contents"
 TMP="/tmp/jfa242-hotswitch-$$"
 BK="/etc/juliang-fastacl/v2.4.2-hotswitch-backup-$(date +%Y%m%d-%H%M%S)"
@@ -27,6 +27,7 @@ get(){
 get "profiles/fastacl-v9/root/www/luci-static/resources/juliang-fastacl-v242-routing.js" "$TMP/routing.js"
 grep -q '节点分配（链式代理）' "$TMP/routing.js"
 grep -q 'jfa242_route_summary' "$TMP/routing.js"
+grep -q "document.createElement('details')" "$TMP/routing.js"
 
 cp -af "$CORE" "$BK/juliang-fastacl"
 cp -af "$CONSOLE" "$BK/console.htm"
@@ -55,11 +56,11 @@ if not s:find('FastACL 2.4.2 hot%-switch async probe') then
 
 # FastACL 2.4.2 hot-switch async probe
 fast_pause(){
-  if command -v usleep >/dev/null 2>&1; then
-    usleep 200000
-  else
-    sleep 1
-  fi
+  # BusyBox sleep on current OpenWrt accepts fractions. Keep fallbacks for
+  # older builds so normal switches poll at ~200ms instead of whole seconds.
+  sleep 0.2 2>/dev/null && return 0
+  command -v usleep >/dev/null 2>&1 && { usleep 200000; return 0; }
+  sleep 1
 }
 
 wait_tcp_listener(){
@@ -128,7 +129,7 @@ wait_any_listener_pid(){
     save_state
     printf '{"ok":true,"ap":"AP%s","node":"%s","remark":"%s","ip":"%s","seconds":%s,"dataplane":"running"}\n' "$n" "$node" "$(echo "$remark" | sed 's/"/\\"/g')" "$ip" "$sec"
 ]=],[=[    # Do not hold up a successful hot switch on an Internet IP service.
-    # The listener/dataplane is already healthy; refresh the exit IP in background.
+    # Listener/dataplane is already healthy; refresh exit IP in background.
     rm -f "$RUN_DIR/ap$n.ip"
     (
       ip="$(probe_ap "$n")"
@@ -142,9 +143,43 @@ wait_any_listener_pid(){
     printf '{"ok":true,"ap":"AP%s","node":"%s","remark":"%s","ip":"-","seconds":%s,"dataplane":"running","probe_async":true}\n' "$n" "$node" "$(echo "$remark" | sed 's/"/\\"/g')" "$sec"
 ]=],'async exit probe')
 
+  -- One transient dataplane observation should not trigger rollback. Retry once
+  -- after the short local poll before treating the target as unhealthy.
   s=s:gsub('ensure_dataplane && switch_ok=1','if ensure_dataplane || { fast_pause; ensure_dataplane; }; then switch_ok=1; fi',1)
-  write(core,s)
 end
+
+if not s:find('FastACL 2.4.2 make%-before%-break') then
+  s=replace_plain(s,[=[  # Unique-binding means MOVE, not duplicate-then-delete. Stop old AP relay(s)
+  # first to avoid protocol/plugin/shared-resource collisions, but keep UCI
+  # mappings until the target is confirmed healthy so rollback is possible.
+  for i in $sources; do
+    kill_ap "$i"
+  done
+
+  if result="$(switch_node "$ap" "$node")"; then
+    for i in $sources; do
+      uci -q delete $CFG.ap$i.node
+]=],[=[  # FastACL 2.4.2 make-before-break
+  # Keep source relay(s) alive until the target listener/dataplane is confirmed.
+  # AP slots use different local SOCKS ports/flags, so this avoids an outage
+  # during a move and leaves the previous path intact if the target fails.
+  if result="$(switch_node "$ap" "$node")"; then
+    for i in $sources; do
+      kill_ap "$i"
+      uci -q delete $CFG.ap$i.node
+]=],'make-before-break move')
+
+  s=replace_plain(s,[=[  # Target failed: source UCI mappings were intentionally left intact; restart
+  # them so the previous working wireless AP is restored.
+  for i in $sources; do
+    start_ap "$i" >/dev/null 2>&1 || true
+  done
+  printf '{"ok":false,"ap":"%s","node":"%s","error":"NODE_START_FAILED","rolled_back_sources":true,"diagnostic":"%s"}\n' "$ap" "$node" "$RUN_DIR/ap$n-start-error.log"
+]=],[=[  # Target failed before source teardown; previous source relay(s) stay live.
+  printf '{"ok":false,"ap":"%s","node":"%s","error":"NODE_START_FAILED","rolled_back_sources":true,"source_kept_live":true,"diagnostic":"%s"}\n' "$ap" "$node" "$RUN_DIR/ap$n-start-error.log"
+]=],'failed move keeps source live')
+end
+write(core,s)
 
 local c=read(console)
 if not c:find('出口IP后台检测中',1,true) then
@@ -160,7 +195,17 @@ end
 LUA
 
 cp -af "$TMP/routing.js" "$ROUTE_JS"
-sed -i 's/juliang-fastacl-v242-routing\.js?v=2422/juliang-fastacl-v242-routing.js?v=2423/g' "$CONSOLE"
+# Normalize any previous routing cache key and load the compact UI once.
+JFA_CONSOLE="$CONSOLE" lua <<'LUA'
+local path=assert(os.getenv('JFA_CONSOLE'))
+local f=assert(io.open(path,'rb')); local s=f:read('*a'); f:close()
+s=s:gsub('<script type="text/javascript" src="/luci%-static/resources/juliang%-fastacl%-v242%-routing%.js%?v=%d+"></script>%s*','')
+local foot='<%+footer%>'
+local p=assert(s:find(foot,1,true),'console footer missing')
+local tag='<script type="text/javascript" src="/luci-static/resources/juliang-fastacl-v242-routing.js?v=2424"></script>\n'
+s=s:sub(1,p-1)..tag..s:sub(p)
+local o=assert(io.open(path,'wb')); o:write(s); o:close()
+LUA
 chmod 0755 "$CORE"
 chmod 0644 "$CONSOLE" "$ROUTE_JS"
 
@@ -172,18 +217,23 @@ sh -n "$CORE" || {
   exit 1
 }
 grep -q 'FastACL 2.4.2 hot-switch async probe' "$CORE"
+grep -q 'FastACL 2.4.2 make-before-break' "$CORE"
 grep -q 'probe_async' "$CORE"
 grep -q '出口IP后台检测中' "$CONSOLE"
-grep -q 'juliang-fastacl-v242-routing.js?v=2423' "$CONSOLE"
+grep -q 'juliang-fastacl-v242-routing.js?v=2424' "$CONSOLE"
 grep -q '节点分配（链式代理）' "$ROUTE_JS"
+grep -q "document.createElement('details')" "$ROUTE_JS"
 
 rm -f /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null || true
 rm -rf /tmp/luci-modulecache /tmp/luci-templatecache 2>/dev/null || true
 /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
 
-echo '[OK] FastACL 2.4.2 compact UI + hot-switch optimization installed'
-echo '[OK] wireless mode panel is collapsible; node table labelled 节点分配（链式代理）'
-echo '[OK] exit-IP probe moved to background; successful switching no longer waits up to 6s for ipify'
-echo '[OK] local listener uses fast polling with an 8s slow-start grace window to reduce false rollback'
+echo '[OK] FastACL 2.4.2 compact UI + HotSwitch v2 installed'
+echo '[OK] 无线出口模式: collapsed by default and remembers open/closed state'
+echo '[OK] empty area title: 节点分配（链式代理）'
+echo '[OK] exit-IP probe is asynchronous; successful switch no longer waits up to 6s for ipify'
+echo '[OK] listener readiness uses ~200ms polling with an 8s slow-start grace window'
+echo '[OK] exclusive move uses make-before-break; old source stays live until target is healthy'
+echo '[INFO] FastACL dataplane was not restarted'
 echo "[INFO] Backup: $BK"
-echo '[INFO] No FastACL dataplane restart was performed; browser cache key bumped to 2423'
+echo '[INFO] Ctrl+F5 refresh FastACL console'
