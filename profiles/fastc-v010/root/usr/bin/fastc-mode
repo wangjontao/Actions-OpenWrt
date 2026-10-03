@@ -4,19 +4,16 @@ set -eu
 DP="/usr/bin/fastc-dataplane"
 GEN="/usr/libexec/fastc-generate.lua"
 SYNC="/usr/libexec/fastc-sync.lua"
-TPORT="$(uci -q get fastc.main.tproxy_port 2>/dev/null || echo 7895)"
+RELOAD="/usr/libexec/fastc-reload.lua"
+LOCK="/tmp/fastc-transaction.lock"
 
 log(){ echo "[FastC-MODE] $*"; }
-
-has_listener(){
-  ss -lntup 2>/dev/null | grep -q ":$TPORT " && return 0
-  netstat -lntup 2>/dev/null | grep -q ":$TPORT " && return 0
-  return 1
-}
+api_ready(){ curl -fsS --connect-timeout 1 --max-time 1 http://127.0.0.1:9097/version >/dev/null 2>&1; }
 
 core_healthy(){
   pidof mihomo >/dev/null 2>&1 || return 1
-  has_listener
+  api_ready || return 1
+  "$DP" listeners >/dev/null 2>&1
 }
 
 sync_selectors(){
@@ -29,24 +26,35 @@ sync_selectors(){
   }
 }
 
-start_core(){
+prepare_core(){
   lua "$GEN" >/tmp/fastc-generate.json 2>/tmp/fastc-generate.log || {
     log "config generation failed"; cat /tmp/fastc-generate.log 2>/dev/null || true; return 1;
   }
   /usr/bin/mihomo -t -d /etc/fastc -f /etc/fastc/config.yaml >/tmp/fastc-mihomo-check.log 2>&1 || {
     log "mihomo config check failed"; cat /tmp/fastc-mihomo-check.log 2>/dev/null || true; return 1;
   }
-  /etc/init.d/fastc enable >/dev/null 2>&1 || true
-  /etc/init.d/fastc restart >/tmp/fastc-start.log 2>&1 || true
+
+  if pidof mihomo >/dev/null 2>&1 && api_ready; then
+    oldpid="$(pidof mihomo)"
+    log "mihomo is live; applying config with API hot reload (PID $oldpid)"
+    lua "$RELOAD" >/tmp/fastc-mode-reload.json 2>/tmp/fastc-mode-reload.log || {
+      log "mihomo hot reload failed"; cat /tmp/fastc-mode-reload.log 2>/dev/null || true; cat /tmp/fastc-mode-reload.json 2>/dev/null || true; return 1;
+    }
+    newpid="$(pidof mihomo 2>/dev/null || true)"
+    [ "$oldpid" = "$newpid" ] || { log "mihomo PID changed unexpectedly: $oldpid -> $newpid"; return 1; }
+  else
+    log "mihomo is not running; starting it once"
+    /etc/init.d/fastc enable >/dev/null 2>&1 || true
+    /etc/init.d/fastc start >/tmp/fastc-start.log 2>&1 || true
+  fi
+
   i=0
-  while [ "$i" -lt 10 ]; do
-    if core_healthy; then
-      sync_selectors || return 1
-      return 0
-    fi
+  while [ "$i" -lt 15 ]; do
+    if core_healthy; then sync_selectors || return 1; return 0; fi
     sleep 1; i=$((i+1))
   done
-  log "mihomo TProxy port $TPORT did not become ready"
+  log "FastC per-AP listeners did not become ready"
+  "$DP" status 2>/dev/null || true
   cat /tmp/fastc-start.log 2>/dev/null || true
   cat /tmp/fastc-mihomo-check.log 2>/dev/null || true
   return 1
@@ -61,6 +69,9 @@ stop_fastacl_dataplane(){
   nft list table inet juliang_fastacl >/dev/null 2>&1 && nft delete table inet juliang_fastacl >/dev/null 2>&1 || true
   ip rule del fwmark 0x66/0xff table 100 priority 10000 >/dev/null 2>&1 || true
   ip route flush table 100 >/dev/null 2>&1 || true
+  nft list table inet juliang_fastacl >/dev/null 2>&1 && return 1 || true
+  ip rule show 2>/dev/null | grep -q 'fwmark 0x66/0xff.*lookup 100' && return 1 || true
+  return 0
 }
 
 restore_fastacl(){
@@ -79,58 +90,74 @@ restore_fastacl(){
   nft list table inet juliang_fastacl >/dev/null 2>&1 || return 1
   nft list table inet juliang_killswitch >/dev/null 2>&1 || return 1
   /usr/bin/juliang-fastacl status 2>/dev/null | grep -q '^router: running' || return 1
+  [ "$("$DP" owner)" = "fastacl" ] || return 1
   "$DP" release >/dev/null 2>&1 || true
   uci set fastc.main.mode='fastacl'
   uci set fastc.main.enabled='0'
   uci commit fastc
+  echo fastacl > /tmp/juliang-dataplane.owner
   return 0
 }
 
 switch_fastc(){
   [ -x /usr/bin/mihomo ] || { log "mihomo core missing"; return 1; }
   [ -x "$DP" ] || { log "FastC dataplane helper missing"; return 1; }
+  touch "$LOCK"
+  trap 'rm -f "$LOCK"' EXIT INT TERM
 
-  log "1/7 discovering topology, generating config and starting FastC mihomo..."
-  start_core || return 1
+  log "1/8 generating and hot-preloading FastC while FastACL stays online..."
+  prepare_core || return 1
 
-  log "2/7 installing FastC fail-closed kill-switch..."
+  log "2/8 validating every discovered per-AP TProxy listener..."
+  "$DP" listeners || return 1
+
+  log "3/8 installing FastC fail-closed guard..."
   "$DP" killswitch || return 1
 
-  log "3/7 stopping FastACL dataplane while old kill-switch stays active..."
-  stop_fastacl_dataplane
+  log "4/8 releasing FastACL TProxy while keeping fail-closed protection..."
+  if ! stop_fastacl_dataplane; then
+    log "FastACL dataplane did not release cleanly; refusing dual-owner state"
+    restore_fastacl || true
+    return 1
+  fi
 
-  log "4/7 installing FastC TProxy nftables + fwmark route..."
+  log "5/8 installing FastC per-AP TProxy rules + fwmark route..."
   if ! "$DP" up; then
     log "FastC dataplane activation failed; rolling back to FastACL"
     restore_fastacl || true
     return 1
   fi
 
-  log "5/7 validating FastC dataplane and selector state..."
-  if ! core_healthy || ! sync_selectors || ! "$DP" check; then
-    log "FastC dataplane validation failed; rolling back to FastACL"
+  log "6/8 validating FastC owner, selectors and dataplane..."
+  if [ "$("$DP" owner)" != "fastc" ] || ! core_healthy || ! sync_selectors || ! "$DP" check; then
+    log "FastC validation failed; rolling back to FastACL"
     restore_fastacl || true
     return 1
   fi
 
-  log "6/7 committing FastC mode..."
+  log "7/8 committing FastC as the only dataplane owner..."
   uci set fastc.main.mode='fastc'
   uci set fastc.main.enabled='1'
   uci commit fastc
-  sleep 1
+  echo fastc > /tmp/juliang-dataplane.owner
 
-  log "7/7 final health verification and old guard release..."
-  if ! core_healthy || ! sync_selectors || ! "$DP" check; then
-    log "FastC lost health after mode commit; rolling back to FastACL"
+  log "8/8 releasing old FastACL kill-switch after final health check..."
+  if [ "$("$DP" owner)" != "fastc" ] || ! core_healthy || ! sync_selectors || ! "$DP" check; then
+    log "FastC lost health after commit; rolling back to FastACL"
     restore_fastacl || true
     return 1
   fi
   nft list table inet juliang_killswitch >/dev/null 2>&1 && nft delete table inet juliang_killswitch >/dev/null 2>&1 || true
-  log "FastC now owns discovered wireless traffic"
+  rm -f "$LOCK"
+  trap - EXIT INT TERM
+  log "FastC now exclusively owns discovered wireless traffic"
 }
 
 switch_fastacl(){
   [ -x "$DP" ] || return 1
+  touch "$LOCK"
+  trap 'rm -f "$LOCK"' EXIT INT TERM
+
   log "1/5 installing FastC fail-closed guard during handoff..."
   "$DP" killswitch || return 1
   log "2/5 removing FastC TProxy interception but keeping guard..."
@@ -146,23 +173,27 @@ switch_fastacl(){
   fi
   /etc/init.d/juliang-fastacl restart >/dev/null 2>&1 || true
   sleep 1
-  log "4/5 validating FastACL..."
+  log "4/5 validating FastACL as sole dataplane owner..."
   nft list table inet juliang_fastacl >/dev/null 2>&1 || return 1
   nft list table inet juliang_killswitch >/dev/null 2>&1 || return 1
   /usr/bin/juliang-fastacl status 2>/dev/null | grep -q '^router: running' || return 1
+  [ "$("$DP" owner)" = "fastacl" ] || return 1
   log "5/5 releasing FastC guard and committing mode..."
   "$DP" release >/dev/null 2>&1 || true
   uci set fastc.main.mode='fastacl'
   uci set fastc.main.enabled='0'
   uci commit fastc
-  log "FastACL now owns traffic"
+  echo fastacl > /tmp/juliang-dataplane.owner
+  rm -f "$LOCK"
+  trap - EXIT INT TERM
+  log "FastACL now exclusively owns traffic"
 }
 
 status(){
-  mode="$(uci -q get fastc.main.mode 2>/dev/null || echo fastacl)"
-  echo "mode=$mode"
+  echo "mode=$(uci -q get fastc.main.mode 2>/dev/null || echo fastacl)"
+  echo "owner=$("$DP" owner 2>/dev/null || echo unknown)"
   echo "mihomo=$(pidof mihomo >/dev/null 2>&1 && echo 1 || echo 0)"
-  echo "listener=$(has_listener && echo 1 || echo 0)"
+  echo "listeners=$("$DP" listeners >/dev/null 2>&1 && echo 1 || echo 0)"
   echo "fastc_tproxy=$(nft list table inet fastc_tproxy >/dev/null 2>&1 && echo 1 || echo 0)"
   echo "fastc_killswitch=$(nft list table inet fastc_killswitch >/dev/null 2>&1 && echo 1 || echo 0)"
   echo "fastacl_tproxy=$(nft list table inet juliang_fastacl >/dev/null 2>&1 && echo 1 || echo 0)"
