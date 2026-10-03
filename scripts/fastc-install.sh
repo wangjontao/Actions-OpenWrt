@@ -16,8 +16,29 @@ fetch_one(){
   elif command -v wget >/dev/null 2>&1; then
     wget -O "$out" "$url"
   else
-    echo "[ERROR] curl/wget not found" >&2; exit 1
+    echo "[ERROR] curl/wget not found" >&2
+    exit 1
   fi
+}
+
+require_file(){
+  f="$1"; label="$2"
+  if [ ! -s "$f" ]; then
+    echo "[ERROR] validation failed: missing/empty $label ($f)" >&2
+    exit 1
+  fi
+  echo "[OK] validated file: $label"
+}
+
+require_grep(){
+  pat="$1"; f="$2"; label="$3"
+  if ! grep -q "$pat" "$f"; then
+    echo "[ERROR] validation failed: $label" >&2
+    echo "[ERROR] expected pattern: $pat" >&2
+    echo "[ERROR] file: $f" >&2
+    exit 1
+  fi
+  echo "[OK] validated content: $label"
 }
 
 find_core(){
@@ -30,7 +51,7 @@ find_core(){
 }
 
 echo "=================================================="
-echo " FastC 0.1.3-dev Installer"
+echo " FastC 0.1.3-dev Fix1 Installer"
 echo " A1-A20 assignment + mihomo manager + real delay test"
 echo " FastACL remains the traffic mode"
 echo "=================================================="
@@ -49,7 +70,9 @@ for p in \
   /usr/share/rpcd/acl.d/fastc.json
  do
   [ -f "$p" ] || continue
-  d="$BACKUP$(dirname "$p")"; mkdir -p "$d"; cp -af "$p" "$d/"
+  d="$BACKUP$(dirname "$p")"
+  mkdir -p "$d"
+  cp -af "$p" "$d/"
  done
 
 fetch_one "$BASE/etc/config/fastc" "$TMP/fastc.config"
@@ -61,15 +84,25 @@ fetch_one "$BASE/usr/libexec/fastc-import.lua" "$TMP/fastc-import.lua"
 fetch_one "$BASE/usr/libexec/fastc-generate.lua" "$TMP/fastc-generate.lua"
 fetch_one "$BASE/usr/share/rpcd/acl.d/fastc.json" "$TMP/fastc.json"
 
-test -s "$TMP/fastc.config"; test -s "$TMP/fastc-core"; test -s "$TMP/fastc.init"
-test -s "$TMP/fastc.lua"; test -s "$TMP/console.htm"; test -s "$TMP/fastc-import.lua"
-test -s "$TMP/fastc-generate.lua"; test -s "$TMP/fastc.json"
-grep -q "option version '0.1.3-dev'" "$TMP/fastc.config"
-grep -q 'MIHOMO_VERSION="1.19.32"' "$TMP/fastc-core"
-grep -q 'action == "assign"' "$TMP/fastc.lua"
-grep -q 'action == "test"' "$TMP/fastc.lua"
-grep -q 'FastC 0.1.3' "$TMP/console.htm"
-grep -q 'FASTC-A' "$TMP/fastc-generate.lua"
+echo "[INFO] Validating downloaded FastC 0.1.3 components..."
+require_file "$TMP/fastc.config" "FastC UCI config"
+require_file "$TMP/fastc-core" "mihomo Core Manager"
+require_file "$TMP/fastc.init" "FastC init service"
+require_file "$TMP/fastc.lua" "FastC LuCI controller"
+require_file "$TMP/console.htm" "FastC LuCI console"
+require_file "$TMP/fastc-import.lua" "node importer"
+require_file "$TMP/fastc-generate.lua" "mihomo config generator"
+require_file "$TMP/fastc.json" "rpcd ACL"
+
+require_grep "option version '0.1.3-dev'" "$TMP/fastc.config" "version 0.1.3-dev"
+require_grep 'MIHOMO_VERSION="1.19.32"' "$TMP/fastc-core" "mihomo v1.19.32 manager"
+require_grep 'action == "assign"' "$TMP/fastc.lua" "A1-A20 assignment API"
+require_grep 'action == "test"' "$TMP/fastc.lua" "per-node test API"
+require_grep 'FastC 0.1.3' "$TMP/console.htm" "0.1.3 UI"
+require_grep 'for i=1,20 do' "$TMP/fastc-generate.lua" "A1-A20 policy-group generator"
+require_grep 'FASTC-' "$TMP/fastc-generate.lua" "FastC policy-group naming"
+
+echo "[OK] All downloaded components validated"
 
 # Preserve node database and all imported nodes/assignments/test history.
 cp -af "$TMP/fastc.config" /etc/config/fastc
@@ -81,7 +114,8 @@ cp -af "$TMP/fastc-import.lua" /usr/libexec/fastc-import.lua
 cp -af "$TMP/fastc-generate.lua" /usr/libexec/fastc-generate.lua
 cp -af "$TMP/fastc.json" /usr/share/rpcd/acl.d/fastc.json
 chmod 0755 /usr/bin/fastc-core /etc/init.d/fastc /usr/libexec/fastc-import.lua /usr/libexec/fastc-generate.lua
-chmod 0644 /etc/config/fastc /usr/lib/lua/luci/controller/fastc.lua /usr/lib/lua/luci/view/fastc/console.htm /usr/share/rpcd/acl.d/fastc.json
+chmod 0644 /etc/config/fastc /usr/lib/lua/luci/controller/fastc.lua \
+  /usr/lib/lua/luci/view/fastc/console.htm /usr/share/rpcd/acl.d/fastc.json
 
 [ -f /etc/fastc/nodes.json ] || echo '[]' > /etc/fastc/nodes.json
 
@@ -91,9 +125,11 @@ if [ -z "$CORE" ]; then
   /usr/bin/fastc-core install || echo "[WARN] core install failed; retry later from FastC UI"
 fi
 
-# Generate the management/test config and start mihomo without TProxy takeover.
+# Generate management/test config and start mihomo without TProxy takeover.
 if lua /usr/libexec/fastc-generate.lua >/tmp/fastc-generate.json 2>/tmp/fastc-generate.log; then
+  echo "[OK] FastC mihomo test config generated"
   if /usr/bin/mihomo -t -d /etc/fastc -f /etc/fastc/config.yaml >/tmp/fastc-mihomo-check.log 2>&1; then
+    echo "[OK] mihomo config validation passed"
     /etc/init.d/fastc enable >/dev/null 2>&1 || true
     /etc/init.d/fastc restart >/tmp/fastc-start.log 2>&1 || true
     sleep 1
@@ -113,17 +149,24 @@ rm -rf /tmp/luci-modulecache /tmp/luci-templatecache 2>/dev/null || true
 
 echo
 find_core
-[ -n "$CORE" ] && { echo "[OK] mihomo core: $CORE"; "$CORE" -v 2>/dev/null | head -n1 || true; }
+[ -n "$CORE" ] && {
+  echo "[OK] mihomo core: $CORE"
+  "$CORE" -v 2>/dev/null | head -n1 || true
+}
+
 if /etc/init.d/fastc running >/dev/null 2>&1; then
   echo "[OK] FastC mihomo management/test core is running"
 else
-  echo "[WARN] FastC management core is not running; check /tmp/fastc-mihomo-check.log"
+  echo "[WARN] FastC management core is not running"
+  [ -s /tmp/fastc-start.log ] && { echo "[INFO] /tmp/fastc-start.log:"; cat /tmp/fastc-start.log; }
+  [ -s /tmp/fastc-mihomo-check.log ] && { echo "[INFO] /tmp/fastc-mihomo-check.log:"; cat /tmp/fastc-mihomo-check.log; }
 fi
-echo "[OK] FastC 0.1.3-dev UI installed"
+
+echo "[OK] FastC 0.1.3-dev Fix1 UI installed"
 echo "[OK] A1-A20 strategy assignment enabled"
 echo "[OK] Per-node real mihomo delay test enabled"
 echo "[OK] Detect-all enabled"
 echo "[OK] Node database preserved: /etc/fastc/nodes.json"
-echo "[INFO] Current traffic mode is still FastACL; FastC 0.1.3 only runs management/testing core."
+echo "[INFO] Current traffic mode is still FastACL; FastC only runs management/testing core."
 echo "[INFO] LuCI: Services -> FastC"
 echo "[INFO] Backup: $BACKUP"
