@@ -77,7 +77,18 @@ function handle()
         end)
         table.sort(nodes, function(a,b) return (a.remarks or "") < (b.remarks or "") end)
 
-        write_json({ ok=true, guardian=guardian_running(), aps=aps, nodes=nodes })
+        local runtime_mode = uci:get("juliang_fastacl", "main", "runtime_mode") or "fastacl"
+        local enabled = uci:get("juliang_fastacl", "main", "enabled") or "1"
+        if runtime_mode == "normal_proxy" or enabled ~= "1" then runtime_mode = "normal_proxy" else runtime_mode = "fastacl" end
+
+        write_json({ ok=true, guardian=guardian_running(), runtime_mode=runtime_mode, aps=aps, nodes=nodes })
+        return
+    end
+
+    if action == "set_runtime_mode" then
+        local mode = http.formvalue("mode") or ""
+        if mode ~= "fastacl" and mode ~= "normal_proxy" then write_json({ok=false,error="BAD_RUNTIME_MODE"}); return end
+        write_json(exec_json("/usr/bin/juliang-fastacl-runtime-mode " .. util.shellquote(mode)))
         return
     end
 
