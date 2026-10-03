@@ -3,7 +3,7 @@
 local jsonc = require "luci.jsonc"
 
 local input = arg[1] or "/tmp/fastc-import.links"
-local dbpath = "/etc/fastc/nodes.json"
+local dbpath = arg[2] or "/etc/fastc/nodes.json"
 
 local function readall(path)
   local f = io.open(path, "rb")
@@ -25,7 +25,6 @@ end
 
 local function pct_decode(s)
   s = tostring(s or "")
-  s = s:gsub("%+", " ")
   return (s:gsub("%%(%x%x)", function(h)
     return string.char(tonumber(h, 16))
   end))
@@ -56,22 +55,22 @@ local function classify(line)
   if not raw:find("://", 1, true) then
     local h, p, u, pw = raw:match("^([^:]+):(%d+):([^:]+):(.+)$")
     if h and p and u and pw then
-      raw = "socks5://" .. u .. ":" .. pw .. "@" .. h .. ":" .. p .. "#SK5-" .. h .. "-" .. p
+      local function enc(v) return (v:gsub("[^%w%-._~]",function(c) return string.format("%%%02X",c:byte()) end)) end
+      raw = "socks5://" .. enc(u) .. ":" .. enc(pw) .. "@" .. h .. ":" .. p .. "#SK5-" .. h .. "-" .. p
     else
       return nil, "UNSUPPORTED_FORMAT"
     end
   end
 
+  raw=raw:gsub("^sk5://","socks5://"):gsub("^socks://","socks5://")
   local scheme = (raw:match("^([%w+.-]+)://") or ""):lower()
-  local allowed = {
-    vless=true, vmess=true, trojan=true, ss=true,
-    socks5=true, socks5h=true, socks=true, http=true,
-    hysteria2=true, hy2=true, tuic=true
-  }
+  -- Accept only protocols the installed generator can run.
+  local allowed = {vless=true,trojan=true,socks5=true,socks5h=true,http=true,https=true}
   if not allowed[scheme] then return nil, "UNSUPPORTED_PROTOCOL:" .. scheme end
 
   local base, remark = split_fragment(raw)
   local host, port = authority_host_port(base)
+  if host=="" or port<1 or port>65535 then return nil,"BAD_ADDRESS_OR_PORT" end
   local display_type = scheme
   if scheme == "socks5h" then display_type = "socks5" end
   if scheme == "hy2" then display_type = "hysteria2" end
@@ -129,12 +128,12 @@ for line in raw:gmatch("[^\r\n]+") do
       added = added + 1
     end
   elseif err then
-    rejected[#rejected + 1] = { line = trim(line), error = err }
+    rejected[#rejected + 1] = { line_number = added + duplicate + #rejected + 1, error = err }
   end
 end
 
 os.execute("mkdir -p /etc/fastc")
-writeall(dbpath, jsonc.stringify(nodes, true))
+writeall(dbpath..".tmp", jsonc.stringify(nodes, true)); assert(os.rename(dbpath..".tmp",dbpath))
 
 io.write(jsonc.stringify({
   ok = true,
