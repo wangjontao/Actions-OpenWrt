@@ -1,9 +1,9 @@
 #!/usr/bin/lua
 
 local jsonc=require "luci.jsonc"
-local DB="/etc/fastc/nodes.json"
-local GROUP_DB="/etc/fastc/groups.json"
-local TOPO="/etc/fastc/topology.json"
+local BIND_DB="/etc/fastc/bindings.json"
+local CHAIN_DB="/etc/fastc/chains.json"
+local TOPO_DB="/etc/fastc/topology.json"
 local API="http://127.0.0.1:9097"
 
 local function read_json(path,fallback)
@@ -14,9 +14,10 @@ local function read_json(path,fallback)
   return fallback
 end
 local function shq(s) return "'"..tostring(s or ""):gsub("'","'\\''").."'" end
-local function put_select(group,node)
+local function trim(s) return (tostring(s or ""):gsub("^%s+",""):gsub("%s+$","")) end
+local function put_select(name,node)
   local payload=jsonc.stringify({name=node})
-  local cmd="curl -fsS --connect-timeout 1 --max-time 2 -o /dev/null -X PUT -H 'Content-Type: application/json' --data "..shq(payload).." "..shq(API.."/proxies/FASTC-"..group)
+  local cmd="curl -fsS --connect-timeout 1 --max-time 2 -o /dev/null -X PUT -H 'Content-Type: application/json' --data "..shq(payload).." "..shq(API.."/proxies/"..name).." 2>/dev/null"
   return os.execute(cmd)==0
 end
 local function snapshot()
@@ -28,75 +29,71 @@ local function snapshot()
   return obj.proxies
 end
 local function wait_snapshot()
-  for _=1,12 do
-    local p=snapshot()
-    if p then return p end
+  for _=1,8 do
+    local p=snapshot(); if p then return p end
     os.execute("sleep 0.2")
   end
   return nil
 end
+local function binding_node(bindings,g)
+  local b=bindings[g]
+  if type(b)=="table" then return tostring(b.node or "") end
+  return tostring(b or "")
+end
+local function chain_via(chains,id)
+  local c=chains[id]
+  if type(c)=="table" then return tostring(c.via or "") end
+  return tostring(c or "")
+end
 
-local nodes=read_json(DB,{})
-local groups=read_json(GROUP_DB,{})
-local topo=read_json(TOPO,{aps={}})
+local bindings=read_json(BIND_DB,{})
+local chains=read_json(CHAIN_DB,{})
+local topo=read_json(TOPO_DB,{aps={}})
 local aps=type(topo.aps)=="table" and topo.aps or {}
-local members={}
-for _,ap in ipairs(aps) do
-  local g=tostring(ap.group or ("A"..tostring(ap.slot or "")))
-  if g~="" then members[g]={} end
-end
-for _,n in ipairs(nodes) do
-  local g=tostring(n.group or "")
-  local id=tostring(n.id or "")
-  if members[g] and id:match("^n%d+$") then members[g][#members[g]+1]=id end
-end
-
 if #aps==0 then
   io.write(jsonc.stringify({ok=false,error="TOPOLOGY_EMPTY"},true),"\n")
   os.exit(1)
 end
-
 local proxies=wait_snapshot()
 if not proxies then
   io.write(jsonc.stringify({ok=false,error="MIHOMO_API_NOT_READY"},true),"\n")
   os.exit(1)
 end
 
-local wanted_map={}
-local changed_groups={}
+local wanted={}
 for _,ap in ipairs(aps) do
   local g=tostring(ap.group or ("A"..tostring(ap.slot or "")))
-  local wanted=tostring(groups[g] or "")
-  local exists=false
-  for _,id in ipairs(members[g] or {}) do if id==wanted then exists=true break end end
-  if not exists then wanted=((members[g] or {})[1] or "REJECT") end
-  wanted_map[g]=wanted
-  local obj=proxies["FASTC-"..g]
-  local now=(type(obj)=="table" and tostring(obj.now or "")) or ""
-  if now~=wanted then changed_groups[#changed_groups+1]=g end
+  local id=binding_node(bindings,g)
+  if id=="" then id="REJECT" end
+  wanted["FASTC-"..g]={kind="group",key=g,target=id,ssid=ap.ssid or g,subnet=ap.subnet or ""}
+end
+for id,_ in pairs(chains) do
+  local name="FASTC-CHAIN-"..tostring(id)
+  if proxies[name] then
+    local via=chain_via(chains,id); if via=="" then via="DIRECT" end
+    wanted[name]={kind="chain",key=id,target=via}
+  end
 end
 
+local changed={}
+for name,w in pairs(wanted) do
+  local obj=proxies[name]
+  local now=(type(obj)=="table" and tostring(obj.now or "")) or ""
+  if now~=w.target then changed[#changed+1]={name=name,target=w.target} end
+end
 local put_ok={}
-for _,g in ipairs(changed_groups) do
-  put_ok[g]=put_select(g,wanted_map[g])
-end
+for _,x in ipairs(changed) do put_ok[x.name]=put_select(x.name,x.target) end
+if #changed>0 then local p=snapshot(); if p then proxies=p end end
 
--- Only fetch a second snapshot when something actually changed.
-if #changed_groups>0 then
-  local verify=snapshot()
-  if verify then proxies=verify end
-end
-
-local out={ok=true,changed=#changed_groups,groups={}}
-for _,ap in ipairs(aps) do
-  local g=tostring(ap.group or ("A"..tostring(ap.slot or "")))
-  local wanted=wanted_map[g] or "REJECT"
-  local obj=proxies["FASTC-"..g]
+local out={ok=true,changed=#changed,synced=true,groups={},chains={}}
+for name,w in pairs(wanted) do
+  local obj=proxies[name]
   local now=(type(obj)=="table" and tostring(obj.now or "")) or ""
-  local was_changed=false
-  for _,cg in ipairs(changed_groups) do if cg==g then was_changed=true break end end
-  local ok=(not was_changed) or (put_ok[g]==true)
-  out.groups[g]={wanted=wanted,now=now,synced=(ok and now==wanted) and true or false,changed=was_changed,ssid=ap.ssid or g,subnet=ap.subnet or ""}
+  local synced=(now==w.target)
+  if not synced then out.synced=false end
+  if w.kind=="group" then out.groups[w.key]={wanted=w.target,now=now,synced=synced,ssid=w.ssid,subnet=w.subnet}
+  else out.chains[w.key]={wanted=w.target,now=now,synced=synced} end
 end
-
 io.write(jsonc.stringify(out,true),"\n")
+if out.synced then os.exit(0) end
+os.exit(1)
