@@ -4,154 +4,28 @@ set -u
 LOG="/tmp/juliang-fastacl/guard.log"
 mkdir -p /tmp/juliang-fastacl
 
-log(){
-  echo "$(date '+%Y-%m-%d %H:%M:%S') [GUARD] $*" >> "$LOG"
-}
+log(){ echo "$(date '+%Y-%m-%d %H:%M:%S') [GUARD] $*" >> "$LOG"; }
 
 disable_passwall2_runtime(){
-  local changed=0
+  changed=0
   [ "$(uci -q get passwall2.@global[0].enabled 2>/dev/null || echo 0)" = "0" ] || { uci -q set passwall2.@global[0].enabled=0; changed=1; }
   [ "$(uci -q get passwall2.@global[0].acl_enable 2>/dev/null || echo 0)" = "0" ] || { uci -q set passwall2.@global[0].acl_enable=0; changed=1; }
   [ "$(uci -q get passwall2.@global[0].socks_enabled 2>/dev/null || echo 0)" = "0" ] || { uci -q set passwall2.@global[0].socks_enabled=0; changed=1; }
   [ "$changed" -eq 0 ] || uci commit passwall2
+  /etc/init.d/passwall2 stop >/dev/null 2>&1 || true
 }
 
-is_fastacl_network(){
-  local net="$1" apsec n
-  for apsec in $(uci -q show juliang_fastacl | sed -n "s/^juliang_fastacl\.\([^.=]*\)=ap$/\1/p"); do
-    n="$(uci -q get juliang_fastacl.$apsec.network 2>/dev/null || true)"
-    [ -n "$n" ] && [ "$n" = "$net" ] && return 0
-  done
-  return 1
-}
-
-find_zone_section_for_network(){
-  local net="$1" z name nets x
-  for z in $(uci -q show firewall | sed -n "s/^firewall\.\([^.=]*\)=zone$/\1/p"); do
-    name="$(uci -q get firewall.$z.name 2>/dev/null || true)"
-    [ "$name" = "$net" ] && { echo "$z"; return 0; }
-    nets="$(uci -q get firewall.$z.network 2>/dev/null || true)"
-    for x in $nets; do
-      [ "$x" = "$net" ] && { echo "$z"; return 0; }
-    done
-  done
-  return 1
-}
-
-find_zone_name_for_network(){
-  local net="$1" z
-  z="$(find_zone_section_for_network "$net" 2>/dev/null || true)"
-  [ -n "$z" ] || return 1
-  uci -q get firewall.$z.name 2>/dev/null || true
-}
-
-is_fastacl_zone(){
-  local zone="$1" apsec net zname
-  for apsec in $(uci -q show juliang_fastacl | sed -n "s/^juliang_fastacl\.\([^.=]*\)=ap$/\1/p"); do
-    net="$(uci -q get juliang_fastacl.$apsec.network 2>/dev/null || true)"
-    [ -n "$net" ] || continue
-    zname="$(find_zone_name_for_network "$net" 2>/dev/null || true)"
-    [ -n "$zname" ] && [ "$zname" = "$zone" ] && return 0
-  done
-  return 1
-}
-
-enforce_mainlan_ipv6_privacy(){
-  local apsec net has_lan changed zone
-  has_lan=0
-  changed=0
-
-  for apsec in $(uci -q show juliang_fastacl | sed -n "s/^juliang_fastacl\.\([^.=]*\)=ap$/\1/p"); do
-    net="$(uci -q get juliang_fastacl.$apsec.network 2>/dev/null || true)"
-    [ "$net" = "lan" ] && { has_lan=1; break; }
-  done
-  [ "$has_lan" -eq 1 ] || return 0
-
-  # FastACL currently proxies IPv4. Disable LAN IPv6 advertisement so clients
-  # cannot bypass the IPv4 TProxy/DNS path. This also fixes apps/videos that
-  # prefer a half-working IPv6 path while normal IPv4 web pages still load.
-  [ "$(uci -q get dhcp.lan.ra 2>/dev/null || true)" = "disabled" ] || { uci set dhcp.lan.ra='disabled'; changed=1; }
-  [ "$(uci -q get dhcp.lan.dhcpv6 2>/dev/null || true)" = "disabled" ] || { uci set dhcp.lan.dhcpv6='disabled'; changed=1; }
-  [ "$(uci -q get dhcp.lan.ndp 2>/dev/null || true)" = "disabled" ] || { uci set dhcp.lan.ndp='disabled'; changed=1; }
-  [ "$(uci -q get network.lan.ip6assign 2>/dev/null || true)" = "0" ] || { uci set network.lan.ip6assign='0'; changed=1; }
-
-  zone="$(find_zone_name_for_network lan 2>/dev/null || true)"
-  if [ -n "$zone" ]; then
-    [ "$(uci -q get firewall.jfa_mainlan_ipv6_dns 2>/dev/null || true)" = "rule" ] || {
-      uci -q delete firewall.jfa_mainlan_ipv6_dns >/dev/null 2>&1 || true
-      uci set firewall.jfa_mainlan_ipv6_dns='rule'
-      changed=1
-    }
-    [ "$(uci -q get firewall.jfa_mainlan_ipv6_dns.name 2>/dev/null || true)" = "FastACL block main LAN IPv6 DNS" ] || { uci set firewall.jfa_mainlan_ipv6_dns.name='FastACL block main LAN IPv6 DNS'; changed=1; }
-    [ "$(uci -q get firewall.jfa_mainlan_ipv6_dns.src 2>/dev/null || true)" = "$zone" ] || { uci set firewall.jfa_mainlan_ipv6_dns.src="$zone"; changed=1; }
-    [ "$(uci -q get firewall.jfa_mainlan_ipv6_dns.family 2>/dev/null || true)" = "ipv6" ] || { uci set firewall.jfa_mainlan_ipv6_dns.family='ipv6'; changed=1; }
-    uci set firewall.jfa_mainlan_ipv6_dns.proto='tcp udp'
-    uci set firewall.jfa_mainlan_ipv6_dns.dest_port='53'
-    uci set firewall.jfa_mainlan_ipv6_dns.target='REJECT'
-  fi
-
-  if [ "$changed" -ne 0 ]; then
-    uci commit dhcp
-    uci commit network
-    uci commit firewall
-    /etc/init.d/odhcpd restart >/dev/null 2>&1 || true
-    /etc/init.d/firewall restart >/dev/null 2>&1 || true
-    log "main LAN IPv6 RA/DHCPv6/NDP disabled and IPv6 DNS input blocked"
-  fi
-}
-
-enforce_failclosed_firewall(){
-  local sec src dest changed apsec net z
-  changed=0
-
-  # Remove direct ->WAN forwarding for every network currently managed by
-  # FastACL, including the optional main LAN.
-  for sec in $(uci -q show firewall | sed -n "s/^firewall\.\([^.=]*\)=forwarding$/\1/p"); do
-    src="$(uci -q get firewall.$sec.src 2>/dev/null || true)"
-    dest="$(uci -q get firewall.$sec.dest 2>/dev/null || true)"
-    [ "$dest" = "wan" ] || continue
-    if is_fastacl_zone "$src"; then
-      uci -q delete firewall.$sec
-      changed=1
-    fi
-  done
-
-  # Keep every FastACL-managed zone fail-closed. Proxied IPv4 is diverted by
-  # TProxy before forward; anything else (including IPv6) must not escape.
-  for apsec in $(uci -q show juliang_fastacl | sed -n "s/^juliang_fastacl\.\([^.=]*\)=ap$/\1/p"); do
-    net="$(uci -q get juliang_fastacl.$apsec.network 2>/dev/null || true)"
-    [ -n "$net" ] || continue
-    z="$(find_zone_section_for_network "$net" 2>/dev/null || true)"
-    [ -n "$z" ] || continue
-    if [ "$(uci -q get firewall.$z.forward 2>/dev/null || true)" != "REJECT" ]; then
-      uci set firewall.$z.forward='REJECT'
-      changed=1
-    fi
-  done
-
-  if [ "$changed" -ne 0 ]; then
-    uci commit firewall
-    /etc/init.d/firewall restart >/dev/null 2>&1 || true
-    log "removed unsafe FastACL -> WAN forwarding / restored REJECT zones"
-  fi
-}
-
-# Wait for network/wireless services. Persistent UCI bindings are kept intact
-# while we wait; discovery itself is transactional and cannot erase them.
-sleep 12
+sleep 3
+log "Guardian started (2.4.2 mode-aware)"
 
 while true; do
   if [ "$(uci -q get juliang_fastacl.main.enabled 2>/dev/null || echo 0)" != "1" ]; then
-    sleep 30
+    sleep 20
     continue
   fi
 
   disable_passwall2_runtime
-  enforce_mainlan_ipv6_privacy
-  enforce_failclosed_firewall
 
-  # If persistent topology is unexpectedly missing, first attempt
-  # discovery. If boot services are not ready yet, restore last-good state.
   count="$(uci -q get juliang_fastacl.main.ap_count 2>/dev/null || echo 0)"
   case "$count" in ''|*[!0-9]*) count=0 ;; esac
   if [ "$count" -eq 0 ]; then
@@ -161,7 +35,7 @@ while true; do
       log "persistent config restored from last-good snapshot"
     else
       log "wireless not ready and no last-good snapshot; retrying"
-      sleep 15
+      sleep 10
       continue
     fi
   fi
@@ -175,9 +49,15 @@ while true; do
     fi
   fi
 
-  if ! /usr/bin/juliang-fastacl heal >/tmp/juliang-fastacl/guard-heal.log 2>&1; then
-    log "one or more AP relays were missing; heal attempted"
+  if [ -x /usr/bin/juliang-fastacl-mode ]; then
+    if ! /usr/bin/juliang-fastacl-mode apply >/tmp/juliang-fastacl/guard-mode.log 2>&1; then
+      log "mode-aware firewall/source sync failed"
+    fi
   fi
 
-  sleep 20
+  if ! /usr/bin/juliang-fastacl heal >/tmp/juliang-fastacl/guard-heal.log 2>&1; then
+    log "one or more assigned AP relays were missing; heal attempted"
+  fi
+
+  sleep 15
 done
