@@ -3,6 +3,7 @@
 local jsonc=require "luci.jsonc"
 local DB="/etc/fastc/nodes.json"
 local GROUP_DB="/etc/fastc/groups.json"
+local TOPO="/etc/fastc/topology.json"
 local API="http://127.0.0.1:9097"
 
 local function read_json(path,fallback)
@@ -12,7 +13,6 @@ local function read_json(path,fallback)
   if ok and type(obj)=="table" then return obj end
   return fallback
 end
-local function trim(s) return (tostring(s or ""):gsub("^%s+",""):gsub("%s+$","")) end
 local function shq(s) return "'"..tostring(s or ""):gsub("'","'\\''").."'" end
 local function api_ready()
   return os.execute("curl -fsS --max-time 1 "..shq(API.."/version").." >/dev/null 2>&1")==0
@@ -37,30 +37,39 @@ end
 
 local nodes=read_json(DB,{})
 local groups=read_json(GROUP_DB,{})
+local topo=read_json(TOPO,{aps={}})
+local aps=type(topo.aps)=="table" and topo.aps or {}
 local members={}
-for i=1,20 do members["A"..i]={} end
+for _,ap in ipairs(aps) do
+  local g=tostring(ap.group or ("A"..tostring(ap.slot or "")))
+  if g~="" then members[g]={} end
+end
 for _,n in ipairs(nodes) do
   local g=tostring(n.group or "")
   local id=tostring(n.id or "")
   if members[g] and id:match("^n%d+$") then members[g][#members[g]+1]=id end
 end
 
+if #aps==0 then
+  io.write(jsonc.stringify({ok=false,error="TOPOLOGY_EMPTY"},true),"\n")
+  os.exit(1)
+end
 if not wait_api() then
   io.write(jsonc.stringify({ok=false,error="MIHOMO_API_NOT_READY"},true),"\n")
   os.exit(1)
 end
 
 local out={ok=true,groups={}}
-for i=1,20 do
-  local g="A"..i
+for _,ap in ipairs(aps) do
+  local g=tostring(ap.group or ("A"..tostring(ap.slot or "")))
   local wanted=tostring(groups[g] or "")
   local exists=false
-  for _,id in ipairs(members[g]) do if id==wanted then exists=true break end end
-  if not exists then wanted=(members[g][1] or "REJECT") end
+  for _,id in ipairs(members[g] or {}) do if id==wanted then exists=true break end end
+  if not exists then wanted=((members[g] or {})[1] or "REJECT") end
   local ok=put_select(g,wanted)
   os.execute("sleep 0.03")
   local now=get_now(g) or ""
-  out.groups[g]={wanted=wanted,now=now,synced=(ok and now==wanted) and true or false}
+  out.groups[g]={wanted=wanted,now=now,synced=(ok and now==wanted) and true or false,ssid=ap.ssid or g,subnet=ap.subnet or ""}
 end
 
 io.write(jsonc.stringify(out,true),"\n")
