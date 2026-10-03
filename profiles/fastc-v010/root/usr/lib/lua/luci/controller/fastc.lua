@@ -55,10 +55,15 @@ local function core_info()
     if path == "" and fs.access("/usr/bin/clash_meta", "x") then path = "/usr/bin/clash_meta" end
 
     local running = sys.call("pidof mihomo clash clash_meta >/dev/null 2>&1 || pgrep -f '/etc/openclash/core/clash_meta' >/dev/null 2>&1") == 0
+    local version = ""
+    if path ~= "" then
+        version = trim(sys.exec(shell_quote(path) .. " -v 2>/dev/null | head -n1") or "")
+    end
     return {
         present = path ~= "",
         path = path,
-        running = running
+        running = running,
+        version = version
     }
 end
 
@@ -76,10 +81,12 @@ end
 
 local function fastc_config(uci)
     return {
-        version = uci:get("fastc", "main", "version") or "0.1.1-dev",
+        version = uci:get("fastc", "main", "version") or "0.1.2-dev",
         enabled = uci:get("fastc", "main", "enabled") == "1",
         mode = uci:get("fastc", "main", "mode") or "fastacl",
         core = uci:get("fastc", "main", "core") or "mihomo",
+        core_path = uci:get("fastc", "main", "core_path") or "/usr/bin/mihomo",
+        core_version = uci:get("fastc", "main", "core_version") or "",
         controller = uci:get("fastc", "main", "controller") or "127.0.0.1:9097",
         tproxy_port = tonumber(uci:get("fastc", "main", "tproxy_port") or "7895") or 7895,
         dns_port = tonumber(uci:get("fastc", "main", "dns_port") or "1053") or 1053
@@ -90,6 +97,7 @@ function handle()
     local http = require "luci.http"
     local sys = require "luci.sys"
     local jsonc = require "luci.jsonc"
+    local fs = require "nixio.fs"
     local uci = require("uci").cursor()
     local action = http.formvalue("action") or "status"
 
@@ -102,9 +110,32 @@ function handle()
             core_present = core.present,
             core_path = core.path,
             core_running = core.running,
+            core_version = core.version,
             fastacl = fastacl_info(uci),
             nodes = nodes,
             node_count = #nodes
+        })
+        return
+    end
+
+    if action == "install_core" then
+        if not fs.access("/usr/bin/fastc-core", "x") then
+            write_json({ok=false,error="CORE_MANAGER_MISSING"})
+            return
+        end
+        local raw = sys.exec("/usr/bin/fastc-core install 2>&1") or ""
+        local core = core_info()
+        if not core.present then
+            write_json({ok=false,error="CORE_INSTALL_FAILED",detail=raw})
+            return
+        end
+        write_json({
+            ok = true,
+            core_present = core.present,
+            core_path = core.path,
+            core_running = core.running,
+            core_version = core.version,
+            detail = raw
         })
         return
     end
