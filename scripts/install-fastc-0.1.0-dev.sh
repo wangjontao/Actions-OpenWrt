@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-BRANCH="FastC开发版"
-ARCHIVE="https://codeload.github.com/wangjontao/Actions-OpenWrt/tar.gz/refs/heads/$BRANCH"
+PIN="0dc54891eb78d2b9bc8835453fa718939394aa76"
+ARCHIVE="https://codeload.github.com/wangjontao/Actions-OpenWrt/tar.gz/$PIN"
 TMP="/tmp/fastc010-$$"
 TGZ="$TMP/fastc.tar.gz"
 
