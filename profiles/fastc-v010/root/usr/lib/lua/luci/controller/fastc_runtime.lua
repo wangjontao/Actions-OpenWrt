@@ -53,12 +53,19 @@ local function api_select(name,node)
     local payload=jsonc.stringify({name=node})
     return sys.call("curl -fsS --connect-timeout 1 --max-time 2 -o /dev/null -X PUT -H 'Content-Type: application/json' --data "..shq(payload).." "..shq("http://127.0.0.1:9097/proxies/"..name).." >/dev/null 2>&1")==0
 end
+
+-- Read all selector state with ONE local API request. 0.1.7/early 0.1.8
+-- queried FASTC-A1, A2, A3... separately and created needless curl churn.
 local function selector_map()
+    local all=api_json("/proxies") or {}
+    local p=type(all.proxies)=="table" and all.proxies or {}
     local out={}
     for _,ap in ipairs((topology().aps or {})) do
         local g=tostring(ap.group or ("A"..tostring(ap.slot or "")))
-        local o=api_json("/proxies/FASTC-"..g)
-        if type(o)=="table" then out[g]={now=o.now or "",alive=o.alive,ssid=ap.ssid or g,subnet=ap.subnet or ""} end
+        local o=p["FASTC-"..g]
+        if type(o)=="table" then
+            out[g]={now=o.now or "",alive=o.alive,ssid=ap.ssid or g,subnet=ap.subnet or ""}
+        end
     end
     return out
 end
@@ -96,39 +103,29 @@ local function valid_ip(ip)
     a,b,c,d=tonumber(a),tonumber(b),tonumber(c),tonumber(d)
     return a and b and c and d and a<=255 and b<=255 and c<=255 and d<=255
 end
-local function quick_ip(port,tag)
+
+-- Single-connection probe: one HTTP request through the selected SOCKS path
+-- returns both the real exit IP and time_starttransfer. This replaces the old
+-- parallel mihomo /delay + separate IP request which doubled chain handshakes.
+local function one_probe(port,tag)
     local sys=require "luci.sys"
     local proxy="127.0.0.1:"..tostring(port)
-    local log="/tmp/fastc-ip-"..tostring(tag or "probe")..".log"
+    local safe=tostring(tag or "probe"):gsub("[^%w%-_]","")
+    local log="/tmp/fastc-probe-"..safe..".log"
+    local urls={"http://api.ipify.org","http://ifconfig.me/ip"}
     sys.call(": > "..log)
-    local urls={"http://api.ipify.org","https://icanhazip.com"}
     for _,url in ipairs(urls) do
-        local cmd="curl -4 -fsS --http1.1 --connect-timeout 2 --max-time 4 --socks5-hostname "..proxy.." "..shq(url).." 2>>"..log
-        local ip=trim(sys.exec(cmd) or "")
-        if valid_ip(ip) then return ip,url end
+        local cmd="curl -4 -fsS --http1.1 --connect-timeout 1 --max-time 3 --socks5-hostname "..proxy.." -w '\\n%{time_starttransfer}' "..shq(url).." 2>>"..log
+        local raw=sys.exec(cmd) or ""
+        local body,sec=raw:match("^(.-)\n([%d%.]+)%s*$")
+        local ip=trim(body or "")
+        local t=tonumber(sec or "")
+        if valid_ip(ip) and t then
+            local ms=math.floor(t*1000+0.5)
+            return ms,ip,url,""
+        end
     end
-    return "",nil
-end
-local function quick_node_probe(id,port)
-    local sys=require "luci.sys"; local jsonc=require "luci.jsonc"
-    local safe=tostring(id):gsub("[^%w%-_]","")
-    local dfile="/tmp/fastc-delay-"..safe..".json"
-    local ifile="/tmp/fastc-ip-"..safe..".txt"
-    local elog="/tmp/fastc-probe-"..safe..".log"
-    local durl="http://127.0.0.1:9097/proxies/"..id.."/delay?url=https%3A%2F%2Fwww.gstatic.com%2Fgenerate_204&timeout=3500&expected=204"
-    local cmd="rm -f "..dfile.." "..ifile.." "..elog.."; "..
-      "(curl -sS --connect-timeout 1 --max-time 5 "..shq(durl).." >"..dfile.." 2>>"..elog..") & p1=$!; "..
-      "(curl -4 -fsS --http1.1 --connect-timeout 2 --max-time 4 --socks5-hostname 127.0.0.1:"..tostring(port).." http://api.ipify.org >"..ifile.." 2>>"..elog..") & p2=$!; "..
-      "wait $p1 >/dev/null 2>&1 || true; wait $p2 >/dev/null 2>&1 || true"
-    sys.call(cmd)
-    local draw=trim(sys.exec("cat "..dfile.." 2>/dev/null") or "")
-    local iout=trim(sys.exec("cat "..ifile.." 2>/dev/null") or "")
-    local ok,obj=pcall(jsonc.parse,draw)
-    local delay=ok and type(obj)=="table" and tonumber(obj.delay or "") or nil
-    local ip=valid_ip(iout) and iout or ""
-    if ip=="" then ip=select(1,quick_ip(port,safe)) end
-    local detail=trim(sys.exec("cat "..elog.." 2>/dev/null") or "")
-    return delay,ip,detail
+    return nil,"",nil,trim(sys.exec("cat "..log.." 2>/dev/null") or "")
 end
 
 function handle()
@@ -161,12 +158,12 @@ function handle()
         if not listener(port) then write_json({ok=false,error="NODE_PROBE_LISTENER_MISSING",detail="shared probe port "..tostring(port).." is not listening"}); return end
         if not api_select("FASTC-NODE-PROBE",id) then write_json({ok=false,error="NODE_PROBE_SELECT_FAILED",detail="cannot select "..id.." in FASTC-NODE-PROBE"}); return end
 
-        local delay,ip,detail=quick_node_probe(id,port)
+        local delay,ip,source,detail=one_probe(port,id)
         n.last_check=os.time(); n.last_delay=delay; n.last_ip=(ip~="" and ip or nil)
         n.last_ok=(delay and delay>0 and ip~="") and true or false
-        if n.last_ok then n.last_error=nil else n.last_error=detail~="" and detail or "delay/ip probe failed" end
+        if n.last_ok then n.last_error=nil else n.last_error=detail~="" and detail or "single connection IP probe failed" end
         write_json_file("/etc/fastc/nodes.json",nodes)
-        if n.last_ok then write_json({ok=true,id=id,delay=delay,ip=ip}); return end
+        if n.last_ok then write_json({ok=true,id=id,delay=delay,ip=ip,ip_source=source,probe_mode="single_connection"}); return end
         write_json({ok=false,error="NODE_PROBE_FAILED",id=id,delay=delay,ip=ip,detail=n.last_error}); return
     end
 
@@ -177,17 +174,22 @@ function handle()
         local idx=tonumber(ap.slot or group:match("^A(%d+)$") or "")
         if not idx then write_json({ok=false,error="BAD_GROUP_SLOT"}); return end
         if not ensure_core() then write_json({ok=false,error="MIHOMO_NOT_RUNNING"}); return end
-        local sync_ok,sync_detail=sync_selectors()
-        if not sync_ok then write_json({ok=false,error="SELECTOR_SYNC_FAILED",detail=sync_detail}); return end
-        local one=api_json("/proxies/FASTC-"..group) or {}
-        local now=tostring(one.now or "")
+
+        local selectors=selector_map()
+        local now=(selectors[group] and selectors[group].now) or ""
+        if now=="" then
+            local sync_ok,sync_detail=sync_selectors()
+            if not sync_ok then write_json({ok=false,error="SELECTOR_SYNC_FAILED",detail=sync_detail}); return end
+            selectors=selector_map(); now=(selectors[group] and selectors[group].now) or ""
+        end
         if now=="" or now=="REJECT" then write_json({ok=false,error="GROUP_REJECTED",selected=now,detail="mihomo selector FASTC-"..group.." currently has no usable node"}); return end
+
         local base=tonumber(uci:get("fastc","main","probe_port_base") or "18100") or 18100
         local port=base+idx
         if not listener(port) then write_json({ok=false,error="GROUP_PROBE_LISTENER_MISSING",selected=now,detail="probe port "..tostring(port).." is not listening"}); return end
-        local ip,ip_source=quick_ip(port,"group-"..group)
-        if ip=="" then write_json({ok=false,error="GROUP_EXIT_PROBE_FAILED",group=group,selected=now,detail=trim(sys.exec("cat /tmp/fastc-ip-group-"..group..".log 2>/dev/null") or "")}); return end
-        write_json({ok=true,group=group,ssid=ap.ssid or group,subnet=ap.subnet or "",selected=now,ip=ip,ip_source=ip_source}); return
+        local delay,ip,source,detail=one_probe(port,"group-"..group)
+        if ip=="" then write_json({ok=false,error="GROUP_EXIT_PROBE_FAILED",group=group,selected=now,detail=detail}); return end
+        write_json({ok=true,group=group,ssid=ap.ssid or group,subnet=ap.subnet or "",selected=now,ip=ip,delay=delay,ip_source=source,probe_mode="single_connection"}); return
     end
 
     write_json({ok=false,error="BAD_ACTION"})
