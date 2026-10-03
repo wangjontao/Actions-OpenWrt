@@ -49,15 +49,6 @@ local function authority_host_port(base)
   return host or "", tonumber(port or "") or 0
 end
 
-local function next_id(nodes)
-  local maxn = 0
-  for _, n in ipairs(nodes) do
-    local x = tonumber(tostring(n.id or ""):match("^n(%d+)$"))
-    if x and x > maxn then maxn = x end
-  end
-  return string.format("n%04d", maxn + 1)
-end
-
 local function classify(line)
   local raw = trim(line)
   if raw == "" or raw:sub(1,1) == "#" then return nil end
@@ -104,8 +95,17 @@ do
 end
 
 local seen = {}
+local next_num = 1
 for _, n in ipairs(nodes) do
   if n.raw then seen[n.raw] = true end
+  local x = tonumber(tostring(n.id or ""):match("^n(%d+)$"))
+  if x and x >= next_num then next_num = x + 1 end
+end
+
+local function alloc_id()
+  local id = string.format("n%04d", next_num)
+  next_num = next_num + 1
+  return id
 end
 
 local raw = assert(readall(input), "cannot read import file: " .. input)
@@ -117,7 +117,7 @@ for line in raw:gmatch("[^\r\n]+") do
     if seen[item.raw] then
       duplicate = duplicate + 1
     else
-      item.id = next_id(nodes)
+      item.id = alloc_id()
       if not item.name or item.name == "" then
         local suffix = item.address ~= "" and item.address or item.id
         item.name = string.upper(item.type) .. "-" .. suffix
