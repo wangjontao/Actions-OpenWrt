@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-PIN="2049b19f87b7832d1d40edd7798001024ae91bc2"
+PIN="d363df5237f6237df551d709f1a2b4bc9ac986ac"
 ARCHIVE="https://codeload.github.com/wangjontao/Actions-OpenWrt/tar.gz/$PIN"
 TMP="/tmp/jfa239-full-$$"
 TGZ="/tmp/jfa239-full-$$.tar.gz"
@@ -83,6 +83,17 @@ sh -n /etc/uci-defaults/97-juliang-operator-mode
 sh /etc/uci-defaults/94-juliang-fastacl-v9
 sh /etc/uci-defaults/97-juliang-operator-mode
 
+PW2_FIX="$(find "$TMP" -type f -path '*/scripts/repair-passwall2-sk5-http-import.sh' | head -n1)"
+if [ -s /usr/share/passwall2/subscribe.lua ]; then
+  if [ -s "$PW2_FIX" ]; then
+    echo "[INFO] Enabling PassWall2 SK5/HTTP one-click import support..."
+    sh "$PW2_FIX"
+  else
+    echo "[ERROR] PassWall2 SK5/HTTP repair script missing from installer archive" >&2
+    exit 1
+  fi
+fi
+
 rm -f /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null || true
 rm -rf /tmp/luci-modulecache /tmp/luci-templatecache 2>/dev/null || true
 /etc/init.d/rpcd restart >/dev/null 2>&1 || true
@@ -128,6 +139,9 @@ fi
 echo
 echo "[OK] JuLiang FastACL 2.3.9 Stable installed"
 echo "[OK] Operator UI installed and enabled"
+if [ -s /usr/share/passwall2/subscribe.lua ]; then
+  echo "[OK] PassWall2 SK5/HTTP link import enabled"
+fi
 echo "[OK] SSH port: 20022"
 echo "[OK] Operator username: admin"
 echo "[OK] Backup: $BACKUP"
