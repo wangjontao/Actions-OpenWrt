@@ -118,12 +118,8 @@ nft list table inet juliang_killswitch >/dev/null 2>&1 || {
   echo "[ERROR] juliang_killswitch was not created" >&2
   exit 1
 }
-if ! /usr/bin/juliang-fastacl status | grep -q '^router: runningecho "[OK] Operator UI installed and enabled"
-echo "[OK] SSH port: 20022"
-echo "[OK] Operator username: admin"
-echo "[OK] Backup: $BACKUP"
-echo "[INFO] Root SSH example: ssh -p 20022 root@<router-ip>"
-; then
+
+if ! /usr/bin/juliang-fastacl status | grep -q '^router: running'; then
   echo "[ERROR] FastACL router is not running" >&2
   /usr/bin/juliang-fastacl status || true
   exit 1
