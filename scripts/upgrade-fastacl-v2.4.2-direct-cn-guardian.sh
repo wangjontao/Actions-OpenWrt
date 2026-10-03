@@ -54,11 +54,13 @@ for p in \
   fi
 done
 
-install -m 0755 "$TMP/juliang-fastacl-mode" /usr/bin/juliang-fastacl-mode
-install -m 0755 "$TMP/juliang-fastacl-guard" /usr/bin/juliang-fastacl-guard
+cp -af "$TMP/juliang-fastacl-mode" /usr/bin/juliang-fastacl-mode
+cp -af "$TMP/juliang-fastacl-guard" /usr/bin/juliang-fastacl-guard
+chmod 0755 /usr/bin/juliang-fastacl-mode /usr/bin/juliang-fastacl-guard
 mkdir -p /usr/lib/lua/luci/controller /www/luci-static/resources
-install -m 0644 "$TMP/juliang_fastacl_mode.lua" /usr/lib/lua/luci/controller/juliang_fastacl_mode.lua
-install -m 0644 "$TMP/juliang-fastacl-v242-routing.js" /www/luci-static/resources/juliang-fastacl-v242-routing.js
+cp -af "$TMP/juliang_fastacl_mode.lua" /usr/lib/lua/luci/controller/juliang_fastacl_mode.lua
+cp -af "$TMP/juliang-fastacl-v242-routing.js" /www/luci-static/resources/juliang-fastacl-v242-routing.js
+chmod 0644 /usr/lib/lua/luci/controller/juliang_fastacl_mode.lua /www/luci-static/resources/juliang-fastacl-v242-routing.js
 
 JFA_CONSOLE=/usr/lib/lua/luci/view/juliang_fastacl/console.htm lua <<'LUA'
 local path=assert(os.getenv('JFA_CONSOLE'))
