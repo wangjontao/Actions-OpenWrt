@@ -5,6 +5,7 @@ START=95
 STOP=10
 
 start_service() {
+    [ "$(uci -q get juliang_fastacl.main.runtime_mode 2>/dev/null)" != normal_proxy ] || return 0
     [ "$(uci -q get juliang_fastacl.main.enabled 2>/dev/null)" = "1" ] || return 0
 
     # PassWall2 is retained only as the node database/UI. Its late S99 start

@@ -228,6 +228,105 @@ function handle()
     local node = http.formvalue("node") or ""
     local node_cfg = node ~= "" and uci:get_all("passwall2", node) or nil
 
+    -- JuLiangTK FastACL 2.4 node admin backend fix1
+    if action == "rename_node" then
+        if not node_cfg or node_cfg[".type"] ~= "nodes" or is_special_protocol(node_cfg.protocol or "") then
+            write_json({ok=false,error="BAD_NODE"}); return
+        end
+        local name=(http.formvalue("name") or ""):gsub("^%s+",""):gsub("%s+$","")
+        if name=="" or #name>128 or name:find("[%z\1-\31\127]") then
+            write_json({ok=false,error="BAD_NAME"}); return
+        end
+        local old_name=node_cfg.remarks or node
+        uci:set("passwall2",node,"remarks",name)
+        if not uci:commit("passwall2") then write_json({ok=false,error="RENAME_COMMIT_FAILED"}); return end
+        write_json({ok=true,action="rename_node",node=node,old_name=old_name,name=name}); return
+    end
+
+    if action == "delete_nodes" then
+        local raw=http.formvalue("nodes") or node or ""
+        local target,ordered={},{}
+        for id in raw:gmatch("[^,]+") do
+            id=id:gsub("^%s+",""):gsub("%s+$","")
+            if id~="" and not target[id] then
+                local cfg=uci:get_all("passwall2",id)
+                if cfg and cfg[".type"]=="nodes" and not is_special_protocol(cfg.protocol or "") then
+                    target[id]=true; ordered[#ordered+1]=id
+                end
+            end
+        end
+        if #ordered==0 then write_json({ok=false,error="NO_VALID_NODES"}); return end
+
+        local sys=require "luci.sys"
+        local stamp=tostring(os.time()).."-"..tostring(math.random(1000,9999))
+        local bpw="/tmp/passwall2-before-fastacl24-delete-"..stamp
+        local bjfa="/tmp/juliang-fastacl-before-fastacl24-delete-"..stamp
+        if sys.call("cp -af /etc/config/passwall2 "..util.shellquote(bpw))~=0 or
+           sys.call("cp -af /etc/config/juliang_fastacl "..util.shellquote(bjfa))~=0 then
+            write_json({ok=false,error="BACKUP_FAILED"}); return
+        end
+
+        local assigned={}
+        for _,a in ipairs(aps) do assigned[a.ap]=uci:get("juliang_fastacl",a.section,"node") or "" end
+
+        local function rollback(reason,detail)
+            sys.call("cp -af "..util.shellquote(bpw).." /etc/config/passwall2")
+            sys.call("cp -af "..util.shellquote(bjfa).." /etc/config/juliang_fastacl")
+            sys.call("/usr/bin/juliang-fastacl repair >/tmp/juliang-fastacl/v24-delete-rollback.log 2>&1")
+            write_json({ok=false,error=reason,detail=detail or "",rolled_back=true})
+        end
+
+        local cleared={}
+        for _,a in ipairs(aps) do
+            if target[assigned[a.ap] or ""] then
+                local rr=exec_json("/usr/bin/juliang-fastacl clear "..a.ap)
+                if not rr.ok then rollback("CLEAR_ASSIGNED_FAILED",rr); return end
+                cleared[#cleared+1]=a.ap
+            end
+        end
+
+        local dependent={}
+        local all=uci:get_all("passwall2") or {}
+        for sid,sec in pairs(all) do
+            if type(sec)=="table" and not target[sid] then
+                if target[sec.preproxy_node or ""] then
+                    uci:delete("passwall2",sid,"preproxy_node")
+                    uci:delete("passwall2",sid,"chain_proxy")
+                    dependent[sid]=true
+                end
+                for k,v in pairs(sec) do
+                    if type(k)=="string" and k:sub(1,1)~="." and k~="preproxy_node" and k~="chain_proxy" then
+                        if type(v)=="string" and target[v] then
+                            uci:delete("passwall2",sid,k)
+                        elseif type(v)=="table" then
+                            local keep,changed={},false
+                            for _,item in ipairs(v) do if target[item] then changed=true else keep[#keep+1]=item end end
+                            if changed then
+                                if #keep>0 then uci:set_list("passwall2",sid,k,keep) else uci:delete("passwall2",sid,k) end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        for _,id in ipairs(ordered) do uci:delete("passwall2",id) end
+        if not uci:commit("passwall2") then rollback("PASSWALL2_COMMIT_FAILED"); return end
+
+        local rebuilt={}
+        for _,a in ipairs(aps) do
+            local dep=assigned[a.ap] or ""
+            if dep~="" and not target[dep] and dependent[dep] then
+                local rr=exec_json("/usr/bin/juliang-fastacl switch "..a.ap.." "..util.shellquote(dep))
+                if not rr.ok then rollback("DEPENDENT_REBUILD_FAILED",rr); return end
+                rebuilt[#rebuilt+1]=a.ap
+            end
+        end
+
+        sys.call("/usr/bin/juliang-fastacl save-state >/dev/null 2>&1")
+        write_json({ok=true,action="delete_nodes",deleted=ordered,deleted_count=#ordered,cleared=cleared,rebuilt=rebuilt}); return
+    end
+
     if action == "assign" then
         local ap = http.formvalue("ap") or ""
         local n = ap_number(uci, ap)

@@ -1,5 +1,9 @@
 #!/bin/sh
 set -u
+# Global runtime mode: keep FastACL fully passive in normal proxy mode.
+if [ "$(uci -q get juliang_fastacl.main.runtime_mode 2>/dev/null)" = normal_proxy ]; then
+  case "${1:-}" in stop|status|save-state|discover) :;; *) echo 'FastACL is disabled in normal proxy mode' >&2; exit 1;; esac
+fi
 CFG="juliang_fastacl"
 APP="passwall2"
 STATE_DIR="/etc/juliang-fastacl"
@@ -43,6 +47,36 @@ has_any_listener(){
   ss -lnu 2>/dev/null | grep -q ":$port " && return 0
   netstat -lnt 2>/dev/null | grep -q ":$port " && return 0
   netstat -lnu 2>/dev/null | grep -q ":$port " && return 0
+  return 1
+}
+
+# FastACL 2.4.2 hot-switch async probe
+fast_pause(){
+  # BusyBox sleep on current OpenWrt accepts fractions. Keep fallbacks for
+  # older builds so normal switches poll at ~200ms instead of whole seconds.
+  sleep 0.2 2>/dev/null && return 0
+  command -v usleep >/dev/null 2>&1 && { usleep 200000; return 0; }
+  sleep 1
+}
+
+wait_tcp_listener(){
+  local port="$1" timeout="${2:-8}" deadline
+  deadline=$(( $(date +%s) + timeout ))
+  while [ "$(date +%s)" -le "$deadline" ]; do
+    has_tcp_listener "$port" && return 0
+    fast_pause
+  done
+  return 1
+}
+
+wait_any_listener_pid(){
+  local port="$1" pid="$2" timeout="${3:-8}" deadline
+  deadline=$(( $(date +%s) + timeout ))
+  while [ "$(date +%s)" -le "$deadline" ]; do
+    kill -0 "$pid" >/dev/null 2>&1 || return 1
+    has_any_listener "$port" && return 0
+    fast_pause
+  done
   return 1
 }
 
@@ -125,12 +159,9 @@ start_preproxy(){
   # the helper's shell return code.
   /usr/share/passwall2/app.sh socks_node_switch flag="$sec" new_node="$pre" >"$plog" 2>&1 || true
 
-  i=0
-  while [ "$i" -lt 6 ]; do
-    has_tcp_listener "$port" && return 0
-    sleep 1
-    i=$((i+1))
-  done
+  # Poll quickly when supported, but allow a slower node up to 8 seconds
+  # before rollback. Normal healthy switches return as soon as the listener is up.
+  wait_tcp_listener "$port" 8 && return 0
 
   {
     echo "AP$n preproxy SOCKS port $port not ready"
@@ -198,11 +229,9 @@ start_ap(){
     # SOCKS listener below is the authoritative health check.
     /usr/share/passwall2/app.sh socks_node_switch flag="jfa_ap$n" new_node="$landing_node" >"$swlog" 2>&1 || true
   fi
-  i=0
-  while [ "$i" -lt 5 ]; do
-    has_tcp_listener "$port" && return 0
-    sleep 1; i=$((i+1))
-  done
+  # Fast local readiness check: healthy nodes usually return in well under 1s;
+  # slow cores still get an 8s grace window instead of a premature rollback.
+  wait_tcp_listener "$port" 8 && return 0
   {
     echo "AP$n local SOCKS port $port not ready"
     echo "node=$landing_node type=$type protocol=$proto chain=$chain preproxy=$pre"
@@ -362,15 +391,9 @@ start_router(){
   pid=$!
   echo "$pid" > "$RUN_DIR/router.pid"
   tport="$(uci -q get $CFG.main.tproxy_port 2>/dev/null || echo 12345)"
-  i=0
-  while [ "$i" -lt 5 ]; do
-    kill -0 "$pid" >/dev/null 2>&1 || { cat "$RUN_DIR/router.log"; return 1; }
-    if has_any_listener "$tport"; then
-      return 0
-    fi
-    sleep 1
-    i=$((i+1))
-  done
+  if wait_any_listener_pid "$tport" "$pid" 8; then
+    return 0
+  fi
   log "FastACL router process exists but TProxy port $tport is not listening"
   cat "$RUN_DIR/router.log" 2>/dev/null || true
   return 1
@@ -565,7 +588,7 @@ switch_node(){
   switch_ok=0
   if start_ap "$n"; then
     if [ "$topology_ready" = "1" ]; then
-      ensure_dataplane && switch_ok=1
+      if ensure_dataplane || { fast_pause; ensure_dataplane; }; then switch_ok=1; fi
     else
       # Newly discovered target (for example the main LAN) is not present in
       # the currently loaded TProxy/nftables topology yet. Reload once only;
@@ -578,12 +601,19 @@ switch_node(){
     # Heal only missing listeners; healthy AP relays are untouched.
     heal_other_aps "$n" >/dev/null 2>&1 || true
     ensure_dataplane || true
-    ip="$(probe_ap "$n")"
-    printf '%s\n' "$ip" > "$RUN_DIR/ap$n.ip"
+    # Do not hold up a successful hot switch on an Internet IP service.
+    # Listener/dataplane is already healthy; refresh exit IP in background.
+    rm -f "$RUN_DIR/ap$n.ip"
+    (
+      ip="$(probe_ap "$n")"
+      tmpip="$RUN_DIR/ap$n.ip.tmp.$$"
+      printf '%s\n' "$ip" > "$tmpip"
+      mv -f "$tmpip" "$RUN_DIR/ap$n.ip"
+    ) >/dev/null 2>&1 &
     t1="$(date +%s)"; sec=$((t1-t0))
     remark="$(uci -q get $APP.$node.remarks 2>/dev/null || echo "$node")"
     save_state
-    printf '{"ok":true,"ap":"AP%s","node":"%s","remark":"%s","ip":"%s","seconds":%s,"dataplane":"running"}\n' "$n" "$node" "$(echo "$remark" | sed 's/"/\\"/g')" "$ip" "$sec"
+    printf '{"ok":true,"ap":"AP%s","node":"%s","remark":"%s","ip":"-","seconds":%s,"dataplane":"running","probe_async":true}\n' "$n" "$node" "$(echo "$remark" | sed 's/"/\\"/g')" "$sec"
   else
     if [ -n "$old" ]; then
       uci set $CFG.ap$n.node="$old"
@@ -616,15 +646,13 @@ move_node(){
     i=$((i+1))
   done
 
-  # Unique-binding means MOVE, not duplicate-then-delete. Stop old AP relay(s)
-  # first to avoid protocol/plugin/shared-resource collisions, but keep UCI
-  # mappings until the target is confirmed healthy so rollback is possible.
-  for i in $sources; do
-    kill_ap "$i"
-  done
-
+  # FastACL 2.4.2 make-before-break
+  # Keep source relay(s) alive until the target listener/dataplane is confirmed.
+  # AP slots use different local SOCKS ports/flags, so this avoids an outage
+  # during a move and leaves the previous path intact if the target fails.
   if result="$(switch_node "$ap" "$node")"; then
     for i in $sources; do
+      kill_ap "$i"
       uci -q delete $CFG.ap$i.node
       uci -q delete $APP.jfa_ap$i.node
       old_acl="$(find_acl_section "$i")"
@@ -638,12 +666,8 @@ move_node(){
     return 0
   fi
 
-  # Target failed: source UCI mappings were intentionally left intact; restart
-  # them so the previous working wireless AP is restored.
-  for i in $sources; do
-    start_ap "$i" >/dev/null 2>&1 || true
-  done
-  printf '{"ok":false,"ap":"%s","node":"%s","error":"NODE_START_FAILED","rolled_back_sources":true,"diagnostic":"%s"}\n' "$ap" "$node" "$RUN_DIR/ap$n-start-error.log"
+  # Target failed before source teardown; previous source relay(s) stay live.
+  printf '{"ok":false,"ap":"%s","node":"%s","error":"NODE_START_FAILED","rolled_back_sources":true,"source_kept_live":true,"diagnostic":"%s"}\n' "$ap" "$node" "$RUN_DIR/ap$n-start-error.log"
   return 4
 }
 

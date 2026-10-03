@@ -57,6 +57,39 @@ local import_api = dsp.build_url("admin", "services", "juliang_fastacl")
     </div>
   </div>
 
+<div class="jfa-commandbar">
+  <label for="jfa_runtime_mode">运行模式：</label>
+  <select id="jfa_runtime_mode" class="cbi-input-select" disabled>
+    <option value="fastacl">FastACl模式</option>
+    <option value="normal_proxy">普通代理模式</option>
+  </select>
+  <input id="jfa_runtime_apply" class="btn cbi-button cbi-button-apply" type="button" value="应用" disabled />
+  <span id="jfa_runtime_message" class="jfa-small"></span>
+</div>
+<script>
+(function(){
+  var select=document.getElementById('jfa_runtime_mode');
+  var button=document.getElementById('jfa_runtime_apply');
+  var message=document.getElementById('jfa_runtime_message');
+  var getURL='<%=dsp.build_url("admin","services","juliang_fastacl_runtime")%>';
+  var setURL='<%=dsp.build_url("admin","services","juliang_fastacl_runtime_set")%>';
+  function describe(mode){
+    message.textContent=mode==='normal_proxy'?'FastACL已退出；请自行启用PassWall等代理插件。':'FastACL接管无线代理与转发。';
+  }
+  XHR.get(getURL,null,function(x,r){
+    if(r&&r.ok){select.value=r.mode;select.disabled=false;button.disabled=false;describe(r.mode);}
+    else message.textContent='读取运行模式失败';
+  });
+  button.onclick=function(){
+    select.disabled=true;button.disabled=true;message.textContent='正在切换…';
+    XHR.post(setURL,{mode:select.value,token:'<%=token%>'},function(x,r){
+      select.disabled=false;button.disabled=false;
+      if(r&&r.ok){describe(r.mode);if(typeof loadStatus==='function')loadStatus();}
+      else {message.textContent='切换失败：'+((r&&r.error)||('HTTP '+(x?x.status:0)));}
+    });
+  };
+})();
+</script>
   <div class="jfa-commandbar">
     <input class="btn cbi-button cbi-button-add jfa-import-primary" type="button" value="＋ 导入节点" onclick="openImport()"/>
     <span class="jfa-small">批量粘贴 VLESS / VMess / Trojan / SOCKS5 / HTTP / SK5 简写</span>
@@ -261,7 +294,7 @@ host:port:username:password"></textarea>
     btn.disabled=true;
     importMsg('正在导入，请稍候…');
 
-    var chunkSize=1000;
+    var chunkSize=700;
     var total=Math.ceil(text.length/chunkSize);
     var idx=0;
 
@@ -276,30 +309,27 @@ host:port:username:password"></textarea>
         return;
       }
 
-      var fd=new FormData();
-      fd.append('action','import');
-      fd.append('chunk',text.substring(idx*chunkSize,(idx+1)*chunkSize));
-      fd.append('chunk_index',idx);
-      fd.append('total_chunks',total);
-      fd.append('group','default');
-
-      var x=new XMLHttpRequest();
-      x.open('POST',IMPORT_API,true);
-      x.onload=function(){
-        if(x.status===200){
+      // JuLiangTK: FastACL import GET csrf fix
+      // Use LuCI XHR.get like the rest of this console. The old raw POST
+      // was rejected by LuCI CSRF protection with HTTP 403.
+      var params={
+        action:'import',
+        chunk:text.substring(idx*chunkSize,(idx+1)*chunkSize),
+        chunk_index:idx,
+        total_chunks:total,
+        group:'default'
+      };
+      XHR.get(IMPORT_API,params,function(x,r){
+        if(x&&x.status===200&&r&&r.ok){
           idx++;
           importMsg('正在导入 '+idx+'/'+total+'…');
           sendNext();
         }else{
           btn.disabled=false;
-          importMsg('导入失败：HTTP '+x.status,false);
+          var why=(r&&r.error)?r.error:('HTTP '+(x?x.status:0));
+          importMsg('导入失败：'+why,false);
         }
-      };
-      x.onerror=function(){
-        btn.disabled=false;
-        importMsg('导入失败：网络请求错误',false);
-      };
-      x.send(fd);
+      });
     }
 
     sendNext();
@@ -310,9 +340,12 @@ host:port:username:password"></textarea>
   window.applyAssign=function(){
     var node=document.getElementById('modal_node').value, ap=document.getElementById('modal_ap').value;
     if(!ap){modalMsg('请选择无线 AP',false);return}
-    modalMsg('正在切换并验证真实出口…');
+    modalMsg('正在热切换节点…');
     xhr({action:'assign',node:node,ap:ap,exclusive:document.getElementById('modal_exclusive').checked?'1':'0'},function(r){
-      if(r&&r.ok){modalMsg('✓ 已切换；出口 '+(r.ip||'-')+(r.seconds!=null?'；'+r.seconds+'s':''),true);loadStatus()}
+      if(r&&r.ok){
+        if(r.probe_async){modalMsg('✓ 已切换'+(r.seconds!=null?'；'+r.seconds+'s':'')+'；出口IP后台检测中',true);loadStatus();setTimeout(loadStatus,1800);setTimeout(loadStatus,5000)}
+        else {modalMsg('✓ 已切换；出口 '+(r.ip||'-')+(r.seconds!=null?'；'+r.seconds+'s':''),true);loadStatus()}
+      }
       else modalMsg('切换失败：'+errText(r),false)
     });
   }
@@ -366,4 +399,6 @@ host:port:username:password"></textarea>
   loadStatus();
 })();
 </script>
+<script type="text/javascript" src="/luci-static/resources/juliang-fastacl-v24.js?v=2421"></script>
+<script type="text/javascript" src="/luci-static/resources/juliang-fastacl-v242-routing.js?v=2424"></script>
 <%+footer%>

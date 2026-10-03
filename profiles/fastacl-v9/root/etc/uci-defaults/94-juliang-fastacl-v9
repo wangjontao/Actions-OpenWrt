@@ -4,6 +4,10 @@
 # Core ownership values are fixed; user-facing DNS/health preferences are only
 # defaulted when absent so upgrades do not silently overwrite tuning.
 
+if [ "$(uci -q get juliang_fastacl.main.runtime_mode 2>/dev/null)" = normal_proxy ]; then
+    /usr/bin/juliang-fastacl-runtime set normal_proxy
+    exit $?
+fi
 touch /etc/config/juliang_fastacl
 uci -q get juliang_fastacl.main >/dev/null || uci set juliang_fastacl.main='main'
 uci set juliang_fastacl.main.enabled='1'

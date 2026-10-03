@@ -1,6 +1,9 @@
 #!/bin/sh
 set -u
 
+if [ "$(uci -q get juliang_fastacl.main.runtime_mode 2>/dev/null)" = normal_proxy ]; then
+  case "${1:-}" in status|get) :;; *) echo 'FastACL is disabled in normal proxy mode' >&2; exit 1;; esac
+fi
 CFG="juliang_fastacl"
 RUN_DIR="/tmp/juliang-fastacl"
 mkdir -p "$RUN_DIR"

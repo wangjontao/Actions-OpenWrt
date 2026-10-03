@@ -12,13 +12,18 @@ disable_passwall2_runtime(){
   [ "$(uci -q get passwall2.@global[0].acl_enable 2>/dev/null || echo 0)" = "0" ] || { uci -q set passwall2.@global[0].acl_enable=0; changed=1; }
   [ "$(uci -q get passwall2.@global[0].socks_enabled 2>/dev/null || echo 0)" = "0" ] || { uci -q set passwall2.@global[0].socks_enabled=0; changed=1; }
   [ "$changed" -eq 0 ] || uci commit passwall2
-  /etc/init.d/passwall2 stop >/dev/null 2>&1 || true
+  # Stop only a real procd-managed PassWall2 service. FastACL relays reuse
+  # PassWall2's runtime directory and must survive subsequent guard checks.
+  if ubus call service list '{"name":"passwall2"}' | grep -q '"running":[[:space:]]*true'; then
+    /etc/init.d/passwall2 stop >/dev/null 2>&1 || true
+  fi
 }
 
 sleep 3
 log "Guardian started (2.4.2 mode-aware)"
 
 while true; do
+  [ "$(uci -q get juliang_fastacl.main.runtime_mode 2>/dev/null)" != normal_proxy ] || exit 0
   if [ "$(uci -q get juliang_fastacl.main.enabled 2>/dev/null || echo 0)" != "1" ]; then
     sleep 20
     continue

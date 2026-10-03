@@ -1,0 +1,118 @@
+#!/bin/sh
+set -eu
+CFG=juliang_fastacl
+LOCK=/tmp/juliang-fastacl-runtime.lock
+get_mode(){
+  value="$(uci -q get $CFG.main.runtime_mode || true)"
+  case "$value" in fastacl|normal_proxy) echo "$value";; *)
+    [ "$(uci -q get $CFG.main.enabled || true)" = 1 ] && echo fastacl || echo normal_proxy;; esac
+}
+status(){
+  mode="$(get_mode)"
+  printf '{"ok":true,"mode":"%s"}\n' "$mode"
+}
+remove_forwardings(){
+  for sec in $(uci -q show firewall | sed -n 's/^firewall\.\(jfa_runtime_ap[0-9]*\)=forwarding$/\1/p'); do
+    uci -q delete firewall.$sec
+  done
+}
+restore_forwardings(){
+  remove_forwardings
+  slot=0
+  for sec in $(uci -q show $CFG | sed -n "s/^$CFG\.\([^.=]*\)=ap$/\1/p"); do
+    net="$(uci -q get $CFG.$sec.network || true)"
+    [ -n "$net" ] || continue
+    zone=''
+    for z in $(uci -q show firewall | sed -n 's/^firewall\.\([^.=]*\)=zone$/\1/p'); do
+      name="$(uci -q get firewall.$z.name || true)"
+      nets="$(uci -q get firewall.$z.network || true)"
+      if [ "$name" = "$net" ]; then zone="$name"; break; fi
+      for x in $nets; do [ "$x" != "$net" ] || { zone="$name"; break; }; done
+      [ -z "$zone" ] || break
+    done
+    [ -n "$zone" ] || { echo "No firewall zone for $net" >&2; return 1; }
+    slot=$((slot+1)); f=jfa_runtime_ap$slot
+    uci set firewall.$f=forwarding
+    uci set firewall.$f.src="$zone"
+    uci set firewall.$f.dest=wan
+  done
+}
+apply_mode(){
+  wanted="$1"
+  case "$wanted" in normal_proxy)
+    uci set $CFG.main.runtime_mode=normal_proxy
+    uci set $CFG.main.enabled=0
+    uci commit $CFG
+    /etc/init.d/juliang-fastacl stop
+    /etc/init.d/juliang-fastacl disable
+    /usr/bin/juliang-fastacl stop
+    nft delete table inet juliang_fastacl 2>/dev/null || true
+    nft delete table inet juliang_killswitch 2>/dev/null || true
+    while ip rule del fwmark 0x66/0xff table 100 2>/dev/null; do :; done
+    ip route flush table 100
+    restore_forwardings
+    uci commit firewall
+    /etc/init.d/firewall reload
+    ! nft list table inet juliang_fastacl >/dev/null 2>&1
+    ! nft list table inet juliang_killswitch >/dev/null 2>&1
+    ;;
+    fastacl)
+    for service in passwall passwall2 openclash; do
+      if [ -x /etc/init.d/$service ] && ubus call service list "{\"name\":\"$service\"}" | grep -q '"running":[[:space:]]*true'; then
+        /etc/init.d/$service stop
+      fi
+    done
+    remove_forwardings
+    uci commit firewall
+    /etc/init.d/firewall reload
+    uci set $CFG.main.runtime_mode=fastacl
+    uci set $CFG.main.enabled=1
+    uci commit $CFG
+    /etc/init.d/juliang-fastacl enable
+    /etc/init.d/juliang-fastacl restart
+    /usr/bin/juliang-fastacl ensure
+    /usr/bin/juliang-fastacl-mode apply
+    ;;
+    *) return 2;; esac
+}
+case "${1:-status}" in
+  _apply) apply_mode "${2:-}";;
+  status) status;;
+  get) get_mode;;
+  set)
+    wanted="${2:-}"
+    case "$wanted" in fastacl|normal_proxy) :;; *) echo '{"ok":false,"error":"BAD_MODE"}'; exit 2;; esac
+    if ! mkdir "$LOCK" 2>/dev/null; then
+      owner="$(cat "$LOCK/pid" 2>/dev/null || true)"
+      case "$owner" in ''|*[!0-9]*) echo '{"ok":false,"error":"BUSY"}'; exit 3;; esac
+      if kill -0 "$owner" 2>/dev/null; then echo '{"ok":false,"error":"BUSY"}'; exit 3; fi
+      rm -f "$LOCK/pid"; rmdir "$LOCK"; mkdir "$LOCK"
+    fi
+    echo "$$" >"$LOCK/pid"
+    trap 'rm -f "$LOCK/pid"; rmdir "$LOCK" 2>/dev/null || true' EXIT HUP INT TERM
+    old="$(get_mode)"
+    BACKUP=/etc/juliang-fastacl/runtime-backup-$(date +%Y%m%d-%H%M%S)-$$
+    mkdir -p "$BACKUP"; chmod 700 "$BACKUP"
+    cp -p /etc/config/juliang_fastacl "$BACKUP/"
+    cp -p /etc/config/firewall "$BACKUP/"
+    cp -p /etc/config/passwall2 "$BACKUP/" 2>/dev/null || true
+    if "$0" _apply "$wanted" >"$BACKUP/apply.log" 2>&1; then
+      /usr/bin/juliang-fastacl save-state >>"$BACKUP/apply.log" 2>&1 || true
+      status
+    else
+      cp -p "$BACKUP/juliang_fastacl" /etc/config/juliang_fastacl
+      cp -p "$BACKUP/firewall" /etc/config/firewall
+      [ ! -f "$BACKUP/passwall2" ] || cp -p "$BACKUP/passwall2" /etc/config/passwall2
+      /etc/init.d/firewall reload >>"$BACKUP/apply.log" 2>&1 || true
+      if [ "$old" = fastacl ]; then
+        /usr/bin/juliang-fastacl ensure >>"$BACKUP/apply.log" 2>&1 || true
+        /usr/bin/juliang-fastacl-mode apply >>"$BACKUP/apply.log" 2>&1 || true
+        /usr/bin/juliang-fastacl heal >>"$BACKUP/apply.log" 2>&1 || true
+        /etc/init.d/juliang-fastacl enable
+        /etc/init.d/juliang-fastacl restart
+      fi
+      printf '{"ok":false,"error":"APPLY_FAILED","backup":"%s"}\n' "$BACKUP"
+      exit 1
+    fi;;
+  *) exit 2;;
+esac
