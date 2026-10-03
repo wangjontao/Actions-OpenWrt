@@ -2,7 +2,7 @@
 set -eu
 
 REPO="wangjontao/Actions-OpenWrt"
-PIN="18df5c52cfbda4a5d6a62c5a1be5230e943d8ecb"
+PIN="ad38885a8c92f64d3200fb88ba430fae6c3ada78"
 BASE="https://api.github.com/repos/$REPO/contents/profiles/fastc-v010/root"
 TMP="/tmp/fastc020-fix1-$$"
 BAK="/etc/fastc/fix1-backup-$(date +%Y%m%d-%H%M%S)"
@@ -29,8 +29,6 @@ OLD_PID="$(pidof mihomo 2>/dev/null || true)"
 echo "[INFO] mihomo PID before fix: ${OLD_PID:-none}"
 echo "[INFO] original traffic mode: $OLD_MODE"
 
-# Quiesce the legacy Guardian without stopping mihomo or touching the active
-# TProxy / fail-closed dataplane. The old guard ignores non-fastc modes.
 touch /tmp/fastc-transaction.lock
 uci set fastc.main.mode='repair'
 uci commit fastc
@@ -85,7 +83,6 @@ else
   exit 1
 fi
 
-# Re-assert new source-of-truth state after the hot reload.
 lua /usr/libexec/fastc-sync.lua >/tmp/fastc020-fix1-sync.json 2>/tmp/fastc020-fix1-sync.err || {
   echo "[ERROR] selector/chain sync failed" >&2
   cat /tmp/fastc020-fix1-sync.err >&2 || true
