@@ -25,7 +25,7 @@ end
 
 local function pct_decode(s)
   s = tostring(s or "")
-  s = s:gsub("+", " ")
+  s = s:gsub("%+", " ")
   return (s:gsub("%%(%x%x)", function(h)
     return string.char(tonumber(h, 16))
   end))
