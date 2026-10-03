@@ -38,7 +38,7 @@ need "SELECTOR_APPLY_FAILED" "$TMP/usr/libexec/fastc-hotctl.lua" "selector-only 
 need "FASTC-CHAIN-" "$TMP/usr/libexec/fastc-hotctl.lua" "selector-hot chain switching"
 need "configs?force=true" "$TMP/usr/libexec/fastc-reload.lua" "no-restart structural hot reload"
 need "FASTC-CHAIN-" "$TMP/usr/libexec/fastc-generate.lua" "per-node chain selector"
-need "relay pool" "$TMP/usr/libexec/fastc-generate.lua" "bounded relay pool"
+need "local relay_set" "$TMP/usr/libexec/fastc-generate.lua" "bounded relay pool"
 need "fastc-node-probe" "$TMP/usr/libexec/fastc-generate.lua" "single shared probe listener"
 need "FastC 0.2.0 重构控制台" "$TMP/usr/lib/lua/luci/view/fastc/console_v020.htm" "node-first UI"
 for f in "$TMP/usr/libexec/fastc-state.lua" "$TMP/usr/libexec/fastc-hotctl.lua" "$TMP/usr/libexec/fastc-reload.lua" "$TMP/usr/libexec/fastc-generate.lua" "$TMP/usr/lib/lua/luci/controller/fastc_v020.lua"; do lua_check "$f"; done
