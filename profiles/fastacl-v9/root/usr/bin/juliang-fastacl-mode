@@ -1,0 +1,198 @@
+#!/bin/sh
+set -u
+
+CFG="juliang_fastacl"
+RUN_DIR="/tmp/juliang-fastacl"
+mkdir -p "$RUN_DIR"
+
+json_escape(){ printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
+ap_num(){
+  case "${1:-}" in AP[0-9]*) n="${1#AP}" ;; *) return 1 ;; esac
+  case "$n" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$(uci -q get $CFG.ap$n 2>/dev/null || true)" = "ap" ] || return 1
+  echo "$n"
+}
+
+mode_for_n(){
+  n="$1"
+  node="$(uci -q get $CFG.ap$n.node 2>/dev/null || true)"
+  mode="$(uci -q get $CFG.ap$n.mode 2>/dev/null || true)"
+  net="$(uci -q get $CFG.ap$n.network 2>/dev/null || true)"
+  # Any assigned node means proxy. This keeps the old node-centric "分配无线"
+  # workflow intuitive: assigning a node automatically changes that wireless
+  # from direct to proxy without needing a second click.
+  if [ -n "$node" ]; then
+    echo proxy
+  elif [ "$mode" = "direct_cn" ]; then
+    echo direct_cn
+  elif [ "$mode" = "proxy" ]; then
+    echo proxy
+  elif [ "$net" = "lan" ]; then
+    # Main WiFi + wired LAN are direct by default until a node is assigned.
+    echo direct_cn
+  else
+    # Preserve FastACL fail-closed semantics for dedicated AP/VLAN networks.
+    echo proxy
+  fi
+}
+
+find_zone_name_for_network(){
+  net="$1"
+  for z in $(uci -q show firewall 2>/dev/null | sed -n "s/^firewall\.\([^.=]*\)=zone$/\1/p"); do
+    name="$(uci -q get firewall.$z.name 2>/dev/null || true)"
+    [ "$name" = "$net" ] && { echo "$name"; return 0; }
+    nets="$(uci -q get firewall.$z.network 2>/dev/null || true)"
+    for x in $nets; do
+      [ "$x" = "$net" ] && { [ -n "$name" ] && echo "$name" || echo "$z"; return 0; }
+    done
+  done
+  return 1
+}
+
+proxy_subnets_csv(){
+  out=""
+  for sec in $(uci -q show "$CFG" 2>/dev/null | sed -n "s/^$CFG\.\([^.=]*\)=ap$/\1/p"); do
+    n="$(uci -q get $CFG.$sec.slot 2>/dev/null || echo "${sec#ap}")"
+    case "$n" in ''|*[!0-9]*) continue ;; esac
+    [ "$(mode_for_n "$n")" = "proxy" ] || continue
+    subnet="$(uci -q get $CFG.$sec.subnet 2>/dev/null || true)"
+    [ -n "$subnet" ] || continue
+    [ -n "$out" ] && out="$out, "
+    out="$out$subnet"
+  done
+  printf '%s' "$out"
+}
+
+sync_nft_sets(){
+  csv="$(proxy_subnets_csv)"
+  nftfile="$RUN_DIR/mode-sources.nft"
+  : > "$nftfile"
+  if nft list set inet juliang_fastacl ap_sources >/dev/null 2>&1; then
+    echo 'flush set inet juliang_fastacl ap_sources' >> "$nftfile"
+    [ -n "$csv" ] && echo "add element inet juliang_fastacl ap_sources { $csv }" >> "$nftfile"
+  fi
+  if nft list set inet juliang_killswitch ap_sources >/dev/null 2>&1; then
+    echo 'flush set inet juliang_killswitch ap_sources' >> "$nftfile"
+    [ -n "$csv" ] && echo "add element inet juliang_killswitch ap_sources { $csv }" >> "$nftfile"
+  fi
+  [ ! -s "$nftfile" ] || nft -f "$nftfile"
+}
+
+sync_direct_forwardings(){
+  changed=0
+  for sec in $(uci -q show "$CFG" 2>/dev/null | sed -n "s/^$CFG\.\([^.=]*\)=ap$/\1/p"); do
+    n="$(uci -q get $CFG.$sec.slot 2>/dev/null || echo "${sec#ap}")"
+    case "$n" in ''|*[!0-9]*) continue ;; esac
+    net="$(uci -q get $CFG.$sec.network 2>/dev/null || true)"
+    [ -n "$net" ] || continue
+    fsec="jfa_direct_ap$n"
+    mode="$(mode_for_n "$n")"
+    if [ "$mode" = "direct_cn" ]; then
+      zone="$(find_zone_name_for_network "$net" 2>/dev/null || true)"
+      [ -n "$zone" ] || continue
+      if [ "$(uci -q get firewall.$fsec 2>/dev/null || true)" != "forwarding" ]; then
+        uci -q delete firewall.$fsec >/dev/null 2>&1 || true
+        uci set firewall.$fsec='forwarding'
+        changed=1
+      fi
+      [ "$(uci -q get firewall.$fsec.src 2>/dev/null || true)" = "$zone" ] || { uci set firewall.$fsec.src="$zone"; changed=1; }
+      [ "$(uci -q get firewall.$fsec.dest 2>/dev/null || true)" = "wan" ] || { uci set firewall.$fsec.dest='wan'; changed=1; }
+    else
+      if [ "$(uci -q get firewall.$fsec 2>/dev/null || true)" = "forwarding" ]; then
+        uci -q delete firewall.$fsec
+        changed=1
+      fi
+    fi
+  done
+  if [ "$changed" -ne 0 ]; then
+    uci commit firewall
+    /etc/init.d/firewall restart >/dev/null 2>&1 || true
+  fi
+}
+
+apply_modes(){
+  sync_nft_sets || return 1
+  sync_direct_forwardings || return 1
+  return 0
+}
+
+set_mode(){
+  ap="$1"; wanted="$2"; node="${3:-}"
+  n="$(ap_num "$ap")" || { echo '{"ok":false,"error":"BAD_AP"}'; return 2; }
+  oldmode="$(uci -q get $CFG.ap$n.mode 2>/dev/null || true)"
+  oldnode="$(uci -q get $CFG.ap$n.node 2>/dev/null || true)"
+
+  case "$wanted" in
+    direct_cn)
+      # Direct mode intentionally has no proxy binding. Keeping a stale node
+      # would make the node-centric UI misleading and would switch back to
+      # proxy on the next apply.
+      /usr/bin/juliang-fastacl clear "$ap" >/dev/null 2>&1 || true
+      uci set $CFG.ap$n.mode='direct_cn'
+      uci commit "$CFG"
+      /usr/bin/juliang-fastacl save-state >/dev/null 2>&1 || true
+      if apply_modes; then
+        printf '{"ok":true,"ap":"%s","mode":"direct_cn","node":""}\n' "$ap"
+        return 0
+      fi
+      ;;
+    proxy)
+      [ -n "$node" ] || node="$oldnode"
+      [ -n "$node" ] || { echo '{"ok":false,"error":"NODE_REQUIRED"}'; return 3; }
+      [ "$(uci -q get passwall2.$node 2>/dev/null || true)" = "nodes" ] || { echo '{"ok":false,"error":"BAD_NODE"}'; return 4; }
+      uci set $CFG.ap$n.mode='proxy'
+      uci commit "$CFG"
+      if out="$(/usr/bin/juliang-fastacl switch "$ap" "$node")"; then
+        apply_modes || true
+        /usr/bin/juliang-fastacl save-state >/dev/null 2>&1 || true
+        printf '{"ok":true,"ap":"%s","mode":"proxy","node":"%s","switch":%s}\n' "$ap" "$(json_escape "$node")" "$out"
+        return 0
+      fi
+      ;;
+    *) echo '{"ok":false,"error":"BAD_MODE"}'; return 2 ;;
+  esac
+
+  if [ -n "$oldmode" ]; then uci set $CFG.ap$n.mode="$oldmode"; else uci -q delete $CFG.ap$n.mode; fi
+  uci commit "$CFG"
+  apply_modes >/dev/null 2>&1 || true
+  printf '{"ok":false,"ap":"%s","mode":"%s","error":"APPLY_FAILED","rolled_back":true}\n' "$ap" "$wanted"
+  return 5
+}
+
+status_all(){
+  first=1
+  printf '{"ok":true,"aps":['
+  for sec in $(uci -q show "$CFG" 2>/dev/null | sed -n "s/^$CFG\.\([^.=]*\)=ap$/\1/p"); do
+    n="$(uci -q get $CFG.$sec.slot 2>/dev/null || echo "${sec#ap}")"
+    case "$n" in ''|*[!0-9]*) continue ;; esac
+    [ "$first" -eq 1 ] || printf ','
+    first=0
+    mode="$(mode_for_n "$n")"
+    node="$(uci -q get $CFG.$sec.node 2>/dev/null || true)"
+    net="$(uci -q get $CFG.$sec.network 2>/dev/null || true)"
+    ssid="$(uci -q get $CFG.$sec.ssid 2>/dev/null || echo AP$n)"
+    subnet="$(uci -q get $CFG.$sec.subnet 2>/dev/null || true)"
+    printf '{"ap":"AP%s","mode":"%s","node":"%s","network":"%s","ssid":"%s","subnet":"%s"}' \
+      "$n" "$mode" "$(json_escape "$node")" "$(json_escape "$net")" "$(json_escape "$ssid")" "$(json_escape "$subnet")"
+  done
+  printf ']}\n'
+}
+
+case "${1:-}" in
+  apply) apply_modes ;;
+  set) [ "$#" -ge 3 ] || exit 2; set_mode "$2" "$3" "${4:-}" ;;
+  get) n="$(ap_num "${2:-}")" || exit 2; mode_for_n "$n" ;;
+  status) status_all ;;
+  lan-proxy)
+    found=1
+    for sec in $(uci -q show "$CFG" 2>/dev/null | sed -n "s/^$CFG\.\([^.=]*\)=ap$/\1/p"); do
+      [ "$(uci -q get $CFG.$sec.network 2>/dev/null || true)" = "lan" ] || continue
+      n="$(uci -q get $CFG.$sec.slot 2>/dev/null || echo "${sec#ap}")"
+      [ "$(mode_for_n "$n")" = "proxy" ] && found=0
+      break
+    done
+    exit "$found"
+    ;;
+  *) echo "Usage: juliang-fastacl-mode {apply|set AP1 direct_cn|set AP1 proxy nodeid|get AP1|status|lan-proxy}"; exit 1 ;;
+esac
