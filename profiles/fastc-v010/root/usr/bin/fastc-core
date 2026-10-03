@@ -1,0 +1,147 @@
+#!/bin/sh
+set -eu
+
+MIHOMO_VERSION="1.19.32"
+DEST="/usr/bin/mihomo"
+STATE_DIR="/etc/fastc"
+TMP_DIR="/tmp/fastc-core-$$"
+GZ="$TMP_DIR/mihomo.gz"
+BIN="$TMP_DIR/mihomo"
+
+cleanup(){ rm -rf "$TMP_DIR" 2>/dev/null || true; }
+trap cleanup EXIT INT TERM
+
+arch_info(){
+  ARCH="$(uname -m 2>/dev/null || true)"
+  case "$ARCH" in
+    aarch64|arm64)
+      ASSET="mihomo-linux-arm64-v${MIHOMO_VERSION}.gz"
+      SHA256="9dd862e28b46ff7d775f169cceebc28deccaa0a9e804237d421cd2571e0caba0"
+      ASSET_ID="601415736"
+      ;;
+    x86_64|amd64)
+      ASSET="mihomo-linux-amd64-v${MIHOMO_VERSION}.gz"
+      SHA256="8451100836c9eda194331c2babfad490b2faf30cebc1a04b0e76fd8ac2d35d10"
+      ASSET_ID="601415750"
+      ;;
+    armv7l|armv7)
+      ASSET="mihomo-linux-armv7-v${MIHOMO_VERSION}.gz"
+      SHA256="f622cbe903ba1a11d30e9071d1c5373929c675b854856ff3e7f977255a25bb66"
+      ASSET_ID="601415741"
+      ;;
+    *)
+      echo "[ERROR] unsupported architecture: $ARCH" >&2
+      return 1
+      ;;
+  esac
+  RELEASE_URL="https://github.com/MetaCubeX/mihomo/releases/download/v${MIHOMO_VERSION}/${ASSET}"
+  API_URL="https://api.github.com/repos/MetaCubeX/mihomo/releases/assets/${ASSET_ID}"
+}
+
+fetch_release(){
+  mkdir -p "$TMP_DIR"
+  rm -f "$GZ"
+
+  echo "[INFO] downloading official mihomo v${MIHOMO_VERSION}: $ASSET"
+  if command -v curl >/dev/null 2>&1; then
+    if curl -4 -fL --connect-timeout 10 --max-time 300 --retry 3 --retry-delay 2 -o "$GZ" "$RELEASE_URL"; then
+      return 0
+    fi
+    echo "[WARN] browser release URL failed; trying official GitHub API asset endpoint..."
+    rm -f "$GZ"
+    curl -4 -fL --connect-timeout 10 --max-time 300 --retry 3 --retry-delay 2 \
+      -H 'Accept: application/octet-stream' \
+      -H 'X-GitHub-Api-Version: 2022-11-28' \
+      -o "$GZ" "$API_URL"
+    return 0
+  fi
+
+  if command -v wget >/dev/null 2>&1; then
+    wget -O "$GZ" "$RELEASE_URL"
+    return 0
+  fi
+
+  echo "[ERROR] curl/wget not found" >&2
+  return 1
+}
+
+verify_download(){
+  [ -s "$GZ" ] || { echo "[ERROR] mihomo archive is empty" >&2; return 1; }
+  command -v sha256sum >/dev/null 2>&1 || {
+    echo "[ERROR] sha256sum not found; refusing unverified core install" >&2
+    return 1
+  }
+
+  GOT="$(sha256sum "$GZ" | awk '{print $1}')"
+  if [ "$GOT" != "$SHA256" ]; then
+    echo "[ERROR] SHA256 mismatch" >&2
+    echo "[ERROR] expected: $SHA256" >&2
+    echo "[ERROR] got:      $GOT" >&2
+    return 1
+  fi
+  echo "[OK] SHA256 verified: $SHA256"
+}
+
+install_core(){
+  arch_info
+  fetch_release
+  verify_download
+
+  gzip -dc "$GZ" > "$BIN"
+  chmod 0755 "$BIN"
+
+  VERSION_LINE="$("$BIN" -v 2>/dev/null | head -n1 || true)"
+  [ -n "$VERSION_LINE" ] || {
+    echo "[ERROR] downloaded core cannot execute on this device" >&2
+    return 1
+  }
+  echo "[OK] executable verified: $VERSION_LINE"
+
+  mkdir -p "$STATE_DIR"
+  if [ -x "$DEST" ]; then
+    cp -af "$DEST" "$STATE_DIR/mihomo.backup" 2>/dev/null || true
+  fi
+
+  cp -af "$BIN" "${DEST}.new"
+  chmod 0755 "${DEST}.new"
+  mv -f "${DEST}.new" "$DEST"
+
+  printf '%s\n' "$MIHOMO_VERSION" > "$STATE_DIR/mihomo.version"
+  printf '%s\n' "$SHA256" > "$STATE_DIR/mihomo.sha256"
+
+  if command -v uci >/dev/null 2>&1; then
+    uci -q get fastc.main >/dev/null 2>&1 || uci set fastc.main='main'
+    uci set fastc.main.core='mihomo'
+    uci set fastc.main.core_path="$DEST"
+    uci set fastc.main.core_version="$MIHOMO_VERSION"
+    uci commit fastc
+  fi
+
+  echo "[OK] mihomo installed: $DEST"
+  "$DEST" -v 2>/dev/null | head -n1 || true
+  echo "[INFO] core installed only; FastACL remains active until FastC dataplane handoff is enabled"
+}
+
+show_status(){
+  arch_info || true
+  if [ -x "$DEST" ]; then
+    echo "installed=1"
+    echo "path=$DEST"
+    "$DEST" -v 2>/dev/null | head -n1 || true
+  else
+    echo "installed=0"
+  fi
+}
+
+case "${1:-status}" in
+  install|update)
+    install_core
+    ;;
+  status)
+    show_status
+    ;;
+  *)
+    echo "Usage: $0 {install|update|status}" >&2
+    exit 2
+    ;;
+esac
