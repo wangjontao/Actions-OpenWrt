@@ -10,15 +10,14 @@ mkdir -p "$RUN_DIR"
 log(){ echo "[FastC] $*"; }
 
 sources_csv(){
-  out=""; i=1
-  while [ "$i" -le 20 ]; do
-    subnet="$(uci -q get juliang_fastacl.ap$i.subnet 2>/dev/null || true)"
-    if [ -n "$subnet" ]; then
-      [ -n "$out" ] && out="$out, "
-      out="$out$subnet"
-    fi
-    i=$((i+1))
-  done
+  lua /usr/libexec/fastc-discover.lua >/tmp/fastc-dataplane-discover.json 2>/tmp/fastc-dataplane-discover.log || true
+  [ -s /etc/fastc/subnets.list ] || { log "no discovered FastC topology"; return 1; }
+  out=""
+  while IFS= read -r subnet; do
+    [ -n "$subnet" ] || continue
+    [ -n "$out" ] && out="$out, "
+    out="$out$subnet"
+  done < /etc/fastc/subnets.list
   [ -n "$out" ] || return 1
   printf '%s' "$out"
 }
@@ -37,7 +36,7 @@ install_fw4_accept(){
 }
 
 install_killswitch(){
-  src="$(sources_csv)" || { log "no A1-A20 subnets discovered"; return 1; }
+  src="$(sources_csv)" || return 1
   nft list table inet fastc_killswitch >/dev/null 2>&1 && nft delete table inet fastc_killswitch >/dev/null 2>&1 || true
   cat > "$RUN_DIR/killswitch.nft" <<EOF
 table inet fastc_killswitch {
@@ -113,36 +112,23 @@ check(){
 }
 
 case "${1:-status}" in
-  killswitch)
-    install_killswitch
-    ;;
+  killswitch) install_killswitch ;;
   up)
     has_listener || { log "mihomo TProxy port $TPROXY_PORT is not listening"; exit 1; }
     install_killswitch
     install_tproxy
     check
     ;;
-  down)
-    remove_tproxy
-    ;;
-  release)
-    release_killswitch
-    ;;
-  reset)
-    remove_tproxy
-    release_killswitch
-    ;;
+  down) remove_tproxy ;;
+  release) release_killswitch ;;
+  reset) remove_tproxy; release_killswitch ;;
   status)
     echo "listener=$([ -n \"$(ss -lntup 2>/dev/null | grep \":$TPROXY_PORT \" || true)\" ] && echo 1 || echo 0)"
     echo "killswitch=$(nft list table inet fastc_killswitch >/dev/null 2>&1 && echo 1 || echo 0)"
     echo "tproxy=$(nft list table inet fastc_tproxy >/dev/null 2>&1 && echo 1 || echo 0)"
     echo "route=$(ip rule show 2>/dev/null | grep -q "lookup $ROUTE_TABLE" && echo 1 || echo 0)"
+    echo "topology_count=$(lua -e 'local j=require("luci.jsonc"); local f=io.open("/etc/fastc/topology.json"); if not f then print(0) return end; local o=j.parse(f:read("*a") or "{}"); f:close(); print(tonumber(o and o.count or 0) or 0)' 2>/dev/null || echo 0)"
     ;;
-  check)
-    check
-    ;;
-  *)
-    echo "Usage: $0 {killswitch|up|down|release|reset|status|check}" >&2
-    exit 2
-    ;;
+  check) check ;;
+  *) echo "Usage: $0 {killswitch|up|down|release|reset|status|check}" >&2; exit 2 ;;
 esac
