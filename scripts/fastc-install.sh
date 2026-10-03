@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
-PIN="af6e1cb05cee230f31841d6f8218383269d16461"
+PIN="898f89d6668ba4d78c0b8868d9d7e25af51392f7"
 BASE="https://cdn.jsdelivr.net/gh/wangjontao/Actions-OpenWrt@$PIN/profiles/fastc-v010/root"
-TMP="/tmp/fastc015-$$"
+TMP="/tmp/fastc016-$$"
 BACKUP="/etc/fastc/install-backup-$(date +%Y%m%d-%H%M%S)"
 OLD_MODE="$(uci -q get fastc.main.mode 2>/dev/null || echo fastacl)"
 OLD_ENABLED="$(uci -q get fastc.main.enabled 2>/dev/null || echo 0)"
@@ -31,9 +31,9 @@ lua_check(){
 }
 
 echo "=================================================="
-echo " FastC 0.1.5-dev Installer"
-echo " Guardian + strict handoff + real exit IP probe"
-echo " TProxy + A1-A20 + dialer-proxy chain"
+echo " FastC 0.1.6-dev Installer"
+echo " selector sync + DNS hijack dataplane fix"
+echo " Guardian + TProxy + A1-A20 + dialer-proxy"
 echo "=================================================="
 mkdir -p "$TMP" "$BACKUP" /etc/fastc
 
@@ -45,9 +45,14 @@ for f in $FILES; do
   echo "[OK] downloaded: $f"
 done
 
-echo "[INFO] validating FastC 0.1.5 components..."
-require_grep "option version '0.1.5-dev'" "$TMP/etc/config/fastc" "version 0.1.5-dev"
-require_grep "option node_probe_port_base '18200'" "$TMP/etc/config/fastc" "node IP probe port base"
+echo "[INFO] validating FastC 0.1.6 components..."
+require_grep "option version '0.1.6-dev'" "$TMP/etc/config/fastc" "version 0.1.6-dev"
+require_grep 'default-selected:' "$TMP/usr/libexec/fastc-generate.lua" "deterministic selector selection"
+require_grep 'store-selected: false' "$TMP/usr/libexec/fastc-generate.lua" "disable stale mihomo selector cache"
+require_grep 'FASTC-DNS-HIJACK' "$TMP/usr/libexec/fastc-generate.lua" "client DNS hijack"
+require_grep 'type: dns' "$TMP/usr/libexec/fastc-generate.lua" "mihomo internal DNS outbound"
+require_grep 'DST-PORT,53,FASTC-DNS-HIJACK' "$TMP/usr/libexec/fastc-generate.lua" "DNS rule before source routing"
+require_grep 'FASTC-DNS-RESOLVER' "$TMP/usr/libexec/fastc-generate.lua" "DNS upstream through proxy"
 require_grep 'dialer-proxy:' "$TMP/usr/libexec/fastc-generate.lua" "chain dialer-proxy"
 require_grep 'SRC-IP-CIDR' "$TMP/usr/libexec/fastc-generate.lua" "A1-A20 source routing"
 require_grep 'node_probe_base' "$TMP/usr/libexec/fastc-generate.lua" "per-node exit-IP listener"
@@ -56,7 +61,6 @@ require_grep 'final health verification' "$TMP/usr/bin/fastc-mode" "strict hando
 require_grep 'recovery attempt' "$TMP/usr/bin/fastc-guard" "FastC Guardian"
 require_grep 'probe_node' "$TMP/usr/lib/lua/luci/controller/fastc_runtime.lua" "node exit-IP probe API"
 require_grep 'probe_group' "$TMP/usr/lib/lua/luci/controller/fastc_runtime.lua" "A-group exit-IP probe API"
-require_grep 'FastC 0.1.5' "$TMP/usr/lib/lua/luci/view/fastc/console.htm" "0.1.5 UI"
 require_grep '出口IP' "$TMP/usr/lib/lua/luci/view/fastc/console.htm" "exit IP display"
 
 for f in "$TMP/usr/bin/fastc-core" "$TMP/usr/bin/fastc-dataplane" "$TMP/usr/bin/fastc-mode" "$TMP/usr/bin/fastc-guard"; do
@@ -66,7 +70,7 @@ echo "[OK] shell syntax validated"
 lua_check "$TMP/usr/lib/lua/luci/controller/fastc.lua" "FastC LuCI controller"
 lua_check "$TMP/usr/lib/lua/luci/controller/fastc_runtime.lua" "FastC runtime/probe controller"
 lua_check "$TMP/usr/libexec/fastc-generate.lua" "FastC mihomo generator"
-echo "[OK] 0.1.5 components validated"
+echo "[OK] 0.1.6 components validated"
 
 for f in $FILES; do mkdir -p "/$(dirname "$f")"; cp -af "$TMP/$f" "/$f"; done
 chmod 0755 /usr/bin/fastc-core /usr/bin/fastc-dataplane /usr/bin/fastc-mode /usr/bin/fastc-guard /etc/init.d/fastc /usr/libexec/fastc-import.lua /usr/libexec/fastc-generate.lua
@@ -74,12 +78,15 @@ chmod 0644 /etc/config/fastc /usr/lib/lua/luci/controller/fastc.lua /usr/lib/lua
 
 [ -f /etc/fastc/nodes.json ] || echo '[]' > /etc/fastc/nodes.json
 [ -f /etc/fastc/groups.json ] || echo '{}' > /etc/fastc/groups.json
-uci set fastc.main.version='0.1.5-dev'
+uci set fastc.main.version='0.1.6-dev'
 uci set fastc.main.mode="$OLD_MODE"
 uci set fastc.main.enabled="$OLD_ENABLED"
 uci set fastc.main.probe_port_base='18100'
 uci set fastc.main.node_probe_port_base='18200'
 uci commit fastc
+# Keep the visible page title aligned with the installed version even though
+# this release reuses the otherwise unchanged 0.1.5 UI source.
+sed -i 's/FastC 0\.1\.5/FastC 0.1.6/g; s/0\.1\.5-dev/0.1.6-dev/g' /usr/lib/lua/luci/view/fastc/console.htm 2>/dev/null || true
 
 [ -x /usr/bin/mihomo ] || /usr/bin/fastc-core install || true
 lua /usr/libexec/fastc-generate.lua >/tmp/fastc-generate.json 2>/tmp/fastc-generate.log || { echo "[ERROR] FastC config generation failed"; cat /tmp/fastc-generate.log; exit 1; }
@@ -90,12 +97,12 @@ echo "[OK] mihomo config validation passed"
 
 FINAL_MODE="$OLD_MODE"
 if [ "$OLD_MODE" = "fastc" ]; then
-  echo "[INFO] Previous mode was FastC; performing strict re-handoff..."
+  echo "[INFO] Previous mode was FastC; rebuilding selectors/DNS and performing strict re-handoff..."
   if /usr/bin/fastc-mode fastc; then
-    echo "[OK] FastC strict handoff restored"
+    echo "[OK] FastC 0.1.6 strict handoff restored"
     FINAL_MODE="fastc"
   else
-    echo "[WARN] FastC strict handoff failed; rollback to FastACL was requested"
+    echo "[WARN] FastC handoff failed; rollback to FastACL was requested"
     FINAL_MODE="$(uci -q get fastc.main.mode 2>/dev/null || echo fastacl)"
   fi
 else
@@ -108,10 +115,11 @@ rm -rf /tmp/luci-modulecache /tmp/luci-templatecache 2>/dev/null || true
 /etc/init.d/rpcd restart >/dev/null 2>&1 || true
 /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
 
-echo "[OK] FastC 0.1.5-dev installed"
-echo "[OK] Guardian + strict dataplane health + fail-closed rollback enabled"
-echo "[OK] Node detection now records delay + final exit IPv4"
-echo "[OK] A1-A20 current-exit IP probe enabled"
+echo "[OK] FastC 0.1.6-dev installed"
+echo "[OK] A1-A20 mihomo selectors now use explicit default-selected"
+echo "[OK] stale selector cache disabled"
+echo "[OK] client DNS port 53 is hijacked into mihomo DNS"
+echo "[OK] DNS upstream uses FastC proxy resolver group instead of WAN direct"
 echo "[INFO] Final traffic mode: $FINAL_MODE"
 echo "[INFO] Node/group database preserved"
 echo "[INFO] Backup: $BACKUP"
