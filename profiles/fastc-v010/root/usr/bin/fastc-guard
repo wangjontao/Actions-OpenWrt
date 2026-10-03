@@ -2,7 +2,6 @@
 set -u
 
 DP="/usr/bin/fastc-dataplane"
-MODE="/usr/bin/fastc-mode"
 SYNC="/usr/libexec/fastc-sync.lua"
 LOG="/tmp/fastc-guard.log"
 FAIL="/tmp/fastc-guard.fail"
@@ -18,7 +17,7 @@ log(){
 api_ready(){ curl -fsS --connect-timeout 1 --max-time 1 http://127.0.0.1:9097/version >/dev/null 2>&1; }
 selectors_ok(){ [ -x "$SYNC" ] && lua "$SYNC" >/tmp/fastc-guard-sync.json 2>/tmp/fastc-guard-sync.log; }
 healthy(){
-  [ "$(uci -q get fastc.main.mode 2>/dev/null || echo fastacl)" = "fastc" ] || return 1
+  [ "$(uci -q get fastc.main.mode 2>/dev/null || echo fastc)" = "fastc" ] || return 1
   pidof mihomo >/dev/null 2>&1 || return 1
   api_ready || return 1
   "$DP" check >/dev/null 2>&1 || return 1
@@ -26,7 +25,7 @@ healthy(){
   return 0
 }
 heal_without_restart(){
-  # FastACL-style hot recovery: never restart a live mihomo instance.
+  # Development rule: never restart a live mihomo instance.
   pidof mihomo >/dev/null 2>&1 || return 2
   api_ready || return 1
   "$DP" killswitch >/dev/null 2>&1 || return 1
@@ -43,10 +42,8 @@ start_only_if_dead(){
 
 sleep 8
 while true; do
-  mode="$(uci -q get fastc.main.mode 2>/dev/null || echo fastacl)"
+  mode="$(uci -q get fastc.main.mode 2>/dev/null || echo fastc)"
   if [ "$mode" != "fastc" ]; then rm -f "$FAIL" 2>/dev/null || true; sleep "$INTERVAL"; continue; fi
-
-  # Transactions/upgrades own the control plane. Observe only; never interfere.
   if [ -e "$LOCK" ]; then sleep "$INTERVAL"; continue; fi
 
   if healthy; then rm -f "$FAIL" 2>/dev/null || true; sleep "$INTERVAL"; continue; fi
@@ -57,15 +54,15 @@ while true; do
   if pidof mihomo >/dev/null 2>&1; then
     if heal_without_restart; then log "hot recovery succeeded without mihomo restart"; rm -f "$FAIL" 2>/dev/null || true; sleep "$INTERVAL"; continue; fi
   else
-    log "mihomo process is actually dead; starting service"
+    log "mihomo process is actually dead; starting service once"
     if start_only_if_dead && "$DP" up >/tmp/fastc-guard-dataplane.log 2>&1 && selectors_ok; then log "dead core recovered by start"; rm -f "$FAIL" 2>/dev/null || true; sleep "$INTERVAL"; continue; fi
   fi
 
+  # Standalone FastC development mode: never wake or repair FastACL.
+  # Keep the FastC kill-switch closed so broken proxy state cannot leak to WAN.
+  "$DP" killswitch >/dev/null 2>&1 || true
   if [ "$n" -ge 3 ]; then
-    log "three hot recovery attempts failed; rolling back to FastACL"
-    "$DP" killswitch >/dev/null 2>&1 || true
-    if "$MODE" fastacl >/tmp/fastc-guard-rollback.log 2>&1; then log "rollback to FastACL succeeded"; rm -f "$FAIL" 2>/dev/null || true
-    else log "rollback failed; fail-closed guard retained"; fi
+    log "three recovery attempts failed; standalone mode remains fail-closed (no FastACL fallback)"
   fi
   sleep "$INTERVAL"
 done
