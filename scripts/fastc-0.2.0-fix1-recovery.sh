@@ -18,6 +18,7 @@ fetch(){
     -o "$out" "$BASE/$rel?ref=$PIN"
 }
 lua_check(){ FC_LUA_CHECK="$1" lua -e 'local p=os.getenv("FC_LUA_CHECK"); assert(loadfile(p))'; }
+restore_mode(){ uci set fastc.main.mode="$OLD_MODE"; uci set fastc.main.enabled="$OLD_ENABLED"; uci commit fastc; rm -f /tmp/fastc-transaction.lock 2>/dev/null || true; }
 
 echo "=================================================="
 echo " FastC 0.2.0 Fix1 In-Place Recovery"
@@ -39,15 +40,15 @@ for f in $FILES; do
   [ -f "/$f" ] && { mkdir -p "$BAK/$(dirname "$f")"; cp -af "/$f" "$BAK/$f"; } || true
   echo "[GET] $f"
   fetch "$f" "$TMP/$f"
-  [ -s "$TMP/$f" ] || { echo "[ERROR] empty file: $f" >&2; exit 1; }
+  [ -s "$TMP/$f" ] || { echo "[ERROR] empty file: $f" >&2; restore_mode; exit 1; }
 done
 
 lua_check "$TMP/usr/libexec/fastc-generate.lua"
 lua_check "$TMP/usr/libexec/fastc-hotctl.lua"
 lua_check "$TMP/usr/libexec/fastc-sync.lua"
-grep -q 'Stable hot-control baseline' "$TMP/usr/libexec/fastc-generate.lua" || { echo "[ERROR] generator marker missing" >&2; exit 1; }
-grep -q 'BIND_DB="/etc/fastc/bindings.json"' "$TMP/usr/libexec/fastc-sync.lua" || { echo "[ERROR] bindings sync marker missing" >&2; exit 1; }
-grep -q 'never restart a live mihomo instance' "$TMP/usr/bin/fastc-guard" || { echo "[ERROR] guardian no-restart marker missing" >&2; exit 1; }
+grep -q 'Stable hot-control baseline' "$TMP/usr/libexec/fastc-generate.lua" || { echo "[ERROR] generator marker missing" >&2; restore_mode; exit 1; }
+grep -q 'BIND_DB="/etc/fastc/bindings.json"' "$TMP/usr/libexec/fastc-sync.lua" || { echo "[ERROR] bindings sync marker missing" >&2; restore_mode; exit 1; }
+grep -q 'never restart a live mihomo instance' "$TMP/usr/bin/fastc-guard" || { echo "[ERROR] guardian no-restart marker missing" >&2; restore_mode; exit 1; }
 
 for f in $FILES; do mkdir -p "/$(dirname "$f")"; cp -af "$TMP/$f" "/$f"; done
 chmod 0755 /usr/libexec/fastc-generate.lua /usr/libexec/fastc-hotctl.lua /usr/libexec/fastc-sync.lua /usr/bin/fastc-guard
@@ -55,15 +56,13 @@ chmod 0755 /usr/libexec/fastc-generate.lua /usr/libexec/fastc-hotctl.lua /usr/li
 lua /usr/libexec/fastc-generate.lua >/tmp/fastc020-fix1-generate.json 2>/tmp/fastc020-fix1-generate.err || {
   echo "[ERROR] config generation failed" >&2
   cat /tmp/fastc020-fix1-generate.err >&2 || true
-  uci set fastc.main.mode="$OLD_MODE"; uci set fastc.main.enabled="$OLD_ENABLED"; uci commit fastc
-  rm -f /tmp/fastc-transaction.lock
+  restore_mode
   exit 1
 }
 /usr/bin/mihomo -t -d /etc/fastc -f /etc/fastc/config.yaml >/tmp/fastc020-fix1-check.log 2>&1 || {
   echo "[ERROR] mihomo config validation failed" >&2
   cat /tmp/fastc020-fix1-check.log >&2 || true
-  uci set fastc.main.mode="$OLD_MODE"; uci set fastc.main.enabled="$OLD_ENABLED"; uci commit fastc
-  rm -f /tmp/fastc-transaction.lock
+  restore_mode
   exit 1
 }
 
@@ -72,14 +71,12 @@ if pidof mihomo >/dev/null 2>&1 && curl -fsS --connect-timeout 1 --max-time 1 ht
   lua /usr/libexec/fastc-reload.lua >/tmp/fastc020-fix1-reload.json 2>/tmp/fastc020-fix1-reload.err || {
     echo "[ERROR] hot reload failed" >&2
     cat /tmp/fastc020-fix1-reload.err >&2 || true
-    uci set fastc.main.mode="$OLD_MODE"; uci set fastc.main.enabled="$OLD_ENABLED"; uci commit fastc
-    rm -f /tmp/fastc-transaction.lock
+    restore_mode
     exit 1
   }
 else
   echo "[ERROR] live mihomo/API is unavailable; refusing to restart it automatically" >&2
-  uci set fastc.main.mode="$OLD_MODE"; uci set fastc.main.enabled="$OLD_ENABLED"; uci commit fastc
-  rm -f /tmp/fastc-transaction.lock
+  restore_mode
   exit 1
 fi
 
@@ -87,17 +84,41 @@ lua /usr/libexec/fastc-sync.lua >/tmp/fastc020-fix1-sync.json 2>/tmp/fastc020-fi
   echo "[ERROR] selector/chain sync failed" >&2
   cat /tmp/fastc020-fix1-sync.err >&2 || true
   cat /tmp/fastc020-fix1-sync.json >&2 || true
-  uci set fastc.main.mode="$OLD_MODE"; uci set fastc.main.enabled="$OLD_ENABLED"; uci commit fastc
-  rm -f /tmp/fastc-transaction.lock
+  restore_mode
   exit 1
 }
+
+# A failed FastC -> FastACL handoff may already have removed the FastC TProxy
+# table while intentionally leaving the fail-closed guard. If FastC was the
+# original mode, restore its dataplane now without restarting mihomo.
+if [ "$OLD_MODE" = "fastc" ]; then
+  echo "[INFO] restoring FastC TProxy dataplane in-place"
+  /usr/bin/fastc-dataplane killswitch >/tmp/fastc020-fix1-killswitch.log 2>&1 || {
+    echo "[ERROR] failed to install FastC kill-switch" >&2
+    cat /tmp/fastc020-fix1-killswitch.log >&2 || true
+    restore_mode
+    exit 1
+  }
+  /usr/bin/fastc-dataplane up >/tmp/fastc020-fix1-dataplane.log 2>&1 || {
+    echo "[ERROR] failed to restore FastC TProxy dataplane" >&2
+    cat /tmp/fastc020-fix1-dataplane.log >&2 || true
+    restore_mode
+    exit 1
+  }
+  /usr/bin/fastc-dataplane check >/dev/null 2>&1 || {
+    echo "[ERROR] FastC dataplane verification failed" >&2
+    /usr/bin/fastc-dataplane status >&2 || true
+    restore_mode
+    exit 1
+  }
+  echo "[OK] FastC TProxy dataplane restored"
+fi
 
 NEW_PID="$(pidof mihomo 2>/dev/null || true)"
 echo "[INFO] mihomo PID after fix: ${NEW_PID:-none}"
 if [ -n "$OLD_PID" ] && [ "$OLD_PID" != "$NEW_PID" ]; then
   echo "[ERROR] mihomo PID changed unexpectedly: $OLD_PID -> $NEW_PID" >&2
-  uci set fastc.main.mode="$OLD_MODE"; uci set fastc.main.enabled="$OLD_ENABLED"; uci commit fastc
-  rm -f /tmp/fastc-transaction.lock
+  restore_mode
   exit 1
 fi
 
@@ -114,6 +135,7 @@ echo "[OK] direct nodes do not receive unnecessary dialer-proxy"
 echo "[OK] chained nodes use explicit dialer-proxy only"
 echo "[OK] selector sync reads bindings.json/chains.json"
 echo "[OK] guardian will not restart a live mihomo"
+echo "[OK] FastC dataplane is restored if a failed handoff removed it"
 echo "[OK] no FastACL handoff was required"
 echo "[INFO] traffic mode restored to: $OLD_MODE"
 echo "[INFO] backup: $BAK"
