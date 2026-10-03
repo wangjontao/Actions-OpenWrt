@@ -50,10 +50,13 @@ local function split_uri(raw)
   return {scheme=scheme,auth=auth or "",host=host,port=tonumber(port),query=parse_query(q)}
 end
 local function add(lines,s) lines[#lines+1]=s end
-local function list_has(t,v) for _,x in ipairs(t) do if x==v then return true end end return false end
 
 os.execute("lua /usr/libexec/fastc-discover.lua >/tmp/fastc-discover.json 2>/tmp/fastc-discover.log || true")
-os.execute("lua /usr/libexec/fastc-state.lua migrate >/tmp/fastc-state-migrate.json 2>/tmp/fastc-state-migrate.log || true")
+-- Migration is first-run only. Never call migrate during normal hot reload,
+-- because migrate owns initial last-good snapshots and must not overwrite them.
+if not readall(BIND_DB) or not readall(CHAIN_DB) then
+  os.execute("lua /usr/libexec/fastc-state.lua migrate >/tmp/fastc-state-migrate.json 2>/tmp/fastc-state-migrate.log || true")
+end
 
 local topology=parse_json(TOPO,{aps={}})
 local aps=type(topology.aps)=="table" and topology.aps or {}
