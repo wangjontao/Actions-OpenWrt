@@ -1,0 +1,72 @@
+<%+header%>
+<%
+local dsp=require "luci.dispatcher"
+local api=dsp.build_url("admin","services","fastc_api")
+local vapi=dsp.build_url("admin","services","fastc_v020_api")
+local rapi=dsp.build_url("admin","services","fastc_runtime_api")
+%>
+<style>
+#maincontent{max-width:none!important}.fc2{width:100%;box-sizing:border-box}.fc2-head{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:12px 0}.fc2-pill{padding:5px 11px;border-radius:16px;background:rgba(128,128,128,.12);font-weight:700}.ok{color:#159957}.bad{color:#d94040}.warn{color:#df941f}.fc2-table{width:100%;border-collapse:separate;border-spacing:0 7px}.fc2-table th{text-align:left;padding:8px}.fc2-table td{padding:10px 8px;background:rgba(128,128,128,.05);vertical-align:middle}.fc2-select{min-width:180px}.fc2-search{min-width:280px;max-width:520px;width:40%}.fc2-small{font-size:12px;opacity:.7}.fc2-rowmsg{font-size:12px;min-height:16px;margin-top:3px}.fc2-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0}.fc2-diag{margin:12px 0;border:1px solid rgba(128,128,128,.18);border-radius:8px;padding:10px 12px}.fc2-diag summary{cursor:pointer;font-weight:700}.fc2-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:8px;margin-top:10px}.fc2-card{padding:9px;border:1px solid rgba(128,128,128,.15);border-radius:7px}.fc2-modalbg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:500}.fc2-modal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:56rem;max-width:94vw;max-height:86vh;overflow:auto;background:var(--main-bg-color,#fff);padding:20px;border-radius:11px}.fc2-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:7px;margin-top:10px}.fc2-item{padding:9px;border:1px solid rgba(128,128,128,.18);border-radius:7px;cursor:pointer}.fc2-item:hover{background:rgba(80,110,240,.1)}#fc2_toast{display:none;position:fixed;right:24px;bottom:24px;z-index:9999;padding:12px 16px;border-radius:9px;background:#1f2937;color:#fff;min-width:240px;max-width:500px;font-weight:700}#fc2_toast.ok{background:#168a50}#fc2_toast.bad{background:#c93d3d}.fc2-import{width:100%;height:260px;box-sizing:border-box;font-family:monospace}@media(max-width:850px){.fc2-table{display:block;overflow-x:auto;white-space:nowrap}.fc2-search{width:100%}}
+</style>
+<div id="fc2_toast"></div>
+<div class="cbi-map fc2">
+  <h2>FastC 0.2.0 重构控制台</h2>
+  <div class="cbi-map-descr">常驻 mihomo · 热切换 · 原子无线绑定 · 独立链式状态 · 默认 TProxy + DNS Hijack</div>
+  <div class="fc2-head">
+    <input class="btn cbi-button cbi-button-add" type="button" value="＋ 导入节点" onclick="openImport()"/>
+    <span id="mode" class="fc2-pill">模式：读取中</span>
+    <span id="core" class="fc2-pill">mihomo：读取中</span>
+    <span id="count" class="fc2-pill">节点：-</span>
+    <span id="ver" class="fc2-pill">FastC：0.2.0-dev</span>
+    <input class="btn cbi-button cbi-button-reload" type="button" value="刷新" onclick="loadState(true)"/>
+  </div>
+
+  <details id="diag" class="fc2-diag" ontoggle="diagToggle(this.open)">
+    <summary>无线绑定诊断（默认折叠，不占用检测资源）</summary>
+    <div id="diagbox" class="fc2-grid"></div>
+  </details>
+
+  <div class="fc2-tools">
+    <input id="search" class="cbi-input-text fc2-search" type="text" placeholder="搜索节点 / IP / 协议 / ID" oninput="setQuery(this.value)"/>
+    <select id="pagesize" class="cbi-input-select" onchange="setPageSize(this.value)"><option>25</option><option selected>50</option><option>100</option></select>
+    <span id="pager" class="fc2-small"></span>
+  </div>
+
+  <table class="fc2-table"><thead><tr><th>节点</th><th>协议</th><th>地址</th><th>无线</th><th>前置链</th><th>检测 / 出口IP</th><th>操作</th></tr></thead><tbody id="body"><tr><td colspan="7">读取中…</td></tr></tbody></table>
+</div>
+
+<div id="chainbg" class="fc2-modalbg"><div class="fc2-modal"><h3>选择前置链</h3><div id="chaintarget" class="fc2-small"></div><input id="chainsearch" class="cbi-input-text" style="width:100%;box-sizing:border-box" placeholder="搜索前置节点" oninput="renderChain(this.value)"/><div style="margin-top:8px"><input class="btn cbi-button cbi-button-action" type="button" value="无前置 / 直接建立" onclick="chooseChain('')"/> <input class="btn cbi-button cbi-button-remove" type="button" value="关闭" onclick="closeChain()"/></div><div id="chainlist" class="fc2-list"></div></div></div>
+<div id="importbg" class="fc2-modalbg"><div class="fc2-modal"><h3>批量导入节点</h3><textarea id="importtext" class="fc2-import" placeholder="vless://...\nsocks5://user:pass@host:port\nhost:port:user:pass"></textarea><div style="margin-top:8px"><input id="importbtn" class="btn cbi-button cbi-button-apply" type="button" value="开始导入" onclick="doImport()"/> <input class="btn cbi-button cbi-button-remove" type="button" value="关闭" onclick="closeImport()"/></div><div id="importmsg" class="fc2-small"></div></div></div>
+<script type="text/javascript">
+(function(){
+var API='<%=api%>',VAPI='<%=vapi%>',RAPI='<%=rapi%>';
+var S={nodes:[],bindings:{},chains:{},topology:{aps:[]},page:1,pageSize:50,q:'',chainTarget:''};var tt=null;
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function toast(t,k){var e=document.getElementById('fc2_toast');e.textContent=t;e.className=k||'';e.style.display='block';if(tt)clearTimeout(tt);tt=setTimeout(function(){e.style.display='none'},3000)}
+function post(url,data,cb){var f=new FormData();for(var k in data)f.append(k,data[k]);var x=new XMLHttpRequest();x.open('POST',url,true);x.onload=function(){var r=null;try{r=JSON.parse(x.responseText||'{}')}catch(e){}cb(r)};x.onerror=function(){cb(null)};x.send(f)}
+function get(url,data,cb){XHR.get(url,data,function(x,r){cb((x&&x.status===200)?r:null)})}
+function bindingForNode(id){for(var g in S.bindings){var b=S.bindings[g],n=(b&&typeof b==='object')?String(b.node||''):String(b||'');if(n===id)return g}return ''}
+function chainForNode(id){var c=S.chains[id];return c&&typeof c==='object'?String(c.via||''):String(c||'')}
+function node(id){for(var i=0;i<S.nodes.length;i++)if(String(S.nodes[i].id||'')===id)return S.nodes[i];return null}
+function apOpts(cur){var h='<option value="">未分配</option>',a=(S.topology&&S.topology.aps)||[];for(var i=0;i<a.length;i++){var ap=a[i],g=String(ap.group||('A'+ap.slot));h+='<option value="'+esc(g)+'"'+(g===cur?' selected':'')+'>'+esc(g+' · '+String(ap.ssid||g))+'</option>'}return h}
+function chainLabel(id){var via=chainForNode(id);if(!via)return '无前置 / 直连建立';var n=node(via);return n?String(n.name||via)+' ['+String(n.type||'').toUpperCase()+']':via}
+function testHtml(n){if(n.last_ok===true)return '<span class="ok">'+esc(n.last_delay||'-')+' ms</span><div class="fc2-small ok">IP '+esc(n.last_ip||'-')+'</div>';if(n.last_check)return '<span class="bad">失败</span><div class="fc2-small">IP '+esc(n.last_ip||'-')+'</div>';return '<span class="warn">未检测</span><div class="fc2-small">IP -</div>'}
+function filtered(){var q=S.q.toLowerCase().trim();if(!q)return S.nodes.slice();return S.nodes.filter(function(n){return [n.id,n.name,n.type,n.address,n.port].join(' ').toLowerCase().indexOf(q)>=0})}
+function render(){var a=filtered(),pages=Math.max(1,Math.ceil(a.length/S.pageSize));if(S.page>pages)S.page=pages;var start=(S.page-1)*S.pageSize,part=a.slice(start,start+S.pageSize),h='';for(var i=0;i<part.length;i++){var n=part[i],id=String(n.id||''),g=bindingForNode(id),via=chainForNode(id);h+='<tr><td><b>'+esc(n.name||id)+'</b><div class="fc2-small">'+esc(id)+'</div><div id="rm_'+id+'" class="fc2-rowmsg"></div></td><td>'+esc(String(n.type||'').toUpperCase())+'</td><td>'+esc((n.address||'')+((n.port)?(':'+n.port):''))+'</td><td><select class="cbi-input-select fc2-select" onchange="bindNode(\''+id+'\',this.value,this)">'+apOpts(g)+'</select></td><td><input class="btn cbi-button cbi-button-action" type="button" value="'+esc(chainLabel(id))+'" onclick="openChain(\''+id+'\')"/></td><td id="test_'+id+'">'+testHtml(n)+'</td><td><input class="btn cbi-button cbi-button-action" type="button" value="检测" onclick="probe(\''+id+'\')"/> <input class="btn cbi-button cbi-button-remove" type="button" value="删除" onclick="delNode(\''+id+'\')"/></td></tr>'}document.getElementById('body').innerHTML=h||'<tr><td colspan="7">暂无节点</td></tr>';document.getElementById('pager').innerHTML='第 '+S.page+' / '+pages+' 页 · '+a.length+' 条 <button class="btn cbi-button" onclick="prevPage()">上一页</button> <button class="btn cbi-button" onclick="nextPage()">下一页</button>';renderDiag()}
+function renderDiag(){var box=document.getElementById('diagbox');if(!document.getElementById('diag').open){box.innerHTML='';return}var a=(S.topology&&S.topology.aps)||[],h='';for(var i=0;i<a.length;i++){var ap=a[i],g=String(ap.group||('A'+ap.slot)),b=S.bindings[g],id=b&&typeof b==='object'?String(b.node||''):String(b||''),n=node(id);h+='<div class="fc2-card"><b>'+esc(g+' · '+String(ap.ssid||g))+'</b><div class="fc2-small">'+esc(ap.subnet||'')+'</div><div>出口：'+esc(n?(n.name||id):'REJECT / 未绑定')+'</div></div>'}box.innerHTML=h||'无拓扑' }
+window.loadState=function(manual){get(VAPI,{action:'status'},function(r){if(!r||!r.ok){toast('状态读取失败','bad');return}S.nodes=r.nodes||[];S.bindings=r.bindings||{};S.chains=r.chains||{};S.topology=r.topology||{aps:[]};document.getElementById('mode').textContent='模式：'+String(r.mode||'-');document.getElementById('core').textContent='mihomo：'+(r.mihomo&&r.api?'运行中':'未运行');document.getElementById('core').className='fc2-pill '+(r.mihomo&&r.api?'ok':'warn');document.getElementById('count').textContent='节点：'+S.nodes.length;document.getElementById('ver').textContent='FastC：'+String(r.version||'0.2.0-dev');if(r.ui_exit_panel==='expanded')document.getElementById('diag').open=true;render();if(manual)toast('✓ 已刷新','ok')})}
+window.bindNode=function(id,g,sel){var old=bindingForNode(id);var act=g?'bind':'unbind';document.getElementById('rm_'+id).textContent='应用中…';post(VAPI,{action:act,id:id,group:g},function(r){if(r&&r.ok){toast(g?('✓ '+id+' 已绑定 '+g):('✓ '+id+' 已释放'),'ok');loadState(false)}else{toast('绑定失败：'+((r&&r.error)||'ERROR'),'bad');sel.value=old;document.getElementById('rm_'+id).textContent='失败并已回滚'}})}
+window.openChain=function(id){S.chainTarget=id;document.getElementById('chaintarget').textContent='目标节点：'+id+' · 当前：'+chainLabel(id);document.getElementById('chainbg').style.display='block';document.getElementById('chainsearch').value='';renderChain('')}
+window.closeChain=function(){document.getElementById('chainbg').style.display='none'}
+window.renderChain=function(q){q=String(q||'').toLowerCase();var h='';for(var i=0;i<S.nodes.length;i++){var n=S.nodes[i],id=String(n.id||'');if(id===S.chainTarget)continue;var s=[id,n.name,n.address,n.type].join(' ').toLowerCase();if(q&&s.indexOf(q)<0)continue;h+='<div class="fc2-item" onclick="chooseChain(\''+id+'\')"><b>'+esc(n.name||id)+'</b><div class="fc2-small">'+esc(id+' · '+String(n.type||'').toUpperCase()+' · '+String(n.address||''))+'</div></div>'}document.getElementById('chainlist').innerHTML=h||'无匹配节点'}
+window.chooseChain=function(via){var id=S.chainTarget;if(!id)return;toast('链式应用中…','');post(VAPI,{action:'chain',id:id,via:via},function(r){if(r&&r.ok){toast('✓ 前置链已热应用，mihomo PID 未重启','ok');closeChain();loadState(false)}else toast('链式失败并已回滚：'+((r&&r.error)||'ERROR'),'bad')})}
+window.probe=function(id){document.getElementById('test_'+id).innerHTML='<span class="warn">检测中…</span>';post(RAPI,{action:'probe_node',id:id},function(r){if(r&&r.ok){document.getElementById('test_'+id).innerHTML='<span class="ok">'+esc(r.delay||'-')+' ms</span><div class="fc2-small ok">IP '+esc(r.ip||'-')+'</div>';toast('✓ '+id+' '+String(r.ip||''),'ok')}else{document.getElementById('test_'+id).innerHTML='<span class="bad">失败</span>';toast('检测失败：'+((r&&r.error)||'ERROR'),'bad')}})}
+window.delNode=function(id){if(!confirm('删除 '+id+'？'))return;post(API,{action:'delete',id:id},function(r){if(r&&r.ok){toast('✓ 已删除 '+id,'ok');loadState(false)}else toast('删除失败','bad')})}
+window.diagToggle=function(open){post(VAPI,{action:'panel',value:open?'expanded':'collapsed'},function(){});renderDiag()}
+window.setQuery=function(v){S.q=String(v||'');S.page=1;render()};window.setPageSize=function(v){S.pageSize=parseInt(v,10)||50;S.page=1;render()};window.prevPage=function(){if(S.page>1){S.page--;render()}};window.nextPage=function(){var p=Math.max(1,Math.ceil(filtered().length/S.pageSize));if(S.page<p){S.page++;render()}}
+window.openImport=function(){document.getElementById('importbg').style.display='block'};window.closeImport=function(){document.getElementById('importbg').style.display='none'}
+window.doImport=function(){var txt=document.getElementById('importtext').value||'',size=48000,chunks=[];for(var i=0;i<txt.length;i+=size)chunks.push(txt.slice(i,i+size));if(!chunks.length)chunks=[''];var btn=document.getElementById('importbtn');btn.disabled=true;var idx=0;function send(){post(API,{action:'import',chunk:chunks[idx],chunk_index:idx,total_chunks:chunks.length},function(r){if(!r||!r.ok){btn.disabled=false;document.getElementById('importmsg').textContent='导入失败：'+((r&&r.error)||'ERROR');return}idx++;if(idx<chunks.length){send();return}btn.disabled=false;document.getElementById('importmsg').textContent='导入完成';toast('✓ 节点导入完成','ok');closeImport();loadState(false)})}send()}
+loadState(false);
+})();
+</script>
+<%+footer%>
