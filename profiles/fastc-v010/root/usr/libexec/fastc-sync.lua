@@ -14,6 +14,7 @@ local function read_json(path,fallback)
   return fallback
 end
 local function shq(s) return "'"..tostring(s or ""):gsub("'","'\\''").."'" end
+local function trim(s) return (tostring(s or ""):gsub("^%s+",""):gsub("%s+$","")) end
 local function put_select(name,node)
   local payload=jsonc.stringify({name=node})
   local cmd="curl -fsS --connect-timeout 1 --max-time 2 -o /dev/null -X PUT -H 'Content-Type: application/json' --data "..shq(payload).." "..shq(API.."/proxies/"..name).." 2>/dev/null"
@@ -66,14 +67,11 @@ for _,ap in ipairs(aps) do
   if id=="" then id="REJECT" end
   wanted["FASTC-"..g]={kind="group",key=g,target=id,ssid=ap.ssid or g,subnet=ap.subnet or ""}
 end
-
--- Fix1 uses explicit dialer-proxy on chained nodes. Only manage a chain via
--- selector API if an older/newer FASTC-CHAIN-* group is actually present.
 for id,_ in pairs(chains) do
   local name="FASTC-CHAIN-"..tostring(id)
   if proxies[name] then
     local via=chain_via(chains,id); if via=="" then via="DIRECT" end
-    wanted[name]={kind="chain_selector",key=id,target=via}
+    wanted[name]={kind="chain",key=id,target=via}
   end
 end
 
@@ -83,7 +81,8 @@ for name,w in pairs(wanted) do
   local now=(type(obj)=="table" and tostring(obj.now or "")) or ""
   if now~=w.target then changed[#changed+1]={name=name,target=w.target} end
 end
-for _,x in ipairs(changed) do put_select(x.name,x.target) end
+local put_ok={}
+for _,x in ipairs(changed) do put_ok[x.name]=put_select(x.name,x.target) end
 if #changed>0 then local p=snapshot(); if p then proxies=p end end
 
 local out={ok=true,changed=#changed,synced=true,groups={},chains={}}
@@ -92,22 +91,9 @@ for name,w in pairs(wanted) do
   local now=(type(obj)=="table" and tostring(obj.now or "")) or ""
   local synced=(now==w.target)
   if not synced then out.synced=false end
-  if w.kind=="group" then
-    out.groups[w.key]={wanted=w.target,now=now,synced=synced,ssid=w.ssid,subnet=w.subnet}
-  else
-    out.chains[w.key]={via=w.target,mode="selector",now=now,synced=synced}
-  end
+  if w.kind=="group" then out.groups[w.key]={wanted=w.target,now=now,synced=synced,ssid=w.ssid,subnet=w.subnet}
+  else out.chains[w.key]={wanted=w.target,now=now,synced=synced} end
 end
-
--- Always expose explicit-chain state for diagnostics, even though there is no
--- FASTC-CHAIN-* selector in the stable Fix1 baseline.
-for id,_ in pairs(chains) do
-  if not out.chains[id] then
-    local via=chain_via(chains,id)
-    out.chains[id]={via=via,mode="explicit-dialer-proxy",synced=true}
-  end
-end
-
 io.write(jsonc.stringify(out,true),"\n")
 if out.synced then os.exit(0) end
 os.exit(1)
