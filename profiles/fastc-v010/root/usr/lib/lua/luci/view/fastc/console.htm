@@ -27,7 +27,7 @@ local api = dsp.build_url("admin", "services", "fastc_api")
 <div class="cbi-map fc-wrap">
   <div class="fc-titlebar">
     <div>
-      <h2>FastC 0.1.0 开发控制台</h2>
+      <h2>FastC 0.1.1 开发控制台</h2>
       <div class="cbi-map-descr">mihomo 数据面 · 多 SSID 独立策略组 · FastACL 管理思路重构</div>
     </div>
     <div class="fc-actions">
@@ -39,7 +39,7 @@ local api = dsp.build_url("admin", "services", "fastc_api")
     <input class="btn cbi-button cbi-button-add fc-import-primary" type="button" value="＋ 导入节点" onclick="openImport()"/>
     <span id="fc_core" class="fc-pill">mihomo：读取中</span>
     <span id="fc_nodes" class="fc-pill">节点：-</span>
-    <span id="fc_version" class="fc-pill">FastC：0.1.0-dev</span>
+    <span id="fc_version" class="fc-pill">FastC：0.1.1-dev</span>
   </div>
 
   <div id="fc_msg"></div>
@@ -70,7 +70,7 @@ tuic://...
 兼容 SK5 简写：
 host:port:username:password"></textarea>
     <div class="fc-note">
-      FastC 0.1.0 先把链接写入独立节点库，不写 PassWall/PassWall2。支持 VLESS / Reality / VMess / Trojan / SS / SOCKS5 / SOCKS / HTTP / Hysteria2 / TUIC 与多行 SK5 简写。
+      FastC 0.1.1 先把链接写入独立节点库，不写 PassWall/PassWall2。导入本身不依赖 mihomo 是否运行。
     </div>
     <div id="fc_import_msg"></div>
     <div class="fc-actions">
@@ -124,7 +124,7 @@ host:port:username:password"></textarea>
       core.textContent='mihomo：'+(r.core_running?'运行中':'未运行');
       core.className='fc-pill '+(r.core_running?'fc-ok':'fc-warn');
       document.getElementById('fc_nodes').textContent='节点：'+(r.node_count||0);
-      document.getElementById('fc_version').textContent='FastC：'+(c.version||'0.1.0-dev');
+      document.getElementById('fc_version').textContent='FastC：'+(c.version||'0.1.1-dev');
       render();msg('');
     });
   }
