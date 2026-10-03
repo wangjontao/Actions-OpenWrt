@@ -1,6 +1,7 @@
 #!/bin/sh
 [ "$ACTION" = "ifup" ] || exit 0
 [ "$(uci -q get juliang_fastacl.main.enabled 2>/dev/null)" = "1" ] || exit 0
+[ "$(uci -q get juliang_fastacl.main.runtime_mode 2>/dev/null || echo fastacl)" != "normal_proxy" ] || exit 0
 [ "$INTERFACE" = "loopback" ] && exit 0
 
 # Dynamic version: any interface may be one of the discovered wireless
