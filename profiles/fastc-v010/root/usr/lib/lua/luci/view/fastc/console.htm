@@ -4,216 +4,60 @@ local dsp = require "luci.dispatcher"
 local api = dsp.build_url("admin", "services", "fastc_api")
 %>
 <style>
-#maincontent{max-width:none!important}
-.fc-wrap{width:100%;max-width:none!important;box-sizing:border-box}
-.fc-titlebar{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
-.fc-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0}
-.fc-pill{padding:5px 11px;border-radius:16px;background:rgba(128,128,128,.12);font-weight:700}
-.fc-ok{color:#159957}.fc-bad{color:#e43f3b}.fc-warn{color:#e6a23c}
-.fc-table{width:100%;border-collapse:separate;border-spacing:0 8px}
-.fc-table th{padding:8px 10px;text-align:left;white-space:nowrap;border-bottom:1px solid rgba(128,128,128,.22)}
+#maincontent{max-width:none!important}.fc-wrap{width:100%;max-width:none!important;box-sizing:border-box}
+.fc-titlebar{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}.fc-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0}
+.fc-pill{padding:5px 11px;border-radius:16px;background:rgba(128,128,128,.12);font-weight:700}.fc-ok{color:#159957}.fc-bad{color:#e43f3b}.fc-warn{color:#e6a23c}
+.fc-table{width:100%;border-collapse:separate;border-spacing:0 8px}.fc-table th{padding:8px 10px;text-align:left;white-space:nowrap;border-bottom:1px solid rgba(128,128,128,.22)}
 .fc-table td{padding:12px 10px;background:rgba(128,128,128,.05);border-top:1px solid rgba(128,128,128,.08);border-bottom:1px solid rgba(128,128,128,.08)}
-.fc-actions{display:flex;gap:8px;flex-wrap:wrap}
-.fc-import-primary{border-radius:999px!important;padding:0 24px!important;min-height:44px!important;font-size:15px!important;font-weight:700!important}
-.fc-core-btn{border-radius:999px!important;padding:0 18px!important;min-height:38px!important;font-weight:700!important}
-.fc-modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:500}
-.fc-modal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:58rem;max-width:94vw;background:var(--main-bg-color,#fff);padding:22px;border-radius:12px;box-shadow:0 12px 42px rgba(0,0,0,.38)}
-.fc-import-text{width:100%;height:300px;resize:vertical;box-sizing:border-box;font-family:monospace;padding:10px;border:1px solid rgba(128,128,128,.35);border-radius:6px;line-height:1.45}
-.fc-note{font-size:13px;line-height:1.55;opacity:.78;margin-top:8px}
-.fc-small{font-size:12px;opacity:.68}
-#fc_msg,#fc_import_msg{min-height:24px;font-weight:700;margin:8px 0;white-space:pre-wrap}
-@media(max-width:900px){.fc-table{display:block;overflow-x:auto;white-space:nowrap}}
+.fc-actions{display:flex;gap:8px;flex-wrap:wrap}.fc-import-primary{border-radius:999px!important;padding:0 24px!important;min-height:44px!important;font-size:15px!important;font-weight:700!important}
+.fc-core-btn{border-radius:999px!important;padding:0 18px!important;min-height:38px!important;font-weight:700!important}.fc-select{min-width:110px}.fc-test{font-weight:700;white-space:nowrap}
+.fc-modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:500}.fc-modal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:58rem;max-width:94vw;background:var(--main-bg-color,#fff);padding:22px;border-radius:12px;box-shadow:0 12px 42px rgba(0,0,0,.38)}
+.fc-import-text{width:100%;height:300px;resize:vertical;box-sizing:border-box;font-family:monospace;padding:10px;border:1px solid rgba(128,128,128,.35);border-radius:6px;line-height:1.45}.fc-note{font-size:13px;line-height:1.55;opacity:.78;margin-top:8px}.fc-small{font-size:12px;opacity:.68}
+#fc_msg,#fc_import_msg{min-height:24px;font-weight:700;margin:8px 0;white-space:pre-wrap}@media(max-width:900px){.fc-table{display:block;overflow-x:auto;white-space:nowrap}}
 </style>
 
 <div class="cbi-map fc-wrap">
-  <div class="fc-titlebar">
-    <div>
-      <h2>FastC 0.1.2 开发控制台</h2>
-      <div class="cbi-map-descr">mihomo 数据面 · 多 SSID 独立策略组 · FastACL 管理思路重构</div>
-    </div>
-    <div class="fc-actions">
-      <input class="btn cbi-button cbi-button-reload" type="button" value="刷新" onclick="loadStatus()"/>
-    </div>
-  </div>
-
+  <div class="fc-titlebar"><div><h2>FastC 0.1.3 开发控制台</h2><div class="cbi-map-descr">mihomo 管理/检测内核 · A1-A20 独立策略组 · 当前不接管 FastACL 流量</div></div><div class="fc-actions"><input class="btn cbi-button cbi-button-reload" type="button" value="刷新" onclick="loadStatus()"/></div></div>
   <div class="fc-head">
     <input class="btn cbi-button cbi-button-add fc-import-primary" type="button" value="＋ 导入节点" onclick="openImport()"/>
-    <span id="fc_mode" class="fc-pill">模式：读取中</span>
-    <span id="fc_core" class="fc-pill">mihomo：读取中</span>
-    <input id="fc_core_btn" class="btn cbi-button cbi-button-action fc-core-btn" type="button" value="安装 mihomo 内核" onclick="installCore()"/>
-    <span id="fc_nodes" class="fc-pill">节点：-</span>
-    <span id="fc_version" class="fc-pill">FastC：0.1.2-dev</span>
+    <span id="fc_mode" class="fc-pill">模式：读取中</span><span id="fc_core" class="fc-pill">mihomo：读取中</span>
+    <input id="fc_manager_btn" class="btn cbi-button cbi-button-action fc-core-btn" type="button" value="启动 mihomo" onclick="toggleManager()"/>
+    <input id="fc_test_all_btn" class="btn cbi-button cbi-button-action fc-core-btn" type="button" value="检测全部" onclick="testAll()"/>
+    <input id="fc_core_btn" class="btn cbi-button cbi-button-action fc-core-btn" type="button" value="更新 mihomo 内核" onclick="installCore()"/>
+    <span id="fc_nodes" class="fc-pill">节点：-</span><span id="fc_version" class="fc-pill">FastC：0.1.3-dev</span>
   </div>
-
   <div id="fc_msg"></div>
-
-  <div class="cbi-section">
-    <table class="fc-table">
-      <thead><tr><th>节点</th><th>协议</th><th>地址</th><th>策略组</th><th>操作</th></tr></thead>
-      <tbody id="fc_body"><tr><td colspan="5">读取中…</td></tr></tbody>
-    </table>
-  </div>
+  <div class="cbi-section"><table class="fc-table"><thead><tr><th>节点</th><th>协议</th><th>地址</th><th>策略组</th><th>检测</th><th>操作</th></tr></thead><tbody id="fc_body"><tr><td colspan="6">读取中…</td></tr></tbody></table></div>
 </div>
 
-<div id="fc_import_bg" class="fc-modal-bg">
-  <div class="fc-modal">
-    <h3>FastC 批量导入节点</h3>
-    <textarea id="fc_import_text" class="fc-import-text" placeholder="每行一个节点，可直接粘贴：
-
-vless://...
-vmess://...
-trojan://...
-ss://...
-socks5://user:pass@host:port
-socks://user:pass@host:port
-http://user:pass@host:port
-hysteria2://...
-tuic://...
-
-兼容 SK5 简写：
-host:port:username:password"></textarea>
-    <div class="fc-note">
-      FastC 0.1.2 将链接写入独立节点库，不写 PassWall/PassWall2。节点导入不依赖 mihomo 是否运行。
-    </div>
-    <div id="fc_import_msg"></div>
-    <div class="fc-actions">
-      <input id="fc_import_btn" class="btn cbi-button cbi-button-apply" type="button" value="开始导入" onclick="importNodes()"/>
-      <input class="btn cbi-button cbi-button-edit" type="button" value="清空" onclick="document.getElementById('fc_import_text').value=''"/>
-      <input class="btn cbi-button cbi-button-remove" type="button" value="关闭" onclick="closeImport()"/>
-    </div>
-  </div>
-</div>
+<div id="fc_import_bg" class="fc-modal-bg"><div class="fc-modal"><h3>FastC 批量导入节点</h3>
+<textarea id="fc_import_text" class="fc-import-text" placeholder="每行一个节点：\nvless://...\nvmess://...\ntrojan://...\nss://...\nsocks5://user:pass@host:port\nhttp://user:pass@host:port\nhysteria2://...\ntuic://...\n\nSK5 简写：host:port:username:password"></textarea>
+<div class="fc-note">0.1.3 导入仍写入 FastC 独立节点库。真实 mihomo 延迟检测当前优先支持 VLESS/Reality、SOCKS5/SOCKS、HTTP、Trojan。</div><div id="fc_import_msg"></div>
+<div class="fc-actions"><input id="fc_import_btn" class="btn cbi-button cbi-button-apply" type="button" value="开始导入" onclick="importNodes()"/><input class="btn cbi-button cbi-button-edit" type="button" value="清空" onclick="document.getElementById('fc_import_text').value=''"/><input class="btn cbi-button cbi-button-remove" type="button" value="关闭" onclick="closeImport()"/></div></div></div>
 
 <script type="text/javascript">
 (function(){
-  var API='<%=api%>', state={nodes:[],corePresent:false};
-
+  var API='<%=api%>',state={nodes:[],corePresent:false,fastcRunning:false};
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   function msg(t,ok){var e=document.getElementById('fc_msg');e.textContent=t||'';e.className=ok===true?'fc-ok':(ok===false?'fc-bad':'fc-warn')}
   function xhr(params,cb){XHR.get(API,params,function(x,r){cb((x&&x.status===200)?r:null)})}
+  function post(data,cb){var fd=new FormData();for(var k in data)if(Object.prototype.hasOwnProperty.call(data,k))fd.append(k,data[k]);var x=new XMLHttpRequest();x.open('POST',API,true);x.onload=function(){var r=null;try{r=JSON.parse(x.responseText||'{}')}catch(e){};cb(x.status===200?r:null)};x.onerror=function(){cb(null)};x.send(fd)}
+  function groupOptions(cur){var h='<option value="">未分配</option>';for(var i=1;i<=20;i++){var g='A'+i;h+='<option value="'+g+'"'+(cur===g?' selected':'')+'>'+g+'</option>'}return h}
+  function testText(n){if(n.last_ok===true&&n.last_delay)return '<span class="fc-test fc-ok">'+esc(n.last_delay)+' ms</span>';if(n.last_check)return '<span class="fc-test fc-bad" title="'+esc(n.last_error||'检测失败')+'">失败</span>';return '<span class="fc-test fc-warn">未检测</span>'}
+  function render(){var body=document.getElementById('fc_body'),html='';for(var i=0;i<state.nodes.length;i++){var n=state.nodes[i],id=String(n.id||''),jsid=id.replace(/'/g,"\\'");html+='<tr><td><strong>'+esc(n.name||id)+'</strong><div class="fc-small">'+esc(id)+'</div></td><td>'+esc(String(n.type||'').toUpperCase())+'</td><td>'+esc(n.address||'-')+(n.port?':'+esc(n.port):'')+'</td><td><select class="cbi-input-select fc-select" onchange="assignNode(\''+jsid+'\',this.value)">'+groupOptions(n.group||'')+'</select></td><td id="test_'+esc(id)+'">'+testText(n)+'</td><td><div class="fc-actions"><input class="btn cbi-button cbi-button-action" type="button" value="检测" onclick="testNode(\''+jsid+'\')"/><input class="btn cbi-button cbi-button-remove" type="button" value="删除" onclick="deleteNode(\''+jsid+'\')"/></div></td></tr>'}body.innerHTML=html||'<tr><td colspan="6">暂无节点，点击上方“导入节点”开始。</td></tr>'}
 
-  function post(data,cb){
-    var fd=new FormData();
-    for(var k in data) if(Object.prototype.hasOwnProperty.call(data,k)) fd.append(k,data[k]);
-    var x=new XMLHttpRequest();
-    x.open('POST',API,true);
-    x.onload=function(){var r=null;try{r=JSON.parse(x.responseText||'{}')}catch(e){};cb(x.status===200?r:null)};
-    x.onerror=function(){cb(null)};
-    x.send(fd);
-  }
+  window.loadStatus=function(){msg('正在读取 FastC…');xhr({action:'status'},function(r){if(!r||!r.ok){msg('读取 FastC 状态失败',false);return}state.nodes=r.nodes||[];state.corePresent=!!r.core_present;state.fastcRunning=!!r.fastc_running;var c=r.config||{},fa=r.fastacl||{},core=document.getElementById('fc_core'),ver=r.core_version||'';if(r.fastc_running){core.textContent='mihomo：FastC 管理内核运行中'+(ver?' · '+ver:'');core.className='fc-pill fc-ok'}else if(r.core_present){core.textContent='mihomo：已安装 / 未运行'+(ver?' · '+ver:'');core.className='fc-pill fc-warn';core.title=r.core_path||''}else{core.textContent='mihomo：未检测到内核';core.className='fc-pill fc-bad'}document.getElementById('fc_manager_btn').value=r.fastc_running?'停止 mihomo':'启动 mihomo';document.getElementById('fc_core_btn').value=r.core_present?'更新 mihomo 内核':'安装 mihomo 内核';var mode=document.getElementById('fc_mode');mode.textContent='流量模式：'+((c.mode==='fastc')?'FastC':'FastACL');mode.className='fc-pill '+((c.mode!=='fastc'&&fa.running)?'fc-ok':'fc-warn');document.getElementById('fc_nodes').textContent='节点：'+(r.node_count||0);document.getElementById('fc_version').textContent='FastC：'+(c.version||'0.1.3-dev');render();msg('')})}
 
-  function render(){
-    var body=document.getElementById('fc_body'), html='';
-    for(var i=0;i<state.nodes.length;i++){
-      var n=state.nodes[i];
-      html+='<tr>'+
-        '<td><strong>'+esc(n.name||n.id)+'</strong><div class="fc-small">'+esc(n.id||'')+'</div></td>'+
-        '<td>'+esc(String(n.type||'').toUpperCase())+'</td>'+
-        '<td>'+esc(n.address||'-')+(n.port?':'+esc(n.port):'')+'</td>'+
-        '<td>'+esc(n.group||'未分配')+'</td>'+
-        '<td><input class="btn cbi-button cbi-button-remove" type="button" value="删除" onclick="deleteNode(\''+String(n.id||'').replace(/'/g,"\\'")+'\')"/></td>'+
-      '</tr>';
-    }
-    body.innerHTML=html||'<tr><td colspan="5">暂无节点，点击上方“导入节点”开始。</td></tr>';
-  }
+  window.toggleManager=function(){var action=state.fastcRunning?'stop_manager':'start_manager',verb=state.fastcRunning?'停止':'启动';msg('正在'+verb+' mihomo 管理内核…');post({action:action},function(r){if(r&&r.ok){msg('✓ mihomo 管理内核已'+verb+'。当前流量仍由 FastACL 负责。',true);setTimeout(loadStatus,500)}else{msg(verb+'失败：'+((r&&r.error)||'ERROR')+'\n'+((r&&r.detail)||''),false)}})}
+  window.assignNode=function(id,group){msg('正在保存 '+id+' → '+(group||'未分配')+'…');post({action:'assign',id:id,group:group},function(r){if(r&&r.ok){msg('✓ '+id+' 已分配到 '+(group||'未分配'),true);setTimeout(loadStatus,300)}else{msg('分配失败：'+((r&&r.error)||'ERROR')+'\n'+((r&&r.detail)||''),false)}})}
+  window.testNode=function(id,done){var e=document.getElementById('test_'+id);if(e)e.innerHTML='<span class="fc-test fc-warn">检测中…</span>';post({action:'test',id:id},function(r){if(r&&r.ok){if(e)e.innerHTML='<span class="fc-test fc-ok">'+esc(r.delay)+' ms</span>';if(!done)msg('✓ '+id+' 真实代理检测 '+r.delay+' ms',true)}else{if(e)e.innerHTML='<span class="fc-test fc-bad">失败</span>';if(!done)msg('检测失败 '+id+'：'+((r&&r.error)||'ERROR')+'\n'+((r&&r.detail)||''),false)}if(done)done()})}
+  window.testAll=function(){if(!state.nodes.length){msg('没有节点可检测',false);return}var b=document.getElementById('fc_test_all_btn'),i=0;b.disabled=true;msg('正在检测全部节点 0/'+state.nodes.length+'…');function next(){if(i>=state.nodes.length){b.disabled=false;msg('✓ 全部节点检测完成',true);setTimeout(loadStatus,400);return}var id=state.nodes[i].id;i++;msg('正在检测全部节点 '+i+'/'+state.nodes.length+' · '+id+'…');testNode(id,next)}next()}
+  window.installCore=function(){var btn=document.getElementById('fc_core_btn'),verb=state.corePresent?'更新':'安装';if(!confirm(verb+' FastC 官方 mihomo 内核？\n不会切换当前 FastACL 流量。'))return;btn.disabled=true;msg('正在'+verb+' mihomo…');post({action:'install_core'},function(r){btn.disabled=false;if(r&&r.ok){msg('✓ mihomo 内核'+verb+'成功\n'+(r.core_version||''),true);loadStatus()}else msg('mihomo 内核'+verb+'失败：'+((r&&r.error)||'ERROR')+'\n'+((r&&r.detail)||''),false)})}
 
-  window.loadStatus=function(){
-    msg('正在读取 FastC…');
-    xhr({action:'status'},function(r){
-      if(!r||!r.ok){msg('读取 FastC 状态失败',false);return}
-      state.nodes=r.nodes||[];state.corePresent=!!r.core_present;
-      var c=r.config||{}, fa=r.fastacl||{};
-      var core=document.getElementById('fc_core');
-      var ver=r.core_version||'';
-      if(r.core_running){
-        core.textContent='mihomo：运行中'+(ver?' · '+ver:'');core.className='fc-pill fc-ok';
-      }else if(r.core_present){
-        core.textContent='mihomo：已安装 / 未运行'+(ver?' · '+ver:'');core.className='fc-pill fc-warn';
-        core.title=r.core_path||'';
-      }else{
-        core.textContent='mihomo：未检测到内核';core.className='fc-pill fc-bad';
-      }
-      var coreBtn=document.getElementById('fc_core_btn');
-      coreBtn.value=r.core_present?'更新 mihomo 内核':'安装 mihomo 内核';
-      var mode=document.getElementById('fc_mode');
-      var modeName=(c.mode==='fastc')?'FastC':'FastACL';
-      mode.textContent='模式：'+modeName;
-      mode.className='fc-pill '+((modeName==='FastACL'&&fa.running)||(modeName==='FastC'&&r.core_running)?'fc-ok':'fc-warn');
-      document.getElementById('fc_nodes').textContent='节点：'+(r.node_count||0);
-      document.getElementById('fc_version').textContent='FastC：'+(c.version||'0.1.2-dev');
-      render();msg('');
-    });
-  }
-
-  window.installCore=function(){
-    var btn=document.getElementById('fc_core_btn');
-    var verb=state.corePresent?'更新':'安装';
-    if(!confirm(verb+' FastC 官方 mihomo 内核？\n\n只安装核心文件，不会关闭 FastACL，也不会接管当前流量。')) return;
-    btn.disabled=true;
-    msg('正在'+verb+' mihomo v1.19.32… 官方 ARM64 文件约 20 MB，请稍候。');
-    post({action:'install_core'},function(r){
-      btn.disabled=false;
-      if(r&&r.ok){
-        msg('✓ mihomo 内核'+verb+'成功\n'+(r.core_version||'')+'\n'+(r.core_path||'/usr/bin/mihomo'),true);
-        loadStatus();
-      }else{
-        var detail=(r&&r.detail)?('\n'+String(r.detail).slice(-1800)):'';
-        msg('mihomo 内核'+verb+'失败：'+((r&&r.error)||'网络请求错误')+detail,false);
-      }
-    });
-  }
-
-  window.openImport=function(){
-    document.getElementById('fc_import_bg').style.display='block';
-    document.getElementById('fc_import_msg').textContent='';
-  }
-  window.closeImport=function(){document.getElementById('fc_import_bg').style.display='none'}
-
-  function sendChunk(text,index,total,done){
-    post({action:'import',chunk:text,chunk_index:String(index),total_chunks:String(total)},function(r){
-      if(!r||!r.ok){done(r||{error:'网络请求错误'});return}
-      done(null,r);
-    });
-  }
-
-  window.importNodes=function(){
-    var text=document.getElementById('fc_import_text').value||'';
-    var out=document.getElementById('fc_import_msg');
-    var btn=document.getElementById('fc_import_btn');
-    if(!text.trim()){out.textContent='请先粘贴节点';out.className='fc-bad';return}
-
-    var size=48000, chunks=[];
-    for(var p=0;p<text.length;p+=size) chunks.push(text.slice(p,p+size));
-    var i=0,last=null;btn.disabled=true;out.className='fc-warn';out.textContent='正在导入 0/'+chunks.length+'…';
-
-    function next(){
-      sendChunk(chunks[i],i,chunks.length,function(err,r){
-        if(err){
-          btn.disabled=false;out.className='fc-bad';
-          var detail=(err&&err.detail)?('\n'+String(err.detail).slice(0,1200)):'';
-          out.textContent='导入失败：'+((err&&err.error)||'ERROR')+detail;
-          return;
-        }
-        last=r||last;i++;
-        out.textContent='正在导入 '+i+'/'+chunks.length+'…';
-        if(i<chunks.length){next();return}
-        btn.disabled=false;out.className='fc-ok';
-        var rr=last||{};
-        out.textContent='✓ 导入完成：新增 '+(rr.added||0)+'，重复 '+(rr.duplicate||0)+'，无法识别 '+((rr.rejected||[]).length||0)+'，节点总数 '+(rr.total||0);
-        setTimeout(loadStatus,500);
-      });
-    }
-    next();
-  }
-
-  window.deleteNode=function(id){
-    if(!confirm('确定删除 FastC 节点 '+id+'？')) return;
-    post({action:'delete',id:id},function(r){
-      if(r&&r.ok){msg('✓ 节点已删除',true);loadStatus()}
-      else msg('删除失败：'+((r&&r.error)||'ERROR'),false);
-    });
-  }
-
+  window.openImport=function(){document.getElementById('fc_import_bg').style.display='block';document.getElementById('fc_import_msg').textContent=''};window.closeImport=function(){document.getElementById('fc_import_bg').style.display='none'}
+  function sendChunk(text,index,total,done){post({action:'import',chunk:text,chunk_index:String(index),total_chunks:String(total)},function(r){if(!r||!r.ok){done(r||{error:'网络请求错误'});return}done(null,r)})}
+  window.importNodes=function(){var text=document.getElementById('fc_import_text').value||'',out=document.getElementById('fc_import_msg'),btn=document.getElementById('fc_import_btn');if(!text.trim()){out.textContent='请先粘贴节点';out.className='fc-bad';return}var size=48000,chunks=[];for(var p=0;p<text.length;p+=size)chunks.push(text.slice(p,p+size));var i=0,last=null;btn.disabled=true;out.className='fc-warn';out.textContent='正在导入 0/'+chunks.length+'…';function next(){sendChunk(chunks[i],i,chunks.length,function(err,r){if(err){btn.disabled=false;out.className='fc-bad';out.textContent='导入失败：'+((err&&err.error)||'ERROR')+'\n'+((err&&err.detail)||'');return}last=r||last;i++;out.textContent='正在导入 '+i+'/'+chunks.length+'…';if(i<chunks.length){next();return}btn.disabled=false;out.className='fc-ok';var rr=last||{};out.textContent='✓ 导入完成：新增 '+(rr.added||0)+'，重复 '+(rr.duplicate||0)+'，无法识别 '+((rr.rejected||[]).length||0)+'，节点总数 '+(rr.total||0);setTimeout(loadStatus,500)})}next()}
+  window.deleteNode=function(id){if(!confirm('确定删除 FastC 节点 '+id+'？'))return;post({action:'delete',id:id},function(r){if(r&&r.ok){msg('✓ 节点已删除',true);loadStatus()}else msg('删除失败：'+((r&&r.error)||'ERROR'),false)})}
   loadStatus();
 })();
 </script>
