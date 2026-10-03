@@ -135,14 +135,14 @@ local function bind(node,group)
   local topo=read_json(TOPO_DB,{aps={}}); local tm=topo_map(topo)
   local bindings=read_json(BIND_DB,{})
   local chains=read_json(CHAIN_DB,{})
-  if not nm[node] then return false,"NODE_NOT_FOUND:"..node end
+  if node~="DIRECT" and node~="REJECT" and not nm[node] then return false,"NODE_NOT_FOUND:"..node end
   if not tm[group] then return false,"GROUP_NOT_FOUND:"..group end
 
   local old=clone(bindings)
   local moved_from=nil
   for g,b in pairs(bindings) do
     local id=type(b)=="table" and tostring(b.node or "") or tostring(b or "")
-    if id==node and g~=group then bindings[g]=nil; moved_from=g end
+    if node~="DIRECT" and node~="REJECT" and id==node and g~=group then bindings[g]=nil; moved_from=g end
   end
   local released=nil
   if bindings[group] then
