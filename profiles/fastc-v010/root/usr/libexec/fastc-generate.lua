@@ -52,8 +52,6 @@ end
 local function add(lines,s) lines[#lines+1]=s end
 
 os.execute("lua /usr/libexec/fastc-discover.lua >/tmp/fastc-discover.json 2>/tmp/fastc-discover.log || true")
--- Migration is first-run only. Never call migrate during normal hot reload,
--- because migrate owns initial last-good snapshots and must not overwrite them.
 if not readall(BIND_DB) or not readall(CHAIN_DB) then
   os.execute("lua /usr/libexec/fastc-state.lua migrate >/tmp/fastc-state-migrate.json 2>/tmp/fastc-state-migrate.log || true")
 end
@@ -61,7 +59,6 @@ end
 local topology=parse_json(TOPO,{aps={}})
 local aps=type(topology.aps)=="table" and topology.aps or {}
 if #aps==0 then io.stderr:write("FastC topology unavailable: no discovered AP/network slots\n"); os.exit(2) end
-
 local nodes=parse_json(DB,{})
 local bindings=parse_json(BIND_DB,{})
 local chains=parse_json(CHAIN_DB,{})
@@ -71,8 +68,7 @@ for _,n in ipairs(nodes) do byid[tostring(n.id or "")]=n end
 local parsed,invalid={},{}
 local supported_scheme={vless=true,socks5=true,socks5h=true,socks=true,http=true,trojan=true}
 for _,n in ipairs(nodes) do
-  local id=tostring(n.id or "")
-  local u,err=split_uri(n.raw or "")
+  local id=tostring(n.id or ""); local u,err=split_uri(n.raw or "")
   if id=="" then invalid[id]="BAD_ID"
   elseif not u then invalid[id]=err
   elseif not supported_scheme[u.scheme] then invalid[id]="RUNTIME_UNSUPPORTED:"..tostring(u.scheme)
@@ -134,8 +130,9 @@ local function emit_proxy(lines,n,u)
     if u.query.sni and u.query.sni~="" then add(lines,"    sni: "..yq(u.query.sni)) end
     if u.query.fp and u.query.fp~="" then add(lines,"    client-fingerprint: "..yq(u.query.fp)) end
   end
-  local via=chain_via(id)
-  if via~="" then add(lines,"    dialer-proxy: "..yq(via)) end
+  -- Chain relationship itself is now a selector. Changing the selected
+  -- upstream does not require regenerating or reloading the main config.
+  add(lines,"    dialer-proxy: "..yq("FASTC-CHAIN-"..id))
 end
 
 local tproxy=tonumber(uci:get("fastc","main","tproxy_port") or "7895") or 7895
@@ -147,81 +144,53 @@ local lines={
   "mode: rule","log-level: warning","allow-lan: true","bind-address: \"*\"","ipv6: false",
   "find-process-mode: off","unified-delay: true","tcp-concurrent: true",
   "profile:","  store-selected: false","  store-fake-ip: false",
-  "tproxy-port: "..tostring(tproxy),
-  "external-controller: "..controller,
+  "tproxy-port: "..tostring(tproxy),"external-controller: "..controller,
   "dns:","  enable: true","  listen: 127.0.0.1:"..tostring(dnsport),"  ipv6: false","  enhanced-mode: redir-host",
   "  default-nameserver:","    - 1.1.1.1","    - 8.8.8.8",
   "  proxy-server-nameserver:","    - 1.1.1.1","    - 8.8.8.8",
   "  nameserver:","    - https://1.1.1.1/dns-query#FASTC-DNS-RESOLVER","    - https://8.8.8.8/dns-query#FASTC-DNS-RESOLVER",
   "proxies:"
 }
+local supported,rejected={},{}; local supported_map={}
+for _,n in ipairs(nodes) do local id=tostring(n.id or ""); if parsed[id] then emit_proxy(lines,n,parsed[id]); supported[#supported+1]=id; supported_map[id]=true else rejected[#rejected+1]={id=id,error=invalid[id] or "UNSUPPORTED"} end end
+add(lines,"  - name: \"FASTC-DNS-HIJACK\""); add(lines,"    type: dns")
 
-local supported,rejected={},{}
-local supported_map={}
-for _,n in ipairs(nodes) do
-  local id=tostring(n.id or "")
-  if parsed[id] then emit_proxy(lines,n,parsed[id]); supported[#supported+1]=id; supported_map[id]=true
-  else rejected[#rejected+1]={id=id,error=invalid[id] or "UNSUPPORTED"} end
-end
-add(lines,"  - name: \"FASTC-DNS-HIJACK\"")
-add(lines,"    type: dns")
+-- Relay pool is intentionally small: only explicit relay=true nodes and nodes
+-- already referenced as a chain upstream. This avoids O(N^2) config growth when
+-- hundreds of SOCKS5 endpoints are imported.
+local relay_set={}
+for _,n in ipairs(nodes) do local id=tostring(n.id or ""); if supported_map[id] and (n.relay==true or tostring(n.relay or "")=="1") then relay_set[id]=true end end
+for _,c in pairs(chains) do local via=type(c)=="table" and tostring(c.via or "") or tostring(c or ""); if supported_map[via] then relay_set[via]=true end end
+local relays={}
+for _,n in ipairs(nodes) do local id=tostring(n.id or ""); if relay_set[id] then relays[#relays+1]=id end end
 
 add(lines,"proxy-groups:")
+-- Per-node chain selectors: ordinary chain switching is now one API PUT.
+for _,id in ipairs(supported) do
+  local via=chain_via(id); local chosen=(via~="" and relay_set[via] and via~=id) and via or "DIRECT"
+  add(lines,"  - name: "..yq("FASTC-CHAIN-"..id)); add(lines,"    type: select"); add(lines,"    default-selected: "..yq(chosen)); add(lines,"    proxies:"); add(lines,"      - DIRECT")
+  for _,rid in ipairs(relays) do if rid~=id then add(lines,"      - "..yq(rid)) end end
+end
+
 local selected_map={}
 for _,ap in ipairs(aps) do
-  local g=tostring(ap.group or ("A"..tostring(ap.slot or "")))
-  local b=bindings[g]
+  local g=tostring(ap.group or ("A"..tostring(ap.slot or ""))); local b=bindings[g]
   local wanted=type(b)=="table" and tostring(b.node or "") or tostring(b or "")
-  local chosen=(wanted~="" and supported_map[wanted]) and wanted or "REJECT"
-  selected_map[g]=chosen
-  add(lines,"  - name: "..yq("FASTC-"..g)); add(lines,"    type: select")
-  add(lines,"    default-selected: "..yq(chosen))
-  add(lines,"    proxies:")
-  for _,id in ipairs(supported) do add(lines,"      - "..yq(id)) end
-  add(lines,"      - REJECT")
+  local chosen=(wanted~="" and supported_map[wanted]) and wanted or "REJECT"; selected_map[g]=chosen
+  add(lines,"  - name: "..yq("FASTC-"..g)); add(lines,"    type: select"); add(lines,"    default-selected: "..yq(chosen)); add(lines,"    proxies:")
+  for _,id in ipairs(supported) do add(lines,"      - "..yq(id)) end; add(lines,"      - REJECT")
 end
-
 local dns_chosen="REJECT"
-for _,ap in ipairs(aps) do
-  local g=tostring(ap.group or ("A"..tostring(ap.slot or "")))
-  local b=bindings[g]; local id=type(b)=="table" and tostring(b.node or "") or tostring(b or "")
-  if supported_map[id] then dns_chosen=id; break end
-end
+for _,ap in ipairs(aps) do local g=tostring(ap.group or ("A"..tostring(ap.slot or ""))); local b=bindings[g]; local id=type(b)=="table" and tostring(b.node or "") or tostring(b or ""); if supported_map[id] then dns_chosen=id; break end end
 if dns_chosen=="REJECT" and #supported>0 then dns_chosen=supported[1] end
-add(lines,"  - name: \"FASTC-DNS-RESOLVER\"")
-add(lines,"    type: select")
-add(lines,"    default-selected: "..yq(dns_chosen))
-add(lines,"    proxies:")
-for _,id in ipairs(supported) do add(lines,"      - "..yq(id)) end
-add(lines,"      - REJECT")
+add(lines,"  - name: \"FASTC-DNS-RESOLVER\""); add(lines,"    type: select"); add(lines,"    default-selected: "..yq(dns_chosen)); add(lines,"    proxies:"); for _,id in ipairs(supported) do add(lines,"      - "..yq(id)) end; add(lines,"      - REJECT")
+add(lines,"  - name: \"FASTC-NODE-PROBE\""); add(lines,"    type: select"); add(lines,"    default-selected: "..yq((#supported>0 and supported[1] or "REJECT"))); add(lines,"    proxies:"); for _,id in ipairs(supported) do add(lines,"      - "..yq(id)) end; add(lines,"      - REJECT")
 
-add(lines,"  - name: \"FASTC-NODE-PROBE\"")
-add(lines,"    type: select")
-add(lines,"    default-selected: "..yq((#supported>0 and supported[1] or "REJECT")))
-add(lines,"    proxies:")
-for _,id in ipairs(supported) do add(lines,"      - "..yq(id)) end
-add(lines,"      - REJECT")
-
--- 0.2.0 keeps only one shared diagnostic listener. Wireless-specific probe
--- listeners were removed because they duplicated state and consumed resources.
 add(lines,"listeners:")
-add(lines,"  - name: \"fastc-node-probe\"")
-add(lines,"    type: socks")
-add(lines,"    listen: 127.0.0.1")
-add(lines,"    port: "..tostring(node_probe_port))
-add(lines,"    udp: false")
-add(lines,"    proxy: \"FASTC-NODE-PROBE\"")
-
-add(lines,"rules:")
-add(lines,"  - DST-PORT,53,FASTC-DNS-HIJACK")
+add(lines,"  - name: \"fastc-node-probe\""); add(lines,"    type: socks"); add(lines,"    listen: 127.0.0.1"); add(lines,"    port: "..tostring(node_probe_port)); add(lines,"    udp: false"); add(lines,"    proxy: \"FASTC-NODE-PROBE\"")
+add(lines,"rules:"); add(lines,"  - DST-PORT,53,FASTC-DNS-HIJACK")
 local subnets={}
-for _,ap in ipairs(aps) do
-  local g=tostring(ap.group or ("A"..tostring(ap.slot or "")))
-  local subnet=tostring(ap.subnet or "")
-  if subnet~="" then subnets[g]=subnet; add(lines,"  - SRC-IP-CIDR,"..subnet..",FASTC-"..g) end
-end
+for _,ap in ipairs(aps) do local g=tostring(ap.group or ("A"..tostring(ap.slot or ""))); local subnet=tostring(ap.subnet or ""); if subnet~="" then subnets[g]=subnet; add(lines,"  - SRC-IP-CIDR,"..subnet..",FASTC-"..g) end end
 add(lines,"  - MATCH,DIRECT"); add(lines,"")
-
-os.execute("mkdir -p /etc/fastc")
-writeall(OUT,table.concat(lines,"\n"))
-io.write(jsonc.stringify({ok=true,version="0.2.0-dev",config=OUT,supported=supported,rejected=rejected,total=#nodes,topology=topology,subnets=subnets,selected=selected_map,dns_resolver=dns_chosen,node_probe_port=node_probe_port,bindings=bindings,chains=chains},true),"\n")
+os.execute("mkdir -p /etc/fastc"); writeall(OUT,table.concat(lines,"\n"))
+io.write(jsonc.stringify({ok=true,version="0.2.0-dev",config=OUT,supported=supported,rejected=rejected,total=#nodes,topology=topology,subnets=subnets,selected=selected_map,dns_resolver=dns_chosen,node_probe_port=node_probe_port,bindings=bindings,chains=chains,relays=relays},true),"\n")
