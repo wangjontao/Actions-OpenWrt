@@ -1,7 +1,8 @@
 #!/bin/sh
-# JuLiangTK V9 FastACL migration/defaults.
-# This intentionally runs on sysupgrade too, including when old V8 settings
-# and /etc/juliang-5wifi.done were preserved.
+
+# FastACL V2.4.2 migration/defaults.
+# Core ownership values are fixed; user-facing DNS/health preferences are only
+# defaulted when absent so upgrades do not silently overwrite tuning.
 
 touch /etc/config/juliang_fastacl
 uci -q get juliang_fastacl.main >/dev/null || uci set juliang_fastacl.main='main'
@@ -9,18 +10,19 @@ uci set juliang_fastacl.main.enabled='1'
 uci set juliang_fastacl.main.tproxy_port='12345'
 uci set juliang_fastacl.main.mark='0x66'
 uci set juliang_fastacl.main.route_table='100'
-uci set juliang_fastacl.main.dns_mode='doh'
-uci set juliang_fastacl.main.dns_server='1.1.1.1'
-uci set juliang_fastacl.main.dns_tls_server_name='cloudflare-dns.com'
-uci set juliang_fastacl.main.dns_path='/dns-query'
-uci set juliang_fastacl.main.health_probe_interval='120'
-uci set juliang_fastacl.main.health_fail_threshold='3'
-uci set juliang_fastacl.main.include_lan='1'
-uci set juliang_fastacl.main.version='2.4.0'
+uci -q get juliang_fastacl.main.dns_mode >/dev/null || uci set juliang_fastacl.main.dns_mode='doh'
+uci -q get juliang_fastacl.main.dns_server >/dev/null || uci set juliang_fastacl.main.dns_server='1.1.1.1'
+uci -q get juliang_fastacl.main.dns_tls_server_name >/dev/null || uci set juliang_fastacl.main.dns_tls_server_name='cloudflare-dns.com'
+uci -q get juliang_fastacl.main.dns_path >/dev/null || uci set juliang_fastacl.main.dns_path='/dns-query'
+uci -q get juliang_fastacl.main.health_probe_interval >/dev/null || uci set juliang_fastacl.main.health_probe_interval='120'
+uci -q get juliang_fastacl.main.health_fail_threshold >/dev/null || uci set juliang_fastacl.main.health_fail_threshold='3'
+uci -q get juliang_fastacl.main.include_lan >/dev/null || uci set juliang_fastacl.main.include_lan='1'
+uci set juliang_fastacl.main.version='2.4.2'
 uci commit juliang_fastacl
 
 # Remove every legacy A1..A10 -> WAN forwarding, including anonymous sections
-# left by an earlier V8 sysupgrade. Do not depend on section names.
+# left by an earlier build. This is deliberate: FastACL owns those APs and its
+# fail-closed contract requires no direct WAN bypass.
 changed=0
 for sec in $(uci -q show firewall | sed -n "s/^firewall\.\([^.=]*\)=forwarding$/\1/p"); do
     src="$(uci -q get firewall.$sec.src 2>/dev/null || true)"
@@ -40,7 +42,8 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
 done
 [ "$changed" -eq 0 ] || { uci commit firewall; /etc/init.d/firewall restart >/dev/null 2>&1 || true; }
 
-# PassWall2 remains node database/LuCI only; FastACL owns A1..A10 dataplane.
+# PassWall2 remains the node database/LuCI only while FastACL owns the AP data
+# plane. Disabling its transparent runtime avoids dual interception.
 uci -q get passwall2.@global[0] >/dev/null && {
     uci -q set passwall2.@global[0].enabled='0'
     uci -q set passwall2.@global[0].acl_enable='0'
@@ -53,9 +56,13 @@ uci -q get passwall2.@global[0] >/dev/null && {
 chmod 0755 /usr/bin/juliang-fastacl /usr/bin/juliang-fastacl-guard /usr/bin/juliang-fastacl-luci-install >/dev/null 2>&1 || true
 chmod 0755 /etc/init.d/juliang-fastacl /etc/hotplug.d/iface/99-juliang-fastacl >/dev/null 2>&1 || true
 
-/usr/bin/juliang-fastacl-luci-install >/tmp/juliang-fastacl-luci-install.log 2>&1 || logger -t juliang-fastacl "LuCI patch failed; Guardian will still start; see /tmp/juliang-fastacl-luci-install.log"
-/etc/init.d/juliang-fastacl enable >/dev/null 2>&1 || true
-/etc/init.d/juliang-fastacl restart >/dev/null 2>&1 || true
+# Full installer V2.4.2 defers service start until every patch has validated.
+# Normal sysupgrade/default execution still behaves as before.
+if [ "${JFA_DEFER_RUNTIME:-0}" != "1" ]; then
+    /usr/bin/juliang-fastacl-luci-install >/tmp/juliang-fastacl-luci-install.log 2>&1 || logger -t juliang-fastacl "LuCI patch failed; Guardian will still start; see /tmp/juliang-fastacl-luci-install.log"
+    /etc/init.d/juliang-fastacl enable >/dev/null 2>&1 || true
+    /etc/init.d/juliang-fastacl restart >/dev/null 2>&1 || true
+fi
 
-logger -t juliang-fastacl "2.4.0 migration applied: wireless visibility controls + Guardian + real-exit health enabled"
+logger -t juliang-fastacl "2.4.2 migration applied: settings-preserving defaults + FastACL ownership"
 exit 0
