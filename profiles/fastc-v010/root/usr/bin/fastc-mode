@@ -1,0 +1,151 @@
+#!/bin/sh
+set -eu
+
+DP="/usr/bin/fastc-dataplane"
+GEN="/usr/libexec/fastc-generate.lua"
+TPORT="$(uci -q get fastc.main.tproxy_port 2>/dev/null || echo 7895)"
+
+log(){ echo "[FastC-MODE] $*"; }
+
+has_listener(){
+  ss -lntup 2>/dev/null | grep -q ":$TPORT " && return 0
+  netstat -lntup 2>/dev/null | grep -q ":$TPORT " && return 0
+  return 1
+}
+
+start_core(){
+  lua "$GEN" >/tmp/fastc-generate.json 2>/tmp/fastc-generate.log || {
+    log "config generation failed"; cat /tmp/fastc-generate.log 2>/dev/null || true; return 1;
+  }
+  /usr/bin/mihomo -t -d /etc/fastc -f /etc/fastc/config.yaml >/tmp/fastc-mihomo-check.log 2>&1 || {
+    log "mihomo config check failed"; cat /tmp/fastc-mihomo-check.log 2>/dev/null || true; return 1;
+  }
+  /etc/init.d/fastc enable >/dev/null 2>&1 || true
+  /etc/init.d/fastc restart >/tmp/fastc-start.log 2>&1 || true
+  i=0
+  while [ "$i" -lt 8 ]; do
+    has_listener && return 0
+    sleep 1; i=$((i+1))
+  done
+  log "mihomo TProxy port $TPORT did not become ready"
+  cat /tmp/fastc-start.log 2>/dev/null || true
+  return 1
+}
+
+stop_fastacl_dataplane(){
+  uci set juliang_fastacl.main.enabled='0'
+  uci commit juliang_fastacl
+  /etc/init.d/juliang-fastacl disable >/dev/null 2>&1 || true
+  /etc/init.d/juliang-fastacl stop >/dev/null 2>&1 || true
+  /usr/bin/juliang-fastacl stop >/dev/null 2>&1 || true
+  nft list table inet juliang_fastacl >/dev/null 2>&1 && nft delete table inet juliang_fastacl >/dev/null 2>&1 || true
+  ip rule del fwmark 0x66/0xff table 100 priority 10000 >/dev/null 2>&1 || true
+  ip route flush table 100 >/dev/null 2>&1 || true
+}
+
+restore_fastacl(){
+  log "restoring FastACL..."
+  "$DP" down >/dev/null 2>&1 || true
+  uci set juliang_fastacl.main.enabled='1'
+  uci commit juliang_fastacl
+  /etc/init.d/juliang-fastacl enable >/dev/null 2>&1 || true
+  if ! /usr/bin/juliang-fastacl repair >/tmp/fastc-rollback-fastacl.log 2>&1; then
+    log "FastACL repair failed during rollback"
+    cat /tmp/fastc-rollback-fastacl.log 2>/dev/null || true
+    return 1
+  fi
+  /etc/init.d/juliang-fastacl restart >/dev/null 2>&1 || true
+  sleep 1
+  nft list table inet juliang_fastacl >/dev/null 2>&1 || return 1
+  nft list table inet juliang_killswitch >/dev/null 2>&1 || return 1
+  /usr/bin/juliang-fastacl status 2>/dev/null | grep -q '^router: running' || return 1
+  "$DP" release >/dev/null 2>&1 || true
+  uci set fastc.main.mode='fastacl'
+  uci set fastc.main.enabled='0'
+  uci commit fastc
+  return 0
+}
+
+switch_fastc(){
+  [ -x /usr/bin/mihomo ] || { log "mihomo core missing"; return 1; }
+  [ -x "$DP" ] || { log "FastC dataplane helper missing"; return 1; }
+
+  log "1/6 generating and starting FastC mihomo..."
+  start_core || return 1
+
+  log "2/6 installing FastC fail-closed kill-switch..."
+  "$DP" killswitch || return 1
+
+  log "3/6 stopping FastACL dataplane while old kill-switch stays active..."
+  stop_fastacl_dataplane
+
+  log "4/6 installing FastC TProxy nftables + fwmark route..."
+  if ! "$DP" up; then
+    log "FastC dataplane activation failed; rolling back to FastACL"
+    restore_fastacl || true
+    return 1
+  fi
+
+  log "5/6 validating FastC dataplane..."
+  if ! "$DP" check; then
+    log "FastC dataplane validation failed; rolling back to FastACL"
+    restore_fastacl || true
+    return 1
+  fi
+
+  log "6/6 releasing old FastACL kill-switch and committing mode..."
+  nft list table inet juliang_killswitch >/dev/null 2>&1 && nft delete table inet juliang_killswitch >/dev/null 2>&1 || true
+  uci set fastc.main.mode='fastc'
+  uci set fastc.main.enabled='1'
+  uci commit fastc
+  log "FastC now owns A1-A20 traffic"
+}
+
+switch_fastacl(){
+  [ -x "$DP" ] || return 1
+  log "1/5 installing FastC fail-closed guard during handoff..."
+  "$DP" killswitch || return 1
+
+  log "2/5 removing FastC TProxy interception but keeping guard..."
+  "$DP" down || true
+
+  log "3/5 rebuilding FastACL dataplane..."
+  uci set juliang_fastacl.main.enabled='1'
+  uci commit juliang_fastacl
+  /etc/init.d/juliang-fastacl enable >/dev/null 2>&1 || true
+  if ! /usr/bin/juliang-fastacl repair >/tmp/fastc-fastacl-restore.log 2>&1; then
+    log "FastACL repair failed; FastC guard remains closed"
+    cat /tmp/fastc-fastacl-restore.log 2>/dev/null || true
+    return 1
+  fi
+  /etc/init.d/juliang-fastacl restart >/dev/null 2>&1 || true
+  sleep 1
+
+  log "4/5 validating FastACL..."
+  nft list table inet juliang_fastacl >/dev/null 2>&1 || return 1
+  nft list table inet juliang_killswitch >/dev/null 2>&1 || return 1
+  /usr/bin/juliang-fastacl status 2>/dev/null | grep -q '^router: running' || return 1
+
+  log "5/5 releasing FastC guard and committing mode..."
+  "$DP" release >/dev/null 2>&1 || true
+  uci set fastc.main.mode='fastacl'
+  uci set fastc.main.enabled='0'
+  uci commit fastc
+  log "FastACL now owns A1-A20 traffic"
+}
+
+status(){
+  mode="$(uci -q get fastc.main.mode 2>/dev/null || echo fastacl)"
+  echo "mode=$mode"
+  echo "fastc_tproxy=$(nft list table inet fastc_tproxy >/dev/null 2>&1 && echo 1 || echo 0)"
+  echo "fastc_killswitch=$(nft list table inet fastc_killswitch >/dev/null 2>&1 && echo 1 || echo 0)"
+  echo "fastacl_tproxy=$(nft list table inet juliang_fastacl >/dev/null 2>&1 && echo 1 || echo 0)"
+  echo "fastacl_killswitch=$(nft list table inet juliang_killswitch >/dev/null 2>&1 && echo 1 || echo 0)"
+}
+
+case "${1:-status}" in
+  fastc) switch_fastc ;;
+  fastacl) switch_fastacl ;;
+  status) status ;;
+  *) echo "Usage: $0 {fastc|fastacl|status}" >&2; exit 2 ;;
+esac
