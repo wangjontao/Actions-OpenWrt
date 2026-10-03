@@ -3,6 +3,7 @@ set -eu
 
 DP="/usr/bin/fastc-dataplane"
 GEN="/usr/libexec/fastc-generate.lua"
+SYNC="/usr/libexec/fastc-sync.lua"
 TPORT="$(uci -q get fastc.main.tproxy_port 2>/dev/null || echo 7895)"
 
 log(){ echo "[FastC-MODE] $*"; }
@@ -18,6 +19,16 @@ core_healthy(){
   has_listener
 }
 
+sync_selectors(){
+  [ -x "$SYNC" ] || return 1
+  lua "$SYNC" >/tmp/fastc-sync-mode.json 2>/tmp/fastc-sync-mode.log || {
+    log "mihomo selector sync failed"
+    cat /tmp/fastc-sync-mode.log 2>/dev/null || true
+    cat /tmp/fastc-sync-mode.json 2>/dev/null || true
+    return 1
+  }
+}
+
 start_core(){
   lua "$GEN" >/tmp/fastc-generate.json 2>/tmp/fastc-generate.log || {
     log "config generation failed"; cat /tmp/fastc-generate.log 2>/dev/null || true; return 1;
@@ -29,7 +40,10 @@ start_core(){
   /etc/init.d/fastc restart >/tmp/fastc-start.log 2>&1 || true
   i=0
   while [ "$i" -lt 10 ]; do
-    core_healthy && return 0
+    if core_healthy; then
+      sync_selectors || return 1
+      return 0
+    fi
     sleep 1; i=$((i+1))
   done
   log "mihomo TProxy port $TPORT did not become ready"
@@ -76,7 +90,7 @@ switch_fastc(){
   [ -x /usr/bin/mihomo ] || { log "mihomo core missing"; return 1; }
   [ -x "$DP" ] || { log "FastC dataplane helper missing"; return 1; }
 
-  log "1/7 generating and starting FastC mihomo..."
+  log "1/7 discovering topology, generating config and starting FastC mihomo..."
   start_core || return 1
 
   log "2/7 installing FastC fail-closed kill-switch..."
@@ -92,8 +106,8 @@ switch_fastc(){
     return 1
   fi
 
-  log "5/7 validating FastC dataplane..."
-  if ! core_healthy || ! "$DP" check; then
+  log "5/7 validating FastC dataplane and selector state..."
+  if ! core_healthy || ! sync_selectors || ! "$DP" check; then
     log "FastC dataplane validation failed; rolling back to FastACL"
     restore_fastacl || true
     return 1
@@ -106,23 +120,21 @@ switch_fastc(){
   sleep 1
 
   log "7/7 final health verification and old guard release..."
-  if ! core_healthy || ! "$DP" check; then
+  if ! core_healthy || ! sync_selectors || ! "$DP" check; then
     log "FastC lost health after mode commit; rolling back to FastACL"
     restore_fastacl || true
     return 1
   fi
   nft list table inet juliang_killswitch >/dev/null 2>&1 && nft delete table inet juliang_killswitch >/dev/null 2>&1 || true
-  log "FastC now owns A1-A20 traffic"
+  log "FastC now owns discovered wireless traffic"
 }
 
 switch_fastacl(){
   [ -x "$DP" ] || return 1
   log "1/5 installing FastC fail-closed guard during handoff..."
   "$DP" killswitch || return 1
-
   log "2/5 removing FastC TProxy interception but keeping guard..."
   "$DP" down || true
-
   log "3/5 rebuilding FastACL dataplane..."
   uci set juliang_fastacl.main.enabled='1'
   uci commit juliang_fastacl
@@ -134,18 +146,16 @@ switch_fastacl(){
   fi
   /etc/init.d/juliang-fastacl restart >/dev/null 2>&1 || true
   sleep 1
-
   log "4/5 validating FastACL..."
   nft list table inet juliang_fastacl >/dev/null 2>&1 || return 1
   nft list table inet juliang_killswitch >/dev/null 2>&1 || return 1
   /usr/bin/juliang-fastacl status 2>/dev/null | grep -q '^router: running' || return 1
-
   log "5/5 releasing FastC guard and committing mode..."
   "$DP" release >/dev/null 2>&1 || true
   uci set fastc.main.mode='fastacl'
   uci set fastc.main.enabled='0'
   uci commit fastc
-  log "FastACL now owns A1-A20 traffic"
+  log "FastACL now owns traffic"
 }
 
 status(){
