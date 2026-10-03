@@ -20,7 +20,7 @@ local api = dsp.build_url("admin", "services", "fastc_api")
 .fc-import-text{width:100%;height:300px;resize:vertical;box-sizing:border-box;font-family:monospace;padding:10px;border:1px solid rgba(128,128,128,.35);border-radius:6px;line-height:1.45}
 .fc-note{font-size:13px;line-height:1.55;opacity:.78;margin-top:8px}
 .fc-small{font-size:12px;opacity:.68}
-#fc_msg,#fc_import_msg{min-height:24px;font-weight:700;margin:8px 0}
+#fc_msg,#fc_import_msg{min-height:24px;font-weight:700;margin:8px 0;white-space:pre-wrap}
 @media(max-width:900px){.fc-table{display:block;overflow-x:auto;white-space:nowrap}}
 </style>
 
@@ -138,7 +138,6 @@ host:port:username:password"></textarea>
   function sendChunk(text,index,total,done){
     post({action:'import',chunk:text,chunk_index:String(index),total_chunks:String(total)},function(r){
       if(!r||!r.ok){done(r||{error:'网络请求错误'});return}
-      if(index+1>=total){done(r);return}
       done(null,r);
     });
   }
@@ -151,16 +150,22 @@ host:port:username:password"></textarea>
 
     var size=48000, chunks=[];
     for(var p=0;p<text.length;p+=size) chunks.push(text.slice(p,p+size));
-    var i=0;btn.disabled=true;out.className='fc-warn';out.textContent='正在导入 0/'+chunks.length+'…';
+    var i=0,last=null;btn.disabled=true;out.className='fc-warn';out.textContent='正在导入 0/'+chunks.length+'…';
 
     function next(){
       sendChunk(chunks[i],i,chunks.length,function(err,r){
-        if(err){btn.disabled=false;out.className='fc-bad';out.textContent='导入失败：'+((err&&err.error)||'ERROR');return}
-        i++;
+        if(err){
+          btn.disabled=false;out.className='fc-bad';
+          var detail=(err&&err.detail)?('\n'+String(err.detail).slice(0,1200)):'';
+          out.textContent='导入失败：'+((err&&err.error)||'ERROR')+detail;
+          return;
+        }
+        last=r||last;i++;
         out.textContent='正在导入 '+i+'/'+chunks.length+'…';
         if(i<chunks.length){next();return}
         btn.disabled=false;out.className='fc-ok';
-        out.textContent='✓ 导入完成：新增 '+(r.added||0)+'，重复 '+(r.duplicate||0)+'，无法识别 '+((r.rejected||[]).length||0)+'，节点总数 '+(r.total||0);
+        var rr=last||{};
+        out.textContent='✓ 导入完成：新增 '+(rr.added||0)+'，重复 '+(rr.duplicate||0)+'，无法识别 '+((rr.rejected||[]).length||0)+'，节点总数 '+(rr.total||0);
         setTimeout(loadStatus,500);
       });
     }
