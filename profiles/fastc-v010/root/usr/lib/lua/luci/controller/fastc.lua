@@ -41,16 +41,44 @@ local function shell_quote(s)
     return "'" .. tostring(s or ""):gsub("'", "'\\''") .. "'"
 end
 
-local function mihomo_status()
+local function trim(s)
+    return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+local function core_info()
     local sys = require "luci.sys"
-    local cmd = "pidof mihomo >/dev/null 2>&1 || pidof clash >/dev/null 2>&1"
-    return sys.call(cmd) == 0
+    local fs = require "nixio.fs"
+    local path = trim(sys.exec("command -v mihomo 2>/dev/null") or "")
+    if path == "" then path = trim(sys.exec("command -v clash 2>/dev/null") or "") end
+    if path == "" and fs.access("/etc/openclash/core/clash_meta", "x") then path = "/etc/openclash/core/clash_meta" end
+    if path == "" and fs.access("/etc/openclash/core/clash", "x") then path = "/etc/openclash/core/clash" end
+    if path == "" and fs.access("/usr/bin/clash_meta", "x") then path = "/usr/bin/clash_meta" end
+
+    local running = sys.call("pidof mihomo clash clash_meta >/dev/null 2>&1 || pgrep -f '/etc/openclash/core/clash_meta' >/dev/null 2>&1") == 0
+    return {
+        present = path ~= "",
+        path = path,
+        running = running
+    }
+end
+
+local function fastacl_info(uci)
+    local sys = require "luci.sys"
+    local enabled = uci:get("juliang_fastacl", "main", "enabled") == "1"
+    local guardian = sys.call("pgrep -f '/usr/bin/juliang-fastacl-guard' >/dev/null 2>&1") == 0
+    local table_ok = sys.call("nft list table inet juliang_fastacl >/dev/null 2>&1") == 0
+    return {
+        installed = sys.call("test -x /usr/bin/juliang-fastacl") == 0,
+        enabled = enabled,
+        running = guardian or table_ok
+    }
 end
 
 local function fastc_config(uci)
     return {
-        version = uci:get("fastc", "main", "version") or "0.1.0-dev",
+        version = uci:get("fastc", "main", "version") or "0.1.1-dev",
         enabled = uci:get("fastc", "main", "enabled") == "1",
+        mode = uci:get("fastc", "main", "mode") or "fastacl",
         core = uci:get("fastc", "main", "core") or "mihomo",
         controller = uci:get("fastc", "main", "controller") or "127.0.0.1:9097",
         tproxy_port = tonumber(uci:get("fastc", "main", "tproxy_port") or "7895") or 7895,
@@ -67,10 +95,14 @@ function handle()
 
     if action == "status" then
         local nodes = read_json("/etc/fastc/nodes.json", {})
+        local core = core_info()
         write_json({
             ok = true,
             config = fastc_config(uci),
-            core_running = mihomo_status(),
+            core_present = core.present,
+            core_path = core.path,
+            core_running = core.running,
+            fastacl = fastacl_info(uci),
             nodes = nodes,
             node_count = #nodes
         })
@@ -105,7 +137,9 @@ function handle()
         local raw = sys.exec("lua /usr/libexec/fastc-import.lua " .. shell_quote(tmp) .. " 2>/tmp/fastc-import.log") or ""
         local ok, result = pcall(jsonc.parse, raw)
         if not ok or type(result) ~= "table" or result.ok ~= true then
-            write_json({ok=false,error="IMPORT_FAILED",detail=raw})
+            local detail = sys.exec("cat /tmp/fastc-import.log 2>/dev/null") or ""
+            if detail == "" then detail = raw end
+            write_json({ok=false,error="IMPORT_FAILED",detail=detail})
             return
         end
         result.finished = true
