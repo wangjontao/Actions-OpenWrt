@@ -1,0 +1,33 @@
+name: FastACL batch WiFi UI smoke test
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/fastacl-batch-wifi]
+    paths:
+      - '.github/workflows/FastACL-Batch-WiFi-UI.yml'
+      - 'scripts/tests/check-fastacl-fold.cjs'
+      - 'profiles/fastacl-v9/root/usr/lib/lua/luci/view/juliang_fastacl/console.htm'
+      - 'profiles/fastacl-v9/root/usr/lib/lua/luci/view/juliang_fastacl/batch_wifi.htm'
+permissions:
+  contents: read
+jobs:
+  ui:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check Lua syntax
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y lua5.1
+          find profiles/fastacl-v9/root -name '*.lua' -print0 | xargs -0 -n1 luac5.1 -p
+      - name: Install browser test dependency
+        run: |
+          npm install --no-save --package-lock=false playwright@1.51.1
+          npx playwright install --with-deps chromium
+      - name: Test collapsible panels in Chromium
+        run: node scripts/tests/check-fastacl-fold.cjs
+
