@@ -170,6 +170,9 @@ local old = {}
 uci:foreach("juliang_fastacl", "ap", function(s)
   local data = {
     node = s.node,
+    mode = s.mode,
+    jfa_owner = s.jfa_owner,
+    jfa_network = s.jfa_network,
     dns_mode = s.dns_mode,
     dns_server = s.dns_server,
     dns_tls_server_name = s.dns_tls_server_name,
@@ -204,6 +207,9 @@ for i,item in ipairs(items) do
   })
   local prev = old["net:"..item.network] or old["subnet:"..item.subnet]
   if prev then
+    for _,key in ipairs({"mode","jfa_owner","jfa_network"}) do
+      if prev[key] and prev[key] ~= "" then uci:set("juliang_fastacl", sec, key, prev[key]) end
+    end
     if prev.node and prev.node ~= "" then uci:set("juliang_fastacl", sec, "node", prev.node) end
     if prev.dns_mode and prev.dns_mode ~= "" then uci:set("juliang_fastacl", sec, "dns_mode", prev.dns_mode) end
     if prev.dns_server and prev.dns_server ~= "" then uci:set("juliang_fastacl", sec, "dns_server", prev.dns_server) end
