@@ -20,7 +20,7 @@ disable_passwall2_runtime(){
 }
 
 sleep 3
-log "Guardian started (2.4.3 stable mode-aware)"
+log "Guardian started (2.4.4 stable mode-aware)"
 
 while true; do
   while [ -d /tmp/juliang-fastacl-runtime.lock ]; do sleep 2; done

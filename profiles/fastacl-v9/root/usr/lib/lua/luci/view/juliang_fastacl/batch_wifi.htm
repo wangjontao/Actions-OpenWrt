@@ -50,7 +50,7 @@
  }
  function poll(id,attempt){
   request('GET',STATUS+'?job='+encodeURIComponent(id),{},function(r){
-   if(r&&r.state==='done'){lock(false);localStorage.removeItem('jfw_job');el('key').value='';message(r.message+'（'+r.count+' 个）');refresh();return}
+   if(r&&r.state==='done'){lock(false);localStorage.removeItem('jfw_job');el('key').value='';message(r.message+'（'+r.count+' 个）');refresh();if(typeof window.loadStatus==='function')window.loadStatus();return}
    if(r&&(r.state==='failed'||r.error)){
     lock(false);localStorage.removeItem('jfw_job');message(r.error+(r.rolled_back?'；已恢复原配置':r.rollback_failed?'；恢复失败，请通过有线连接检查':'') ,true);refresh();return;
    }
