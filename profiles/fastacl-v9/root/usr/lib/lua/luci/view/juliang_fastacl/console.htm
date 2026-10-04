@@ -44,6 +44,13 @@ local import_api = dsp.build_url("admin", "services", "juliang_fastacl")
   .jfa-table{display:block;overflow-x:auto;white-space:nowrap}
   .jfa-filter{min-width:220px;max-width:none}
 }
+
+.jfa-fold>summary{display:flex;justify-content:space-between;align-items:center;cursor:pointer;list-style:none;padding:12px 0;font-size:17px;font-weight:700}
+.jfa-fold>summary::-webkit-details-marker{display:none}
+.jfa-fold .jfa-fold-close{display:none}
+.jfa-fold[open]>summary .jfa-fold-open{display:none}
+.jfa-fold[open]>summary .jfa-fold-close{display:inline}
+.jfa-fold-hint{font-size:13px;font-weight:400;color:#6875d9}
 </style>
 
 <div class="cbi-map jfa-wrap">
@@ -90,6 +97,8 @@ local import_api = dsp.build_url("admin", "services", "juliang_fastacl")
   };
 })();
 </script>
+  <details id="jfa_nodes_panel" class="jfa-fold" open>
+    <summary><span>节点分配</span><span class="jfa-fold-hint"><span class="jfa-fold-open">展开 ▾</span><span class="jfa-fold-close">折叠 ▴</span></span></summary>
   <div class="jfa-commandbar">
     <input class="btn cbi-button cbi-button-add jfa-import-primary" type="button" value="＋ 导入节点" onclick="openImport()"/>
     <span class="jfa-small">批量粘贴 VLESS / VMess / Trojan / SOCKS5 / HTTP / SK5 简写</span>
@@ -114,6 +123,7 @@ local import_api = dsp.build_url("admin", "services", "juliang_fastacl")
       <tbody id="jfa_body"><tr><td colspan="6">读取中…</td></tr></tbody>
     </table>
   </div>
+  </details>
 </div>
 
 <div id="jfa_import_bg" class="jfa-modal-bg">

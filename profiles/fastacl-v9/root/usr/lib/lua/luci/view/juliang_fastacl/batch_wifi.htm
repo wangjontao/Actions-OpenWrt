@@ -1,5 +1,5 @@
-<div class="cbi-section" id="jfw_panel" style="margin:16px 0;padding:16px;border:1px solid #8884;border-radius:12px">
- <h3>批量建立无线</h3>
+<details class="cbi-section jfw-fold" id="jfw_panel" style="margin:16px 0;padding:16px;border:1px solid #8884;border-radius:12px">
+ <summary style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;list-style:none;font-size:17px;font-weight:700"><span>批量建立无线</span><span style="font-size:13px;color:#6875d9"><span class="jfw-expand">展开 ▾</span><span class="jfw-collapse">折叠 ▴</span></span></summary>
  <p>新增独立网段的无线，保留现有无线。数量包含新增的专用无线，不包含主无线。</p>
  <div style="display:flex;gap:14px;flex-wrap:wrap">
   <label>名称前缀 <input id="jfw_prefix" value="WiFi-" class="cbi-input-text"></label>
@@ -16,7 +16,8 @@
  </div>
  <p id="jfw_managed"></p><p id="jfw_message" role="status"></p>
  <p style="font-size:12px;opacity:.7">单次最多新增 20 个，受每个频段剩余容量限制。5GHz 上限 12 个，2.4GHz 上限 8 个，已有无线也计入上限；驱动容量更低时按驱动限制。清除仅处理本功能建立的无线；应用会短暂重载网络，失败时自动恢复配置。</p>
-</div>
+</details>
+<style>.jfw-fold>summary::-webkit-details-marker{display:none}.jfw-collapse{display:none}.jfw-fold[open]>summary .jfw-expand{display:none}.jfw-fold[open]>summary .jfw-collapse{display:inline}</style>
 <script>
 (function(){
  var STATUS='<%=luci.dispatcher.build_url("admin","services","juliang_fastacl_wifi_status")%>',
