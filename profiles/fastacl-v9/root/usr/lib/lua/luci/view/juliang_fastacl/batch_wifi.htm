@@ -15,7 +15,7 @@
   <button type="button" class="btn cbi-button" id="jfw_refresh">刷新</button>
  </div>
  <p id="jfw_managed"></p><p id="jfw_message" role="status"></p>
- <p style="font-size:12px;opacity:.7">单次最多新增 20 个，受每个频段剩余容量限制。未知驱动使用保守上限。清除仅处理本功能建立的无线；应用会短暂重载网络，失败时自动恢复配置。</p>
+ <p style="font-size:12px;opacity:.7">单次最多新增 20 个，受每个频段剩余容量限制。5GHz 上限 12 个，2.4GHz 上限 8 个，已有无线也计入上限；驱动容量更低时按驱动限制。清除仅处理本功能建立的无线；应用会短暂重载网络，失败时自动恢复配置。</p>
 </div>
 <script>
 (function(){
@@ -39,7 +39,7 @@
     var label=document.createElement('label');label.style.marginRight='18px';
     label.appendChild(document.createTextNode((r.band==='2g'?'2.4GHz':r.band==='5g'?'5GHz':r.id)+' 新增数量 '));
     var input=document.createElement('input');input.type='number';input.min=0;input.max=r.available;input.value=0;input.id='jfw_count_'+r.id;input.style.width='70px';label.appendChild(input);
-    label.appendChild(document.createTextNode(' 剩余 '+r.available+' / 上限 '+r.limit+(r.verified?'':'（保守值）')));el('radios').appendChild(label);
+    label.appendChild(document.createTextNode(' 剩余 '+r.available+' / 上限 '+r.limit+(r.verified?'':'（设置上限）')));el('radios').appendChild(label);
    });
    var node=el('node'),old=node.value;node.textContent='';node.add(new Option('直连国内网络',''));
    (r.nodes||[]).forEach(function(n){node.add(new Option(n.name,n.id))});node.value=old;node.disabled=r.mode==='normal_proxy';

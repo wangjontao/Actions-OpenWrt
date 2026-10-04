@@ -9,6 +9,8 @@ function M.revision()
     return out
 end
 function M.capacity(s)
+    local band=s.band or (s.hwmode=="11a" and "5g" or s.hwmode=="11g" and "2g" or "")
+    local configured_limit=band=="5g" and 12 or 8
     local phy=s.phy
     if not phy or not phy:match("^phy%d+$") then
         local raw=sys.exec("ubus call network.wireless status 2>/dev/null")
@@ -32,10 +34,10 @@ function M.capacity(s)
             total=tonumber(combo:match("total%s*<=%s*(%d+)"))
             if ap then local limit=math.min(ap,total or ap);cap=math.max(cap or 0,limit) end
         end
-        if cap then return math.min(cap,16),true end
+        if cap then return math.min(cap,configured_limit),true end
     end
-    -- Conservative fallback when the proprietary driver has no nl80211 limits.
-    return 8,false
+    -- User policy: total interfaces per radio, including existing/main WiFi.
+    return configured_limit,false
 end
 function M.routes()
     local rows={}
