@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# FastACL V2.4.3 migration/defaults.
+# FastACL V2.4.4 migration/defaults.
 # Core ownership values are fixed; user-facing DNS/health preferences are only
 # defaulted when absent so upgrades do not silently overwrite tuning.
 
@@ -21,7 +21,7 @@ uci -q get juliang_fastacl.main.dns_path >/dev/null || uci set juliang_fastacl.m
 uci -q get juliang_fastacl.main.health_probe_interval >/dev/null || uci set juliang_fastacl.main.health_probe_interval='120'
 uci -q get juliang_fastacl.main.health_fail_threshold >/dev/null || uci set juliang_fastacl.main.health_fail_threshold='3'
 uci -q get juliang_fastacl.main.include_lan >/dev/null || uci set juliang_fastacl.main.include_lan='1'
-uci set juliang_fastacl.main.version='2.4.3'
+uci set juliang_fastacl.main.version='2.4.4'
 uci commit juliang_fastacl
 
 # Remove every legacy A1..A10 -> WAN forwarding, including anonymous sections
@@ -60,7 +60,7 @@ uci -q get passwall2.@global[0] >/dev/null && {
 chmod 0755 /usr/bin/juliang-fastacl /usr/bin/juliang-fastacl-guard /usr/bin/juliang-fastacl-luci-install >/dev/null 2>&1 || true
 chmod 0755 /etc/init.d/juliang-fastacl /etc/hotplug.d/iface/99-juliang-fastacl >/dev/null 2>&1 || true
 
-# Full installer V2.4.3 defers service start until every patch has validated.
+# Full installer V2.4.4 defers service start until every patch has validated.
 # Normal sysupgrade/default execution still behaves as before.
 if [ "${JFA_DEFER_RUNTIME:-0}" != "1" ]; then
     /usr/bin/juliang-fastacl-luci-install >/tmp/juliang-fastacl-luci-install.log 2>&1 || logger -t juliang-fastacl "LuCI patch failed; Guardian will still start; see /tmp/juliang-fastacl-luci-install.log"
@@ -68,5 +68,5 @@ if [ "${JFA_DEFER_RUNTIME:-0}" != "1" ]; then
     /etc/init.d/juliang-fastacl restart >/dev/null 2>&1 || true
 fi
 
-logger -t juliang-fastacl "2.4.3 migration applied: settings-preserving defaults + FastACL ownership"
+logger -t juliang-fastacl "2.4.4 migration applied: settings-preserving defaults + FastACL ownership"
 exit 0

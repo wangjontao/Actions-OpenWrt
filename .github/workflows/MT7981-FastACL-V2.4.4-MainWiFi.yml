@@ -1,0 +1,688 @@
+name: MT7981 V10 FastACL2.4.4 MainWiFi
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/v10-fastacl244-mainwifi
+    paths:
+      - .github/workflows/MT7981-FastACL-V2.4.4-MainWiFi.yml
+
+permissions:
+  contents: write
+
+env:
+  BUILD_VERSION: V10-FastACL2.4.4
+  SOURCE_REPO: https://github.com/padavanonly/immortalwrt-mt798x-24.10.git
+  SOURCE_BRANCH: openwrt-24.10-6.6
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout Actions-OpenWrt
+        uses: actions/checkout@v4
+
+      - name: Free disk and install dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/lib/android /opt/hostedtoolcache/CodeQL
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib gettext git \
+            libncurses-dev libssl-dev python3-setuptools rsync swig unzip zlib1g-dev file wget curl jq \
+            openssl ccache zstd lua5.1
+          sudo apt-get clean
+          df -h /
+
+      - name: Clone ImmortalWrt 24.10 MTWiFi source
+        run: |
+          git clone --depth=1 --branch "$SOURCE_BRANCH" "$SOURCE_REPO" openwrt
+          echo "BUILD_DATE=$(date +'%Y.%m.%d-%H.%M.%S')" >> "$GITHUB_ENV"
+          echo "SOURCE_HASH=$(git -C openwrt rev-parse --short HEAD)" >> "$GITHUB_ENV"
+
+      - name: Add verified AGS21 and Newland device definitions
+        working-directory: openwrt
+        run: |
+          PATCH="$GITHUB_WORKSPACE/profiles/mt7981-final-multidevice"
+          cp "$PATCH"/mt7981b-*.dts target/linux/mediatek/dts/
+          cp "$PATCH/02_network" target/linux/mediatek/filogic/base-files/etc/board.d/02_network
+          for dev in aigo_ags21 newland_nl-wr8103 newland_nl-wr9103; do
+            if ! grep -q "TARGET_DEVICES += ${dev}" target/linux/mediatek/image/filogic.mk; then
+              sed -n "/^define Device\/${dev}$/,/^TARGET_DEVICES += ${dev}$/p" "$PATCH/custom-devices.mk" >> target/linux/mediatek/image/filogic.mk
+            fi
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('target/linux/mediatek/image/filogic.mk')
+          s = p.read_text()
+          a = s.index('define Device/jcg_q30-pro')
+          b = s.index('endef', a)
+          block = s[a:b]
+          if re.search(r'^  IMAGE_SIZE := .*$', block, re.M):
+              block = re.sub(r'^  IMAGE_SIZE := .*$', '  IMAGE_SIZE := 113152k', block, flags=re.M)
+          else:
+              block = block.replace('  PAGESIZE := 2048\n', '  PAGESIZE := 2048\n  IMAGE_SIZE := 113152k\n')
+          s = s[:a] + block + s[b:]
+          p.write_text(s)
+          PY
+          Q30_DTS=target/linux/mediatek/dts/mt7981b-jcg-q30-pro.dts
+          grep -q 'reg = <0x0580000 0x6e80000>;' "$Q30_DTS"
+          grep -q 'macaddr_factory: macaddr@4' "$Q30_DTS"
+          grep -q 'reg = <0x4 0x6>;' "$Q30_DTS"
+          ! grep -q 'nvmem-cells = <&macaddr_factory_a0024' "$Q30_DTS"
+          sed -n '/^define Device\/jcg_q30-pro$/,/^endef$/p' target/linux/mediatek/image/filogic.mk | grep -q 'IMAGE_SIZE := 113152k'
+          echo 'Applied verified Q30 Pro 110M UBI and Factory MAC layout.'
+
+      - name: Verify closed WiFi and all device definitions
+        working-directory: openwrt
+        run: |
+          grep -q 'PKG_VERSION:=7.6.6.1' package/mtk/drivers/mt_wifi/Makefile
+          test -s package/mtk/drivers/warp/Makefile
+          for dts in mt7981b-aigo-ags21 mt7981b-newland-nl-wr8103 mt7981b-newland-nl-wr9103 mt7981b-zbtlink-zbt-z8103ax-c mt7981b-zbtlink-zbt-z8103ax-c-nmbm mt7981b-zbtlink-zbt-z8103ax-c-ubootmod; do test -s target/linux/mediatek/dts/${dts}.dts; done
+          for dev in philips_hy3000 cmcc_rax3000m-nand-mtk cmcc_rax3000m-emmc-mtk qihoo_360t7 aigo_ags21 cmcc_a10-ubootmod konka_komi-a31 newland_nl-wr8103 newland_nl-wr9103 abt_asr3000 jcg_q30-pro zbtlink_zbt-z8103ax-c zbtlink_zbt-z8103ax-c-nmbm zbtlink_zbt-z8103ax-c-ubootmod; do
+            grep -q "TARGET_DEVICES += ${dev}" target/linux/mediatek/image/filogic.mk
+          done
+          echo 'Verified kernel 6.6 MTWiFi 7.6.6.1, WARP and all fourteen MT7981 build targets, including ZBT-Z8103AX-C/D variants.'
+
+      - name: Update feeds and add iStore
+        working-directory: openwrt
+        run: |
+          grep -q '^src-git istore ' feeds.conf.default || echo 'src-git istore https://github.com/linkease/istore.git;main' >> feeds.conf.default
+          grep -q '^src-git nas_packages ' feeds.conf.default || echo 'src-git nas_packages https://github.com/linkease/nas-packages.git;master' >> feeds.conf.default
+          grep -q '^src-git nas_luci ' feeds.conf.default || echo 'src-git nas_luci https://github.com/linkease/nas-packages-luci.git;main' >> feeds.conf.default
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          ./scripts/feeds install -d y -p istore luci-app-store
+          ./scripts/feeds install -d y -p nas_packages quickstart
+          ./scripts/feeds install -d y -p nas_luci luci-app-quickstart
+
+      - name: Pin original ehang NPS client 0.26.10 and enable domain server
+        working-directory: openwrt
+        run: |
+          NPS_MAKEFILE=feeds/packages/net/nps/Makefile
+          sed -i 's/^PKG_VERSION:=.*/PKG_VERSION:=0.26.10/' "$NPS_MAKEFILE"
+          sed -i 's#^PKG_SOURCE_URL:=.*#PKG_SOURCE_URL:=https://codeload.github.com/ehang-io/nps/tar.gz/v$(PKG_VERSION)?#' "$NPS_MAKEFILE"
+          sed -i 's/^PKG_HASH:=.*/PKG_HASH:=1b2fe9d251f55105d65027a1cee464f65d2f6ab3bd4a20e4655e5135db68aee7/' "$NPS_MAKEFILE"
+          grep -q '^PKG_VERSION:=0.26.10$' "$NPS_MAKEFILE"
+          grep -q 'github.com/ehang-io/nps' "$NPS_MAKEFILE"
+          for nps_lua in feeds/luci/applications/luci-app-nps/luasrc/model/cbi/nps.lua package/feeds/luci/luci-app-nps/luasrc/model/cbi/nps.lua; do
+            [ -f "$nps_lua" ] || continue
+            sed -i -E 's/server\.datatype[[:space:]]*=[[:space:]]*"ipaddr"/server.datatype="host"/' "$nps_lua"
+            sed -i 's/Must an IPv4 address/IPv4 address or domain name/' "$nps_lua"
+          done
+          grep -q 'server.datatype="host"' feeds/luci/applications/luci-app-nps/luasrc/model/cbi/nps.lua
+          echo 'Pinned original ehang-io NPC 0.26.10 for server compatibility.'
+
+      - name: Pin Passwall 26.3.6-1 and add Passwall2 26.3.5-1
+        working-directory: openwrt
+        run: |
+          rm -rf feeds/luci/applications/luci-app-passwall package/feeds/luci/luci-app-passwall
+          rm -rf package/passwall-luci package/passwall2-luci
+          git clone --depth=1 --single-branch --branch 26.3.6-1 https://github.com/Openwrt-Passwall/openwrt-passwall.git package/passwall-luci
+          git clone --depth=1 --single-branch --branch 26.3.5-1 https://github.com/Openwrt-Passwall/openwrt-passwall2.git package/passwall2-luci
+          test "$(git -C package/passwall-luci describe --tags --exact-match)" = "26.3.6-1"
+          test "$(git -C package/passwall2-luci describe --tags --exact-match)" = "26.3.5-1"
+
+      - name: Patch PassWall and PassWall2 SK5 HTTP import
+        working-directory: openwrt
+        run: |
+          python3 "$GITHUB_WORKSPACE/scripts/patch-passwall-sk5-http.py"
+          grep -q 'JuLiangTK: allow multiline SOCKS5 shorthand' package/passwall-luci/luci-app-passwall/luasrc/view/passwall/node_list/link_add_node.htm
+          grep -q 'JuLiangTK: allow multiline SOCKS5 shorthand' package/passwall2-luci/luci-app-passwall2/luasrc/view/passwall2/node_list/link_add_node.htm
+          grep -q 'JuLiangTK: import SOCKS5/SOCKS/HTTP provider links' package/passwall-luci/luci-app-passwall/root/usr/share/passwall/subscribe.lua
+          grep -q 'JuLiangTK: import SOCKS5/SOCKS/HTTP provider links' package/passwall2-luci/luci-app-passwall2/root/usr/share/passwall2/subscribe.lua
+          grep -q 'mark = (node.protocol ~= "socks") and 255 or nil,' package/passwall-luci/luci-app-passwall/luasrc/passwall/util_xray.lua
+          grep -q 'mark = (node.protocol ~= "socks") and 255 or nil,' package/passwall2-luci/luci-app-passwall2/luasrc/passwall2/util_xray.lua
+          ! grep -q '\\\\d+' package/passwall-luci/luci-app-passwall/luasrc/view/passwall/node_list/link_add_node.htm
+          ! grep -q '\\\\d+' package/passwall2-luci/luci-app-passwall2/luasrc/view/passwall2/node_list/link_add_node.htm
+          echo 'PassWall + PassWall2 SK5/HTTP importer and frontend validation verified.'
+
+          # Bake FastACL buttons/modal directly into PassWall2 node_list.htm.
+          JFA_OFFLINE=1 \
+          JFA_NODE_LIST_FILE="$PWD/package/passwall2-luci/luci-app-passwall2/luasrc/view/passwall2/node_list/node_list.htm" \
+          JFA_CTRL_FILE="$GITHUB_WORKSPACE/profiles/fastacl-v9/root/usr/lib/lua/luci/controller/juliang_fastacl.lua" \
+            sh "$GITHUB_WORKSPACE/profiles/fastacl-v9/root/usr/bin/juliang-fastacl-luci-install"
+          grep -q 'JULIANG_FASTACL_V240' package/passwall2-luci/luci-app-passwall2/luasrc/view/passwall2/node_list/node_list.htm
+          grep -q 'FastACL 即时分配无线' package/passwall2-luci/luci-app-passwall2/luasrc/view/passwall2/node_list/node_list.htm
+          echo 'FastACL LuCI UI baked into PassWall2 package source.'
+
+      - name: Preinstall tested PassWall and PassWall2 realtime IP suite
+        working-directory: openwrt
+        run: |
+          # PassWall2 26.3.5-1 keeps ACL startup logic inside app.sh and does not ship app_acl.lua.
+          # Validate the actual pinned-version backend instead of requiring a file from newer layouts.
+          test -f package/passwall2-luci/luci-app-passwall2/root/usr/share/passwall2/app.sh
+          grep -q 'acl_enable' package/passwall2-luci/luci-app-passwall2/root/usr/share/passwall2/0_default_config
+          mkdir -p files
+          cp -a "$GITHUB_WORKSPACE/profiles/proxy-realtime-ip-suite/root/." files/
+          chmod 0755 files/usr/bin/proxy-socks-ip-probe \
+            files/usr/bin/proxy-global-ip-json \
+            files/usr/bin/pw2-node-ip-probe \
+            files/usr/bin/pw2-acl-ip-json \
+            files/usr/bin/pw-acl-ip-json \
+            files/usr/bin/pw2-socks-watchd \
+            files/usr/bin/install-proxy-realtime-ip-suite \
+            files/etc/init.d/pw2-socks-watch \
+            files/etc/uci-defaults/96-proxy-realtime-ip-suite
+          sh -n files/usr/bin/proxy-socks-ip-probe
+          sh -n files/usr/bin/pw2-node-ip-probe
+          sh -n files/usr/bin/pw2-socks-watchd
+          sh -n files/usr/bin/install-proxy-realtime-ip-suite
+          ! grep -q 'idx<=10' files/usr/bin/pw2-acl-ip-json
+          ! grep -q 'idx<=10' files/usr/bin/pw-acl-ip-json
+          grep -q 'if not _jfa_enabled then' files/usr/lib/lua/luci/view/passwall2/acl_exit_ip_status.htm
+          grep -q 'ACL 实际出口 IP' files/usr/lib/lua/luci/view/passwall2/acl_exit_ip_status.htm
+          ! grep -q 'ACL A1-A10 实际出口 IP' files/usr/lib/lua/luci/view/passwall2/acl_exit_ip_status.htm
+          echo 'Verified dynamic ACL realtime-IP UI: unlimited A-subnets; hidden automatically in FastACL mode.'
+
+      - name: Preinstall JuLiang FastACL V2.4.4 Guardian and fail-closed kill-switch
+        working-directory: openwrt
+        run: |
+          mkdir -p files
+          cp -a "$GITHUB_WORKSPACE/profiles/fastacl-v9/root/." files/
+          chmod 0755 \
+            files/usr/bin/juliang-fastacl \
+            files/usr/bin/juliang-fastacl-guard \
+            files/usr/bin/juliang-fastacl-luci-install \
+            files/usr/bin/uninstall-juliang-fastacl \
+            files/etc/init.d/juliang-fastacl \
+            files/etc/hotplug.d/iface/99-juliang-fastacl \
+            files/etc/uci-defaults/94-juliang-fastacl-v9 \
+            files/usr/bin/juliang-operator \
+            files/etc/uci-defaults/97-juliang-operator-mode
+          chmod 0755 files/usr/bin/juliang-fastacl-mode files/usr/bin/juliang-fastacl-runtime files/usr/bin/juliang-fastacl-import-repair
+          sh -n files/usr/bin/juliang-fastacl-runtime
+          lua5.1 -e "assert(loadfile('files/usr/lib/lua/luci/controller/juliang_fastacl_runtime.lua'))"
+          grep -q '普通代理模式' files/usr/lib/lua/luci/view/juliang_fastacl/console.htm
+          grep -q 'FastACl模式' files/usr/lib/lua/luci/view/juliang_fastacl/console.htm
+          # Bake the verified parser into the pinned PassWall2 package offline.
+          sed "s|^TARGET=/usr/share/passwall2/subscribe.lua$|TARGET=$PWD/package/passwall2-luci/luci-app-passwall2/root/usr/share/passwall2/subscribe.lua|; s|^BASE=/etc/passwall2-import-repair$|BASE=$RUNNER_TEMP/passwall2-import-build-backup|" files/usr/bin/juliang-fastacl-import-repair > "$RUNNER_TEMP/patch-passwall2-import.sh"
+          sh "$RUNNER_TEMP/patch-passwall2-import.sh"
+          chmod 0644 \
+            files/usr/libexec/juliang-fastacl-router.lua \
+            files/usr/libexec/juliang-fastacl-relay.lua \
+            files/usr/libexec/juliang-fastacl-discover.lua \
+            files/usr/lib/lua/luci/controller/juliang_fastacl.lua \
+            files/usr/lib/lua/luci/controller/juliang_operator.lua \
+            files/usr/libexec/juliang-operator-patch.lua
+          grep -q 'juliang_killswitch' files/usr/bin/juliang-fastacl
+          grep -q 'dns_mode.*doh' files/etc/uci-defaults/94-juliang-fastacl-v9
+          grep -q 'juliang-fastacl-guard' files/etc/init.d/juliang-fastacl
+          test -s files/etc/config/juliang_fastacl
+          grep -q "option enabled '1'" files/etc/config/juliang_fastacl
+          grep -q "option version '2.4.4'" files/etc/config/juliang_fastacl
+          grep -q 'runtime_mode' files/usr/bin/juliang-fastacl-guard
+          grep -q 'runtime_mode' files/usr/bin/juliang-fastacl-guard
+          grep -Fq 'move_node(){' files/usr/bin/juliang-fastacl
+          grep -Fq 'switch_node(){' files/usr/bin/juliang-fastacl
+          grep -q "option health_probe_interval '120'" files/etc/config/juliang_fastacl
+          grep -q "option health_fail_threshold '3'" files/etc/config/juliang_fastacl
+          test -x files/usr/bin/juliang-operator
+          grep -q "Port='20022'" files/etc/uci-defaults/97-juliang-operator-mode
+          grep -q "username='admin'" files/etc/uci-defaults/97-juliang-operator-mode
+          grep -q "rpcd.juliang_operator.password=" files/etc/uci-defaults/97-juliang-operator-mode
+          sh -n files/etc/uci-defaults/97-juliang-operator-mode
+          test -s files/usr/lib/lua/luci/controller/juliang_operator.lua
+          test -s files/usr/lib/lua/luci/view/juliang_operator/home.htm
+          test -s files/usr/lib/lua/luci/view/juliang_operator/wireless.htm
+          test -s files/usr/share/rpcd/acl.d/juliang-operator.json
+          grep -q 'juliang_operator_stats' files/usr/lib/lua/luci/controller/juliang_operator.lua
+          grep -q 'router_down_bytes' files/usr/lib/lua/luci/controller/juliang_operator.lua
+          grep -q 'counter comment "DOWN:' files/usr/lib/lua/luci/controller/juliang_operator.lua
+          ! grep -q '不开放接口、DHCP、防火墙' files/usr/lib/lua/luci/view/juliang_operator/wireless.htm
+          sh -n files/usr/bin/juliang-operator
+          sh -n files/usr/bin/juliang-fastacl
+          sh -n files/usr/bin/juliang-fastacl-guard
+          grep -q 'action == "visibility"' files/usr/lib/lua/luci/controller/juliang_operator.lua
+          grep -q 'action == "visibility_all"' files/usr/lib/lua/luci/controller/juliang_operator.lua
+          grep -q 'toggleVisibility' files/usr/lib/lua/luci/view/juliang_operator/wireless.htm
+          grep -q 'toggleAllVisibility' files/usr/lib/lua/luci/view/juliang_operator/wireless.htm
+          grep -q '一键隐藏全部' files/usr/lib/lua/luci/view/juliang_operator/wireless.htm
+          echo 'FastACL V2.4.4 runtime, Guardian, MOVE fix, real-exit health and fail-closed kill-switch staged into rootfs.'
+
+      - name: Apply package compiler compatibility fixes
+        working-directory: openwrt
+        run: |
+          sed -i '/$(eval $(call BuildPackage,libxcrypt))/i TARGET_CFLAGS += -Wno-error=format-nonliteral' feeds/packages/libs/libxcrypt/Makefile
+          grep -n -B1 -A1 'BuildPackage,libxcrypt' feeds/packages/libs/libxcrypt/Makefile
+
+      - name: Configure all requested firmware images
+        working-directory: openwrt
+        run: |
+          cp defconfig/mt7981-ax3000.config .config
+          sed -i '/^CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_/d' .config
+          sed -i '/^CONFIG_TARGET_DEVICE_PACKAGES_mediatek_filogic_DEVICE_/d' .config
+          sed -i '/^CONFIG_PACKAGE_dnsmasq=/d;/^CONFIG_PACKAGE_dnsmasq-full=/d' .config
+          cat >> .config <<'CONFIG'
+          CONFIG_TARGET_mediatek=y
+          CONFIG_TARGET_mediatek_filogic=y
+          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_philips_hy3000=y
+          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_cmcc_rax3000m-nand-mtk=y
+          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_cmcc_rax3000m-emmc-mtk=y
+          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_qihoo_360t7=y
+          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_aigo_ags21=y
+          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_cmcc_a10-ubootmod=y
+          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_konka_komi-a31=y
+          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_newland_nl-wr8103=y
+          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_newland_nl-wr9103=y
+          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_abt_asr3000=y
+          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_jcg_q30-pro=y
+          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_zbtlink_zbt-z8103ax-c=y
+          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_zbtlink_zbt-z8103ax-c-nmbm=y
+          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_zbtlink_zbt-z8103ax-c-ubootmod=y
+          CONFIG_PACKAGE_kmod-mt_wifi=y
+          CONFIG_PACKAGE_kmod-warp=y
+          CONFIG_PACKAGE_luci-app-mtwifi-cfg=y
+          CONFIG_PACKAGE_luci-i18n-mtwifi-cfg-zh-cn=y
+          CONFIG_PACKAGE_luci=y
+          CONFIG_PACKAGE_luci-app-store=y
+          CONFIG_PACKAGE_luci-app-quickstart=y
+          CONFIG_PACKAGE_quickstart=y
+          CONFIG_LUCI_LANG_zh_Hans=y
+          CONFIG_PACKAGE_luci-app-ttyd=y
+          CONFIG_PACKAGE_luci-app-filemanager=y
+          CONFIG_PACKAGE_luci-app-upnp=y
+          CONFIG_PACKAGE_luci-app-wol=y
+          # Full proxy/plugin set
+          CONFIG_PACKAGE_luci-app-passwall=y
+          CONFIG_PACKAGE_luci-app-passwall2=y
+          CONFIG_PACKAGE_luci-app-openclash=y
+          CONFIG_PACKAGE_luci-app-homeproxy=y
+          CONFIG_PACKAGE_luci-app-nps=y
+          CONFIG_PACKAGE_luci-i18n-nps-zh-cn=y
+          CONFIG_PACKAGE_luci-theme-argon=y
+          CONFIG_PACKAGE_luci-i18n-passwall-zh-cn=y
+          CONFIG_PACKAGE_luci-i18n-passwall2-zh-cn=y
+          CONFIG_PACKAGE_luci-i18n-homeproxy-zh-cn=y
+          # Proxy cores and common runtime dependencies
+          # CONFIG_PACKAGE_dnsmasq is not set
+          CONFIG_PACKAGE_dnsmasq-full=y
+          CONFIG_PACKAGE_xray-core=y
+          CONFIG_PACKAGE_sing-box=y
+          CONFIG_PACKAGE_chinadns-ng=y
+          CONFIG_PACKAGE_dns2socks=y
+          CONFIG_PACKAGE_geoview=y
+          CONFIG_PACKAGE_tcping=y
+          CONFIG_PACKAGE_bash=y
+          CONFIG_PACKAGE_curl=y
+          CONFIG_PACKAGE_ca-bundle=y
+          CONFIG_PACKAGE_ip-full=y
+          CONFIG_PACKAGE_unzip=y
+          CONFIG_PACKAGE_ruby=y
+          CONFIG_PACKAGE_ruby-yaml=y
+          CONFIG_PACKAGE_kmod-tun=y
+          CONFIG_PACKAGE_kmod-nft-tproxy=y
+          CONFIG_PACKAGE_kmod-inet-diag=y
+          CONFIG_PACKAGE_luci-compat=y
+          CONFIG_CCACHE=y
+          CONFIG
+          make defconfig
+          for sym in \
+            CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_philips_hy3000 \
+            CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_cmcc_rax3000m-nand-mtk \
+            CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_cmcc_rax3000m-emmc-mtk \
+            CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_qihoo_360t7 \
+            CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_aigo_ags21 \
+            CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_cmcc_a10-ubootmod \
+            CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_konka_komi-a31 \
+            CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_newland_nl-wr8103 \
+            CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_newland_nl-wr9103 \
+            CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_abt_asr3000 \
+            CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_jcg_q30-pro \
+            CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_zbtlink_zbt-z8103ax-c \
+            CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_zbtlink_zbt-z8103ax-c-nmbm \
+            CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_zbtlink_zbt-z8103ax-c-ubootmod \
+            CONFIG_PACKAGE_kmod-mt_wifi CONFIG_PACKAGE_kmod-warp \
+            CONFIG_PACKAGE_luci-app-store CONFIG_PACKAGE_luci-app-quickstart CONFIG_PACKAGE_quickstart \
+            CONFIG_PACKAGE_luci-app-passwall CONFIG_PACKAGE_luci-app-passwall2 \
+            CONFIG_PACKAGE_luci-app-openclash CONFIG_PACKAGE_luci-app-homeproxy \
+            CONFIG_PACKAGE_luci-app-nps CONFIG_PACKAGE_npc \
+            CONFIG_PACKAGE_luci-theme-argon CONFIG_PACKAGE_dnsmasq-full \
+            CONFIG_PACKAGE_xray-core CONFIG_PACKAGE_sing-box; do
+            grep -qx "$sym=y" .config || { echo "ERROR: $sym unavailable"; exit 1; }
+          done
+
+      - name: Apply login and MTWiFi defaults
+        working-directory: openwrt
+        run: |
+          sed -i 's/192\.168\.[0-9]*\.[0-9]*/192.168.7.1/g' package/base-files/files/bin/config_generate
+          sed -i -e 's/^SSID1=.*/SSID1=JuLiang-2.4G/' -e 's/^Channel=.*/Channel=9/' \
+            -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
+            -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' \
+            package/mtk/drivers/wifi-profile/files/mt7981/mt7981.dbdc.b0.dat
+          sed -i -e 's/^SSID1=.*/SSID1=JuLiang-5G/' -e 's/^Channel=.*/Channel=48/' \
+            -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
+            -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' \
+            package/mtk/drivers/wifi-profile/files/mt7981/mt7981.dbdc.b1.dat
+          mkdir -p files/etc
+          cp package/base-files/files/etc/shadow files/etc/shadow
+          HASH="$(openssl passwd -1 '@password@')"
+          sed -i "s#^root:[^:]*:#root:${HASH}:#" files/etc/shadow
+          chmod 600 files/etc/shadow
+
+          cat > files/etc/openwrt_release <<'RELEASE'
+          DISTRIB_ID='JulLiangTK'
+          DISTRIB_RELEASE='24.10'
+          DISTRIB_REVISION='V10-FastACL2.4.4-MainWiFi-by-jontao'
+          DISTRIB_TARGET='mediatek/filogic'
+          DISTRIB_ARCH='aarch64_cortex-a53'
+          DISTRIB_DESCRIPTION='JuLiangTK V10 FastACL2.4.4 MainWiFi by:jontao'
+          DISTRIB_TAINTS=''
+          RELEASE
+          cat > files/etc/os-release <<'OSRELEASE'
+          NAME="JulLiangTK"
+          VERSION="JuLiangTK V10 FastACL2.4.4 MainWiFi by:jontao"
+          ID="juliangtk"
+          PRETTY_NAME="JuLiangTK V10 FastACL2.4.4 MainWiFi by:jontao"
+          HOME_URL="https://github.com/wangjontao"
+          OSRELEASE
+
+          mkdir -p files/etc/uci-defaults
+          cat > files/etc/uci-defaults/97-juliang-system-wifi <<'WIFIDEFAULT'
+          #!/bin/sh
+          uci -q set system.@system[0].hostname='JulLiangTK'
+          uci -q commit system
+          for f in /etc/wireless/mediatek/*b0.dat; do
+            [ -f "$f" ] || continue
+            sed -i -e 's/^SSID1=.*/SSID1=JuLiang-2.4G/' -e 's/^Channel=.*/Channel=9/' \
+              -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
+              -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' "$f"
+          done
+          for f in /etc/wireless/mediatek/*b1.dat; do
+            [ -f "$f" ] || continue
+            sed -i -e 's/^SSID1=.*/SSID1=JuLiang-5G/' -e 's/^Channel=.*/Channel=48/' \
+              -e 's/^AuthMode=.*/AuthMode=WPA2PSK/' -e 's/^EncrypType=.*/EncrypType=AES/' \
+              -e 's/^WPAPSK1=.*/WPAPSK1=a1111111/' "$f"
+          done
+          exit 0
+          WIFIDEFAULT
+          chmod 755 files/etc/uci-defaults/97-juliang-system-wifi
+          cat > files/etc/uci-defaults/99-argon-theme <<'ARGON'
+          #!/bin/sh
+          uci -q set luci.main.mediaurlbase='/luci-static/argon'
+          uci -q commit luci
+          exit 0
+          ARGON
+          chmod 755 files/etc/uci-defaults/99-argon-theme
+
+          mkdir -p files/etc/init.d
+          cat > files/etc/init.d/nps-autokey <<'NPSAUTOKEY'
+          #!/bin/sh /etc/rc.common
+          START=95
+
+          get_wan_mac() {
+            local dev mac
+            for dev in "$(uci -q get network.wan.device)" "$(uci -q get network.wan.ifname)" "$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@.device' 2>/dev/null)" "$(ip -4 route show default 2>/dev/null | awk 'NR==1 {print $5}')" wan eth1 eth0; do
+              [ -n "$dev" ] || continue
+              [ -r "/sys/class/net/$dev/address" ] || continue
+              mac="$(cat "/sys/class/net/$dev/address" 2>/dev/null)"
+              [ -n "$mac" ] || continue
+              [ "$mac" = "00:00:00:00:00:00" ] && continue
+              echo "$mac"
+              return 0
+            done
+            return 1
+          }
+
+          update_nps_key() {
+            local mac key
+            mac="$(get_wan_mac)" || return 0
+            key="$(printf '%s' "$mac" | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+            uci -q get nps.@nps[0] >/dev/null || uci -q add nps nps >/dev/null
+            uci -q set nps.@nps[0].enabled='1'
+            uci -q set nps.@nps[0].server_addr='nps.jontao.top'
+            uci -q set nps.@nps[0].server_port='8024'
+            uci -q set nps.@nps[0].protocol='tcp'
+            uci -q set nps.@nps[0].compress='1'
+            uci -q set nps.@nps[0].crypt='1'
+            uci -q set nps.@nps[0].log_level='4'
+            uci -q set nps.@nps[0].vkey="$key"
+            uci -q commit nps
+            logger -t nps-autokey "configured nps.jontao.top:8024 from WAN MAC"
+          }
+
+          start() { update_nps_key; }
+          boot() { update_nps_key; }
+          NPSAUTOKEY
+          chmod 755 files/etc/init.d/nps-autokey
+
+          cat > files/etc/uci-defaults/98-nps-autokey <<'NPSDEFAULT'
+          #!/bin/sh
+          /etc/init.d/nps-autokey enable
+          /etc/init.d/nps enable
+          /etc/init.d/nps-autokey start
+          /etc/init.d/nps restart >/dev/null 2>&1 || true
+          exit 0
+          NPSDEFAULT
+          chmod 755 files/etc/uci-defaults/98-nps-autokey
+
+          mkdir -p files/etc/hotplug.d/iface
+          cat > files/etc/hotplug.d/iface/99-nps-autokey <<'NPSHOTPLUG'
+          #!/bin/sh
+          [ "$ACTION" = "ifup" ] || exit 0
+          [ "$INTERFACE" = "wan" ] || exit 0
+          /etc/init.d/nps-autokey start
+          /etc/init.d/nps restart >/dev/null 2>&1 || true
+          NPSHOTPLUG
+          chmod 755 files/etc/hotplug.d/iface/99-nps-autokey
+
+
+          mkdir -p files/usr/libexec files/etc/init.d files/etc/juliang-mainwifi
+
+          install -D -m0755 "$GITHUB_WORKSPACE/scripts/juliang-mainwifi-setup.sh" files/usr/libexec/juliang-mainwifi-setup
+          chmod 755 files/usr/libexec/juliang-mainwifi-setup
+          ! grep -q "firewall.\${net}_wan.dest='wan'" files/usr/libexec/juliang-mainwifi-setup
+          grep -q 'juliang-fastacl ensure' files/usr/libexec/juliang-mainwifi-setup
+          grep -q 'passwall2 disable' files/usr/libexec/juliang-mainwifi-setup
+
+          cat > files/etc/init.d/juliang-mainwifi-firstboot <<'TENINIT'
+          #!/bin/sh /etc/rc.common
+          START=99
+          start() {
+            [ -e /etc/juliang-fastacl243-mainwifi.done ] && return 0
+            ( sleep 15; /usr/libexec/juliang-mainwifi-setup; /etc/init.d/juliang-mainwifi-firstboot disable ) &
+          }
+          TENINIT
+          chmod 755 files/etc/init.d/juliang-mainwifi-firstboot
+          cat > files/etc/uci-defaults/99-juliang-mainwifi-enable <<'TENDEFAULT'
+          #!/bin/sh
+          /etc/init.d/juliang-mainwifi-firstboot enable
+          [ -e /etc/juliang-fastacl243-mainwifi.done ] || (
+            sleep 15
+            /usr/libexec/juliang-mainwifi-setup
+            /etc/init.d/juliang-mainwifi-firstboot disable
+          ) &
+          exit 0
+          TENDEFAULT
+          chmod 755 files/etc/uci-defaults/99-juliang-mainwifi-enable
+
+          bash "$GITHUB_WORKSPACE/scripts/install-wan-dhcp-mac-fix.sh" "$PWD/files"
+
+          ./scripts/diffconfig.sh | tee MT7981-MTWiFi-final.config
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: openwrt/.ccache
+          key: mt7981-mtwifi-ccache-${{ runner.os }}-${{ env.SOURCE_HASH }}-${{ github.run_id }}
+          restore-keys: |
+            mt7981-mtwifi-ccache-${{ runner.os }}-${{ env.SOURCE_HASH }}-
+            mt7981-mtwifi-ccache-${{ runner.os }}-
+
+      - name: Restore toolchain cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            openwrt/staging_dir/host
+            openwrt/staging_dir/toolchain-*
+            openwrt/build_dir/host
+            openwrt/build_dir/toolchain-*
+          key: mt7981-mtwifi-toolchain-${{ runner.os }}-${{ env.SOURCE_HASH }}-v1
+
+      - name: Preinstall Argon Realtime-IP v4
+        working-directory: openwrt
+        run: |
+          install -D -m0755 "$GITHUB_WORKSPACE/profiles/realtime-ip-v4/install-argon-realtime-ip-v4.sh" files/usr/bin/install-argon-realtime-ip-v4
+          cat > files/etc/uci-defaults/95-argon-realtime-ip-v4 <<'REALTIMEIP'
+          #!/bin/sh
+          /usr/bin/install-argon-realtime-ip-v4 >/tmp/install-argon-realtime-ip-v4.log 2>&1 || exit 1
+          exit 0
+          REALTIMEIP
+          chmod 0755 files/etc/uci-defaults/95-argon-realtime-ip-v4
+
+      - name: Restore download cache
+        id: downloads
+        uses: actions/cache/restore@v4
+        with:
+          path: openwrt/dl
+          key: mt7981-mtwifi-2410-dl-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            mt7981-mtwifi-2410-dl-
+
+      - name: Download and compile
+        working-directory: openwrt
+        run: |
+          export CCACHE_DIR="$PWD/.ccache"
+          ccache -M 5G || true
+          # Do not reuse partially populated Go module trees from an interrupted run.
+          rm -rf dl/go-mod-cache
+          make download -j"$(nproc)"
+          find dl -type f -size -1024c -print -delete
+          df -h /
+          make -j"$(nproc)" || { df -h /; make -j1 V=s; }
+
+      - name: Verify FastACL 2.4.4 Stable and Operator UI inside final rootfs
+        working-directory: openwrt
+        run: |
+          ROOTFS="$(find build_dir -type d -name root-mediatek | head -n1)"
+          [ -n "$ROOTFS" ] || { echo 'ERROR: root-mediatek not found'; exit 1; }
+          test -x "$ROOTFS/usr/bin/juliang-fastacl"
+          test -x "$ROOTFS/usr/bin/juliang-fastacl-runtime"
+          test -x "$ROOTFS/usr/bin/juliang-fastacl-mode"
+          test -s "$ROOTFS/usr/lib/lua/luci/controller/juliang_fastacl_runtime.lua"
+          grep -q "option version '2.4.4'" "$ROOTFS/etc/config/juliang_fastacl"
+          grep -q '普通代理模式' "$ROOTFS/usr/lib/lua/luci/view/juliang_fastacl/console.htm"
+          grep -q 'PW2_SIMPLE_PROXY_IMPORT_V1' "$ROOTFS/usr/share/passwall2/subscribe.lua"
+          test -x "$ROOTFS/usr/bin/juliang-fastacl-guard"
+          test -x "$ROOTFS/etc/init.d/juliang-fastacl"
+          test -s "$ROOTFS/etc/config/juliang_fastacl"
+          grep -q "option enabled '1'" "$ROOTFS/etc/config/juliang_fastacl"
+          grep -q 'juliang_killswitch' "$ROOTFS/usr/bin/juliang-fastacl"
+          grep -q 'runtime_mode' "$ROOTFS/usr/bin/juliang-fastacl-guard"
+          grep -q 'JULIANG_FASTACL_V240' "$ROOTFS/usr/lib/lua/luci/view/passwall2/node_list/node_list.htm"
+          grep -q 'FastACL 即时分配无线' "$ROOTFS/usr/lib/lua/luci/view/passwall2/node_list/node_list.htm"
+          grep -q '2.4.4 migration applied' "$ROOTFS/etc/uci-defaults/94-juliang-fastacl-v9"
+          test -s "$ROOTFS/etc/fastacl-release.json"
+          grep -q 'jfa_nodes_panel' "$ROOTFS/usr/lib/lua/luci/view/juliang_fastacl/console.htm"
+          grep -q 'window.loadStatus' "$ROOTFS/usr/lib/lua/luci/view/juliang_fastacl/batch_wifi.htm"
+          grep -q 'jfw-fold' "$ROOTFS/usr/lib/lua/luci/view/juliang_fastacl/batch_wifi.htm"
+          grep -q 'JuLiangTk-5G:48' "$ROOTFS/usr/libexec/juliang-mainwifi-setup"
+          grep -q 'JuLiangTk-2.4G:9' "$ROOTFS/usr/libexec/juliang-mainwifi-setup"
+          grep -q 'juliang-fastacl243-mainwifi.done' "$ROOTFS/usr/libexec/juliang-mainwifi-setup"
+          ! grep -q "firewall.\${net}_wan.dest='wan'" "$ROOTFS/usr/libexec/juliang-mainwifi-setup"
+          grep -q 'runtime_mode' "$ROOTFS/usr/bin/juliang-fastacl-guard"
+          grep -Fq 'move_node(){' "$ROOTFS/usr/bin/juliang-fastacl"
+          grep -Fq 'switch_node(){' "$ROOTFS/usr/bin/juliang-fastacl"
+          grep -q "option health_probe_interval '120'" "$ROOTFS/etc/config/juliang_fastacl"
+          test -x "$ROOTFS/usr/bin/juliang-operator"
+          grep -q "Port='20022'" "$ROOTFS/etc/uci-defaults/97-juliang-operator-mode"
+          grep -q "username='admin'" "$ROOTFS/etc/uci-defaults/97-juliang-operator-mode"
+          grep -q "rpcd.juliang_operator.password=" "$ROOTFS/etc/uci-defaults/97-juliang-operator-mode"
+          sh -n "$ROOTFS/etc/uci-defaults/97-juliang-operator-mode"
+          test -s "$ROOTFS/usr/lib/lua/luci/controller/juliang_operator.lua"
+          test -s "$ROOTFS/usr/lib/lua/luci/view/juliang_operator/home.htm"
+          test -s "$ROOTFS/usr/lib/lua/luci/view/juliang_operator/wireless.htm"
+          test -s "$ROOTFS/usr/share/rpcd/acl.d/juliang-operator.json"
+          grep -q 'juliang_operator_stats' "$ROOTFS/usr/lib/lua/luci/controller/juliang_operator.lua"
+          grep -q 'router_down_bytes' "$ROOTFS/usr/lib/lua/luci/controller/juliang_operator.lua"
+          grep -q 'counter comment "DOWN:' "$ROOTFS/usr/lib/lua/luci/controller/juliang_operator.lua"
+          grep -q 'counter comment "UP:' "$ROOTFS/usr/lib/lua/luci/controller/juliang_operator.lua"
+          ! grep -q '不开放接口、DHCP、防火墙' "$ROOTFS/usr/lib/lua/luci/view/juliang_operator/wireless.htm"
+          ! grep -q 'idx<=10' "$ROOTFS/usr/bin/pw2-acl-ip-json"
+          ! grep -q 'idx<=10' "$ROOTFS/usr/bin/pw-acl-ip-json"
+          grep -q 'if not _jfa_enabled then' "$ROOTFS/usr/lib/lua/luci/view/passwall2/acl_exit_ip_status.htm"
+          grep -q 'ACL 实际出口 IP' "$ROOTFS/usr/lib/lua/luci/view/passwall2/acl_exit_ip_status.htm"
+          grep -q 'action == "visibility"' "$ROOTFS/usr/lib/lua/luci/controller/juliang_operator.lua"
+          grep -q 'action == "visibility_all"' "$ROOTFS/usr/lib/lua/luci/controller/juliang_operator.lua"
+          grep -q 'toggleVisibility' "$ROOTFS/usr/lib/lua/luci/view/juliang_operator/wireless.htm"
+          grep -q 'toggleAllVisibility' "$ROOTFS/usr/lib/lua/luci/view/juliang_operator/wireless.htm"
+          grep -q '一键隐藏全部' "$ROOTFS/usr/lib/lua/luci/view/juliang_operator/wireless.htm"
+          echo "Verified: FastACL UI/runtime/MOVE-fix/Guardian/real-exit-health/kill-switch/dynamic-ACL are physically present in final rootfs."
+
+      - name: Save download cache
+        if: ${{ always() && steps.downloads.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: openwrt/dl
+          key: ${{ steps.downloads.outputs.cache-primary-key }}
+
+      - name: Preserve raw target output
+        if: ${{ success() }}
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: MT7981-V10-MainWiFi-NPS-jontao-top-raw-${{ env.BUILD_DATE }}
+          path: openwrt/bin/targets/mediatek/filogic/*
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Verify and collect firmware
+        working-directory: openwrt
+        run: |
+          mkdir -p upload
+          find bin/targets/mediatek/filogic -maxdepth 1 -type f -printf '%f\n' | sort
+          for pattern in philips_hy3000 cmcc_rax3000m-nand-mtk cmcc_rax3000m-emmc-mtk qihoo_360t7 aigo_ags21 cmcc_a10-ubootmod konka_komi-a31 newland_nl-wr8103 newland_nl-wr9103 abt_asr3000 jcg_q30-pro zbtlink_zbt-z8103ax-c zbtlink_zbt-z8103ax-c-nmbm zbtlink_zbt-z8103ax-c-ubootmod; do
+            mapfile -t files < <(find bin/targets/mediatek/filogic -maxdepth 1 -type f -iname "*${pattern}*" \( -iname "*.bin" -o -iname "*.itb" \) -size +5M)
+            [ "${#files[@]}" -gt 0 ] || { echo "ERROR: ${pattern} firmware missing"; exit 1; }
+            cp -a "${files[@]}" upload/
+          done
+          for f in upload/*konka_komi-a31*; do
+            [ -f "$f" ] || continue
+            cp -a "$f" "${f/konka_komi-a31/etr631-t}"
+            cp -a "$f" "${f/konka_komi-a31/etr635-u}"
+          done
+          cp MT7981-MTWiFi-final.config upload/
+          sha256sum upload/* | tee upload/SHA256SUMS
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: MT7981-V10-FastACL2.4.4-MainWiFi-${{ env.BUILD_DATE }}
+          name: MT7981 V10 FastACL2.4.4 MainWiFi 正式版 ${{ env.BUILD_DATE }}
+          files: openwrt/upload/*
+          target_commitish: ${{ github.sha }}
+          body: |
+            Experimental ImmortalWrt 24.10 kernel 6.6 closed MTWiFi build.
+            Devices (MT7981 group only): Philips HY3000, CMCC RAX3000M NAND/eMMC, Qihoo 360T7, AGS21, CMCC A10 U-Boot mod, ETR631-T/ETR635-U (KOMI A31), Newland 8103/9103, Ambit ASR3000, JCG Q30 Pro, and ZBT-Z8103AX-C/D family (standard, NMBM and OpenWrt U-Boot layouts).
+            Z8103AX-C/D: compiled only in this MT7981 workflow; the NMBM image is included for NAND layouts that require NMBM, and the OpenWrt U-Boot layout is supplied separately.
+            Driver: mt_wifi 7.6.6.1 with matching WARP. Management: 192.168.7.1, root password @password@.
+            System: JulLiangTK; firmware description: JuLiangTK OS V10 FastACL2.4.4 MainWiFi DHCP-MAC-Fix by:jontao.
+            DHCP/MAC Lease Fix: clean rebuild from successful V5; V6 is preserved as a failed workflow-parser attempt. Pins the first-seen WAN MAC, enables DHCP broadcast mode, renews DHCP automatically, restarts WAN only when needed, and performs WAN-link recovery with a 180-second cooldown.
+            WiFi: JuLiang-2.4G (channel 9) and JuLiang-5G (channel 48), password a1111111.
+            MainWiFi: Main WiFi only: JuLiangTk-5G channel 48 and JuLiangTk-2.4G channel 9; password a1111111. Add dedicated WiFi through FastACL batch creation.
+            Wireless, DHCP and the supplied PassWall/PassWall2 five-ACL templates run once, 60 seconds after first boot.
+            Import: PassWall and PassWall2 both support SOCKS5/SOCKS/HTTP URI plus multiline host:port:username:password SK5 shorthand.
+            Realtime IP: Argon Realtime-IP v4 glass panel retained, with ISP, region and refreshed public IPv4 display.
+            DNS: FastACL encrypted DNS and direct/proxy privacy modes; main LAN uses direct networking until assigned a node.
+            Plugins: iStore, QuickStart, Passwall 26.3.6-1, Passwall2 26.3.5-1, OpenClash, HomeProxy, original ehang NPS/NPC 0.26.10. Theme: Argon.
+            NPS: nps.jontao.top:8024; every boot reads WAN MAC, removes colons, uppercases it, and writes it as vkey.
+            FastACL 2.4.4 Stable: frozen source with batch WiFi creation/cleanup, rollback and collapsible panels. Dedicated WiFi is added on demand.
+            DNS: FastACL encrypted DNS and direct/proxy privacy modes; main LAN uses direct networking until assigned a node.
+            Operator UI: restricted ordinary-user interface is pre-enabled with username admin; password is stored as a crypt hash in firmware defaults. Includes JuLiang home dashboard, WAN/interface status, realtime total traffic, wireless SSID/password/channel management, client IP/MAC/signal/link rate, and per-client realtime upload/download traffic.
+            SSH: Dropbear listens on TCP port 20022 after first boot defaults are applied.
+            Fix3 reliability: same-node MOVE no longer revives the old AP relay; Guardian performs parallel real-exit probes every 120 seconds and restarts only the affected AP after 3 consecutive failures.
+            ACL display: legacy PassWall/PassWall2 ACL exit-IP panel is dynamic (5/10/20+ based on detected ACL subnets) and automatically hidden while FastACL mode is enabled.
+            Leak protection: FastACL protects proxy-assigned networks with KillSwitch; direct mode is an explicit selection.
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: MT7981-V10-FastACL2.4.4-MainWiFi-${{ env.BUILD_DATE }}
+          path: openwrt/upload/*
+          if-no-files-found: error
+          retention-days: 30

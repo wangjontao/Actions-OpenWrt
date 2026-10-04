@@ -34,7 +34,7 @@ for spec in "$radio2:2:JuLiangTk-2.4G:9" "$radio5:5:JuLiangTk-5G:48"; do
 done
 uci commit wireless
 uci set juliang_fastacl.main.include_lan='1'
-uci set juliang_fastacl.main.version='2.4.3'
+uci set juliang_fastacl.main.version='2.4.4'
 uci commit juliang_fastacl
 /etc/init.d/network reload >/dev/null 2>&1 || true
 wifi reload >/dev/null 2>&1 || true
@@ -53,4 +53,4 @@ else
   /usr/bin/juliang-fastacl-mode apply
 fi
 touch "$MARKER"
-logger -t juliang-mainwifi 'FastACL2.4.3: main WiFi only; JuLiangTk-5G channel48 / JuLiangTk-2.4G channel9'
+logger -t juliang-mainwifi 'FastACL2.4.4: main WiFi only; JuLiangTk-5G channel48 / JuLiangTk-2.4G channel9'

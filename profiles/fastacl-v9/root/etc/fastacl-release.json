@@ -1,5 +1,5 @@
 {
-  "version": "2.4.3",
+  "version": "2.4.4",
   "status": "stable-frozen",
   "date": "2026-10-04",
   "limits": {
@@ -15,14 +15,15 @@
     "batch-panel-collapsed-by-default"
   ],
   "files": {
-    "usr/bin/juliang-fastacl-guard": "1d85ad695f9101e2779700e86809085a62803656e6dfed51c524635934cddf92",
+    "usr/bin/juliang-fastacl-guard": "79261faeb57be37a8f753e2e9fec4dd4861a7a7ea73612f29293ebab7814cb7b",
     "usr/lib/lua/juliang_fastacl_wifi.lua": "c3010a5eb9f5d0432f2315ff1035ba95ff1e27c56c95934f8a55f2229434b111",
     "usr/lib/lua/juliang_fastacl_wifi_env.lua": "0d0b5dac4a87cabe20a5f6faa9e5ea147a4a60be63f7991f16ff049709e84898",
     "usr/lib/lua/luci/controller/juliang_fastacl_wifi.lua": "1e5081eb134c967e59761da986112ed5a7a4a4d78b6e975bde0efd8aa0e90395",
-    "usr/lib/lua/luci/view/juliang_fastacl/batch_wifi.htm": "2eaef500ac3839bb0c5c3fc1e666afe50211dd580108e7bc927376ec8a8ab36a",
-    "usr/lib/lua/luci/view/juliang_fastacl/console.htm": "fd5654c17f5a61590f6f891d0d0bb7333f3a228a2a23738e35f1ff13695921ad",
+    "usr/lib/lua/luci/view/juliang_fastacl/batch_wifi.htm": "3580f12dd1544444635cfd732c62c446f8a63e6f242b8820515b9da44919a951",
+    "usr/lib/lua/luci/view/juliang_fastacl/console.htm": "a4ad22fbbd3b29aa9439ec04fe748eb040c1d5eec108004c28c07e62f2a5258d",
     "usr/lib/lua/luci/view/juliang_operator/wireless.htm": "7def8782395a3ca7e4519ec3ed2e10d3a87c3b7b0d99930fdc12ff4ae4b578fa",
     "usr/libexec/juliang-fastacl-discover.lua": "39099d332e9d1076af104c9eac269b81ae6216db887a637322dd451654630ee3",
     "usr/libexec/juliang-fastacl-wifi.lua": "d2ca20c2224534937d4a5f6390baf2f810a741c8bbf3ce56dd338ec9e1c0f8b4"
-  }
+  },
+  "fix": "Refresh node assignment list after batch WiFi create/clear"
 }
