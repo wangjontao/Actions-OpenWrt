@@ -1,3 +1,7 @@
+<%
+local _jfa_enabled = require("luci.model.uci").cursor():get("juliang_fastacl", "main", "enabled") == "1"
+if not _jfa_enabled then
+%>
 <div style="padding:8px 0 14px 0">
 <input id="passwall2_acl_quick" type="button" class="cbi-button cbi-button-action" value="快速更新实际出口 IP" onclick="passwall2AclRefresh(false);" />
 <input id="passwall2_acl_full" type="button" class="cbi-button cbi-button-apply" value="强制重新检测全部" onclick="passwall2AclRefresh(true);" />
