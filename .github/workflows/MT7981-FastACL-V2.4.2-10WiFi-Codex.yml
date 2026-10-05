@@ -1,10 +1,10 @@
-name: MT7981 V10 FastACL2.4.2 10WiFi
+name: MT7981 V10 FastACL2.4.2 ACL修复版 10WiFi
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - codex/fastacl-v2.4.2-runtime-fix
+      - codex/fastacl242-acl-5-10wifi
     paths:
       - .github/workflows/MT7981-FastACL-V2.4.2-10WiFi-Codex.yml
 
@@ -31,7 +31,7 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/lib/android /opt/hostedtoolcache/CodeQL
           sudo apt-get update
-          sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib gettext git \
+          sudo apt-get install -y build-essential lua5.1 clang flex bison g++ gawk gcc-multilib gettext git \
             libncurses-dev libssl-dev python3-setuptools rsync swig unzip zlib1g-dev file wget curl jq \
             openssl ccache zstd lua5.1
           sudo apt-get clean
@@ -367,17 +367,17 @@ jobs:
           cat > files/etc/openwrt_release <<'RELEASE'
           DISTRIB_ID='JulLiangTK'
           DISTRIB_RELEASE='24.10'
-          DISTRIB_REVISION='V10-FastACL2.4.2-10WiFi-by-jontao'
+          DISTRIB_REVISION='V10-FastACL2.4.2-ACL-Fixed-10WiFi-by-jontao'
           DISTRIB_TARGET='mediatek/filogic'
           DISTRIB_ARCH='aarch64_cortex-a53'
-          DISTRIB_DESCRIPTION='JuLiangTK V10 FastACL2.4.2 10WiFi by:jontao'
+          DISTRIB_DESCRIPTION='JuLiangTK V10 FastACL2.4.2 ACL修复版 10WiFi by:jontao'
           DISTRIB_TAINTS=''
           RELEASE
           cat > files/etc/os-release <<'OSRELEASE'
           NAME="JulLiangTK"
-          VERSION="JuLiangTK V10 FastACL2.4.2 10WiFi by:jontao"
+          VERSION="JuLiangTK V10 FastACL2.4.2 ACL修复版 10WiFi by:jontao"
           ID="juliangtk"
-          PRETTY_NAME="JuLiangTK V10 FastACL2.4.2 10WiFi by:jontao"
+          PRETTY_NAME="JuLiangTK V10 FastACL2.4.2 ACL修复版 10WiFi by:jontao"
           HOME_URL="https://github.com/wangjontao"
           OSRELEASE
 
@@ -731,6 +731,15 @@ jobs:
           grep -q '一键隐藏全部' "$ROOTFS/usr/lib/lua/luci/view/juliang_operator/wireless.htm"
           echo "Verified: FastACL UI/runtime/MOVE-fix/Guardian/real-exit-health/kill-switch/dynamic-ACL are physically present in final rootfs."
 
+          python3 - "$ROOTFS" <<'ACL_CHECK'
+          import pathlib,re,subprocess,tempfile,sys
+          for app in ('passwall','passwall2'):
+              s=(pathlib.Path(sys.argv[1])/'usr/lib/lua/luci/view'/app/'acl_ip_refresh.htm').read_text()
+              code='\n'.join('do local _ = '+x[1:]+' end' if x.startswith('=') else x for x in re.findall(r'<%(.*?)%>',s,re.S))
+              with tempfile.NamedTemporaryFile(mode='w',suffix='.lua') as f:
+                  f.write(code);f.flush();subprocess.run(['luac5.1','-p',f.name],check=True)
+          ACL_CHECK
+
       - name: Save download cache
         if: ${{ always() && steps.downloads.outcome == 'success' }}
         continue-on-error: true
@@ -769,8 +778,8 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: MT7981-V10-FastACL2.4.2-10WiFi-${{ env.BUILD_DATE }}
-          name: MT7981 V10 FastACL2.4.2 10WiFi 正式版 ${{ env.BUILD_DATE }}
+          tag_name: MT7981-V10-FastACL2.4.2-ACL-Fixed-10WiFi-${{ env.BUILD_DATE }}
+          name: MT7981 V10 FastACL2.4.2 ACL修复版 10WiFi 正式版 ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
           target_commitish: ${{ github.sha }}
           body: |
@@ -778,7 +787,7 @@ jobs:
             Devices (MT7981 group only): Philips HY3000, CMCC RAX3000M NAND/eMMC, Qihoo 360T7, AGS21, CMCC A10 U-Boot mod, ETR631-T/ETR635-U (KOMI A31), Newland 8103/9103, Ambit ASR3000, JCG Q30 Pro, and ZBT-Z8103AX-C/D family (standard, NMBM and OpenWrt U-Boot layouts).
             Z8103AX-C/D: compiled only in this MT7981 workflow; the NMBM image is included for NAND layouts that require NMBM, and the OpenWrt U-Boot layout is supplied separately.
             Driver: mt_wifi 7.6.6.1 with matching WARP. Management: 192.168.7.1, root password @password@.
-            System: JulLiangTK; firmware description: JuLiangTK OS V10 FastACL2.4.2 10WiFi DHCP-MAC-Fix by:jontao.
+            System: JulLiangTK; firmware description: JuLiangTK OS V10 FastACL2.4.2 ACL修复版 10WiFi DHCP-MAC-Fix by:jontao.
             DHCP/MAC Lease Fix: clean rebuild from successful V5; V6 is preserved as a failed workflow-parser attempt. Pins the first-seen WAN MAC, enables DHCP broadcast mode, renews DHCP automatically, restarts WAN only when needed, and performs WAN-link recovery with a 180-second cooldown.
             WiFi: JuLiang-2.4G (channel 9) and JuLiang-5G (channel 48), password a1111111.
             10WiFi: A1-A8 on 5GHz and A9-A10 on 2.4GHz; password a1111111; isolated subnets 172.16.1.0/24 through 172.16.10.0/24.
@@ -800,7 +809,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7981-V10-FastACL2.4.2-10WiFi-${{ env.BUILD_DATE }}
+          name: MT7981-V10-FastACL2.4.2-ACL-Fixed-10WiFi-${{ env.BUILD_DATE }}
           path: openwrt/upload/*
           if-no-files-found: error
           retention-days: 30
