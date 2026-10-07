@@ -107,10 +107,16 @@ local function uci_enabled(keys)
 end
 
 local function service_state(name)
-    if name == "nps" then return sys.call("pgrep -x npc >/dev/null 2>&1") == 0 end
+    if name == "nps" then
+        return sys.call("[ -x /etc/init.d/nps ] && /etc/init.d/nps status >/dev/null 2>&1") == 0
+            or sys.call("pgrep -f '/usr/bin/npc' >/dev/null 2>&1") == 0
+    end
     if name == "passwall" then return uci_enabled({"passwall.@global[0].enabled"}) and sys.call("pgrep -f '/tmp/etc/passwall/' >/dev/null 2>&1") == 0 end
     if name == "passwall2" then return uci_enabled({"passwall2.@global[0].enabled"}) and sys.call("pgrep -f '/tmp/etc/passwall2/' >/dev/null 2>&1") == 0 end
-    if name == "homeproxy" then return uci_enabled({"homeproxy.config.main.enabled", "homeproxy.@homeproxy[0].enabled"}) and sys.call("pgrep -f 'sing-box.*homeproxy' >/dev/null 2>&1") == 0 end
+    if name == "homeproxy" then
+        return sys.call("[ -x /etc/init.d/homeproxy ] && /etc/init.d/homeproxy status >/dev/null 2>&1") == 0
+            or sys.call("pgrep -f '/usr/bin/sing-box run.*homeproxy' >/dev/null 2>&1") == 0
+    end
     if name == "openclash" then return uci_enabled({"openclash.config.enable"}) and sys.call("pgrep -f 'mihomo|clash' >/dev/null 2>&1") == 0 end
     return false
 end
@@ -133,7 +139,7 @@ function api_status()
     local enabled = {
         passwall=uci_enabled({"passwall.@global[0].enabled"}),
         passwall2=uci_enabled({"passwall2.@global[0].enabled"}),
-        homeproxy=uci_enabled({"homeproxy.config.main.enabled", "homeproxy.@homeproxy[0].enabled"}),
+        homeproxy=running.homeproxy or firstline("uci -q get homeproxy.config.main_node") ~= "",
         openclash=uci_enabled({"openclash.config.enable"})
     }
     local active = {}
