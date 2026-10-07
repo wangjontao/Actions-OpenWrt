@@ -1,0 +1,111 @@
+#!/bin/sh
+# JuLiang FastACL 2.4.2 - read-only WiFi/SSID detector
+set -u
+
+TMP="/tmp/jfa-wifi-detect.$$"
+SEEN="$TMP.seen"
+ROWS="$TMP.rows"
+trap 'rm -f "$SEEN" "$ROWS" 2>/dev/null || true' EXIT INT TERM
+: > "$SEEN"
+: > "$ROWS"
+
+add_row() {
+    src="$1"; ifname="$2"; ssid="$3"
+    ssid="$(printf '%s' "$ssid" | sed 's/^"//;s/"$//;s/^[[:space:]]*//;s/[[:space:]]*$//')"
+    [ -n "$ssid" ] || return 0
+    [ "$ssid" = "unknown" ] && return 0
+    [ "$ssid" = "off/any" ] && return 0
+
+    key="$ifname|$ssid"
+    grep -Fxq "$key" "$SEEN" 2>/dev/null && return 0
+    printf '%s\n' "$key" >> "$SEEN"
+
+    net=""; ip=""; mask=""
+    case "$ssid" in
+        A[1-9]|A1[0-9]|A20)
+            n="${ssid#A}"
+            net="a$n"
+            ip="$(uci -q get network.$net.ipaddr 2>/dev/null || true)"
+            mask="$(uci -q get network.$net.netmask 2>/dev/null || true)"
+            ;;
+    esac
+
+    if [ -z "$net" ]; then
+        sec="$(uci -q show wireless 2>/dev/null | sed -n "s/^wireless\.\([^.=]*\)\.ssid='${ssid}'$/\1/p" | head -n1)"
+        if [ -n "$sec" ]; then
+            net="$(uci -q get wireless.$sec.network 2>/dev/null || true)"
+            set -- $net
+            net="${1:-}"
+            if [ -n "$net" ]; then
+                ip="$(uci -q get network.$net.ipaddr 2>/dev/null || true)"
+                mask="$(uci -q get network.$net.netmask 2>/dev/null || true)"
+            fi
+        fi
+    fi
+
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$src" "$ifname" "$ssid" "$net" "$ip" "$mask" >> "$ROWS"
+}
+
+# UCI view first: deterministic mapping when netifd is ready.
+for sec in $(uci -q show wireless 2>/dev/null | sed -n "s/^wireless\.\([^.=]*\)=wifi-iface$/\1/p"); do
+    [ "$(uci -q get wireless.$sec.disabled 2>/dev/null || echo 0)" = "1" ] && continue
+    [ "$(uci -q get wireless.$sec.mode 2>/dev/null || echo ap)" = "ap" ] || continue
+    ssid="$(uci -q get wireless.$sec.ssid 2>/dev/null || true)"
+    [ -n "$ssid" ] && add_row "uci" "$sec" "$ssid"
+done
+
+# Runtime interfaces via iwinfo.
+if command -v iwinfo >/dev/null 2>&1; then
+    for ifname in $(ls /sys/class/net 2>/dev/null); do
+        out="$(iwinfo "$ifname" info 2>/dev/null || true)"
+        [ -n "$out" ] || continue
+        ssid="$(printf '%s\n' "$out" | sed -n 's/.*ESSID: "\(.*\)".*/\1/p' | head -n1)"
+        [ -n "$ssid" ] && add_row "iwinfo" "$ifname" "$ssid"
+    done
+fi
+
+# Proprietary MTWiFi runtime fallback via iwconfig.
+if command -v iwconfig >/dev/null 2>&1; then
+    iwconfig 2>/dev/null | awk '
+        /^[[:alnum:]_.:-]+[[:space:]]/ { iface=$1 }
+        /ESSID:/ {
+            line=$0
+            sub(/^.*ESSID:/,"",line)
+            gsub(/^"|"$/,"",line)
+            print iface "\t" line
+        }
+    ' | while IFS='\t' read -r ifname ssid; do
+        [ -n "${ssid:-}" ] && add_row "iwconfig" "${ifname:-}" "$ssid"
+    done
+fi
+
+# Closed MTWiFi profile files can expose extra BSS SSIDs before netifd does.
+for f in /etc/wireless/mediatek/*.dat /etc/wireless/*.dat; do
+    [ -f "$f" ] || continue
+    grep -E '^SSID[0-9]+=' "$f" 2>/dev/null | while IFS='=' read -r key ssid; do
+        [ -n "${ssid:-}" ] || continue
+        add_row "mtwifi" "$(basename "$f"):$key" "$ssid"
+    done
+done
+
+printf '%-9s %-18s %-20s %-10s %-16s %s\n' SOURCE IFACE SSID NETWORK IP NETMASK
+printf '%-9s %-18s %-20s %-10s %-16s %s\n' ------ ----- ---- ------- -- -------
+cat "$ROWS" | while IFS='\t' read -r src ifname ssid net ip mask; do
+    printf '%-9s %-18s %-20s %-10s %-16s %s\n' "$src" "$ifname" "$ssid" "${net:--}" "${ip:--}" "${mask:--}"
+done
+
+echo
+echo "FastACL A-series mapping:"
+found=0
+for n in $(seq 1 20 2>/dev/null || awk 'BEGIN{for(i=1;i<=20;i++)print i}'); do
+    ssid="A$n"; net="a$n"
+    if grep -Eq "(^|[[:space:]])${ssid}([[:space:]]|$)" "$ROWS" 2>/dev/null; then
+        ip="$(uci -q get network.$net.ipaddr 2>/dev/null || true)"
+        mask="$(uci -q get network.$net.netmask 2>/dev/null || true)"
+        printf '%-4s -> %-4s -> %s%s\n' "$ssid" "$net" "${ip:--}" "${mask:+/$mask}"
+        found=$((found+1))
+    fi
+done
+
+echo "Detected A-series SSIDs: $found"
+exit 0
