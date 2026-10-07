@@ -93,73 +93,96 @@ do
 end
 
 local include_lan = (uci:get("juliang_fastacl", "main", "include_lan") or "1") ~= "0"
-
-local ignore = {
-  wan=true, wan6=true, loopback=true, wwan=true
-}
-
+local ignore = { wan=true, wan6=true, loopback=true, wwan=true }
 local by_net = {}
+
+local function add_network(net, ssid, source)
+  if not net or net == "" or ignore[net] or (net == "lan" and not include_lan) then return false end
+  local cidr, router_ip = network_ipv4(net)
+  if not cidr or (net ~= "lan" and cidr == lan_cidr) then return false end
+
+  local item = by_net[net]
+  if not item then
+    item = {
+      network = net,
+      subnet = cidr,
+      router_ip = router_ip or "",
+      ssids = {},
+      sources = {},
+      is_lan = (net == "lan")
+    }
+    by_net[net] = item
+  end
+
+  if ssid and ssid ~= "" then
+    local found=false
+    for _,v in ipairs(item.ssids) do if v == ssid then found=true break end end
+    if not found then item.ssids[#item.ssids+1]=ssid end
+  end
+  if source and source ~= "" then item.sources[source]=true end
+  return true
+end
+
+-- 1) Normal UCI wireless mapping.
 uci:foreach("wireless", "wifi-iface", function(s)
   if tostring(s.disabled or "0") ~= "1" and tostring(s.mode or "ap") == "ap" then
     local ssid = s.ssid or s[".name"] or "WiFi"
     for _, net in ipairs(split_words(s.network)) do
-      if not ignore[net] and (net ~= "lan" or include_lan) then
-        local cidr, router_ip = network_ipv4(net)
-        if cidr and (net == "lan" or cidr ~= lan_cidr) then
-          local item = by_net[net]
-          if not item then
-            item = {
-              network = net,
-              subnet = cidr,
-              router_ip = router_ip or "",
-              ssids = {},
-              is_lan = (net == "lan")
-            }
-            by_net[net] = item
-          end
-          local found=false
-          for _,v in ipairs(item.ssids) do if v == ssid then found=true break end end
-          if not found then item.ssids[#item.ssids+1]=ssid end
-        end
-      end
+      add_network(net, ssid, "uci")
     end
   end
 end)
 
--- The main LAN also represents wired LAN clients. Include it even if the
--- main SSID is temporarily down, as long as the LAN IPv4 network exists.
-if include_lan and lan_cidr and not by_net.lan then
-  local cidr, router_ip = network_ipv4("lan")
-  if cidr then
-    by_net.lan = {
-      network = "lan",
-      subnet = cidr,
-      router_ip = router_ip or "",
-      ssids = {},
-      is_lan = true
-    }
+-- 2) Runtime/MTWiFi SSID-name fallback. AX6000/S20L closed MTWiFi can expose
+-- A1..A20 before netifd has completed wifi-iface -> network association.
+local runtime_ssids = {}
+local runtime_cmd = [[
+(
+  if command -v iwinfo >/dev/null 2>&1; then
+    for i in $(ls /sys/class/net 2>/dev/null); do
+      iwinfo "$i" info 2>/dev/null | sed -n 's/.*ESSID: "\(.*\)".*/\1/p'
+    done
+  fi
+  if command -v iwconfig >/dev/null 2>&1; then
+    iwconfig 2>/dev/null | sed -n 's/.*ESSID:"\([^"]*\)".*/\1/p'
+  fi
+  for f in /etc/wireless/mediatek/*.dat /etc/wireless/*.dat; do
+    [ -f "$f" ] || continue
+    sed -n 's/^SSID[0-9][0-9]*=//p' "$f"
+  done
+) | sed '/^[[:space:]]*$/d' | sort -u
+]]
+for ssid in (sys.exec(runtime_cmd) or ""):gmatch("[^\r\n]+") do
+  runtime_ssids[ssid] = true
+end
+
+for i=1,20 do
+  local ssid = "A" .. tostring(i)
+  if runtime_ssids[ssid] then
+    add_network("a" .. tostring(i), ssid, "runtime")
   end
+end
+
+-- The main LAN also represents wired LAN clients.
+if include_lan and lan_cidr and not by_net.lan then
+  add_network("lan", nil, "lan")
 end
 
 local items = {}
 for _, item in pairs(by_net) do
   if item.is_lan then
     local wifi = table.concat(item.ssids, " / ")
-    if wifi ~= "" then
-      item.ssid = "主网络 · " .. wifi .. " · 有线LAN"
-    else
-      item.ssid = "主网络 · 有线LAN"
-    end
+    if wifi ~= "" then item.ssid = "主网络 · " .. wifi .. " · 有线LAN"
+    else item.ssid = "主网络 · 有线LAN" end
     item._main_lan = true
   else
     item.ssid = table.concat(item.ssids, " / ")
     item._main_lan = false
   end
-  item._sort = ip_to_num((item.subnet or ""):match("^([^/]+)$") or (item.subnet or ""):match("^([^/]+)/")) or 0
+  item._sort = ip_to_num((item.subnet or ""):match("^([^/]+)/")) or 0
   items[#items+1] = item
 end
 
--- Keep the main LAN last so existing A1..An slot numbers/ports do not shift.
 table.sort(items, function(a,b)
   if a._main_lan ~= b._main_lan then return not a._main_lan end
   if a._sort == b._sort then return a.network < b.network end
@@ -167,7 +190,9 @@ table.sort(items, function(a,b)
 end)
 
 local old = {}
+local old_count = 0
 uci:foreach("juliang_fastacl", "ap", function(s)
+  old_count = old_count + 1
   local data = {
     node = s.node,
     dns_mode = s.dns_mode,
@@ -179,14 +204,28 @@ uci:foreach("juliang_fastacl", "ap", function(s)
   if s.subnet and s.subnet ~= "" then old["subnet:" .. s.subnet] = data end
 end)
 
--- Discovery must be transactional. During early boot WiFi/netifd may not be
--- ready yet. Never erase a working persistent FastACL topology on a 0-result scan.
+-- Discovery is transactional. A 0-result scan or a partial early-boot scan
+-- must never shrink a working AX6000/S20L topology. Use discover-force only
+-- when the operator intentionally removed SSIDs and wants to shrink AP slots.
 if #items == 0 then
-  io.write(jsonc.stringify({ ok = false, count = 0, aps = {}, preserved = true, error = "NO_AP_READY" }, true))
+  io.write(jsonc.stringify({ ok=false, count=0, previous_count=old_count, aps={}, preserved=true, error="NO_AP_READY" }, true))
   os.exit(2)
 end
 
--- Remove only AP slot sections after we already have a valid replacement set.
+local force = (os.getenv("JFA_DISCOVER_FORCE") == "1")
+if old_count > 0 and #items < old_count and not force then
+  io.write(jsonc.stringify({
+    ok=false,
+    count=#items,
+    previous_count=old_count,
+    aps=items,
+    preserved=true,
+    error="PARTIAL_AP_READY",
+    hint="run juliang-fastacl wifi-detect; retry discover after A-series SSIDs are ready; use discover-force only for intentional AP removal"
+  }, true))
+  os.exit(3)
+end
+
 local dels = {}
 uci:foreach("juliang_fastacl", "ap", function(s) dels[#dels+1]=s[".name"] end)
 for _,name in ipairs(dels) do uci:delete("juliang_fastacl", name) end
@@ -214,4 +253,4 @@ end
 uci:set("juliang_fastacl", "main", "ap_count", tostring(#items))
 uci:commit("juliang_fastacl")
 
-io.write(jsonc.stringify({ ok = (#items > 0), count = #items, aps = items }, true))
+io.write(jsonc.stringify({ ok=(#items>0), count=#items, previous_count=old_count, aps=items, forced=force }, true))
