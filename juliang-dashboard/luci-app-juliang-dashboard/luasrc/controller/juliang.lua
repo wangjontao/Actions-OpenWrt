@@ -3,6 +3,7 @@ module("luci.controller.juliang", package.seeall)
 local http = require "luci.http"
 local json = require "luci.jsonc"
 local sys = require "luci.sys"
+local uci = require "luci.model.uci".cursor()
 
 function index()
     entry({"admin", "juliang"}, firstchild(), _("JuLiangTK"), 1).dependent = false
@@ -97,16 +98,20 @@ local function stations()
     return out
 end
 
-local function service_state(name)
-    return sys.call("/etc/init.d/" .. name .. " enabled >/dev/null 2>&1") == 0 and
-        sys.call("/etc/init.d/" .. name .. " running >/dev/null 2>&1") == 0
-end
-
 local function uci_enabled(keys)
     for _, key in ipairs(keys) do
         local v = firstline("uci -q get " .. key)
         if v == "1" or v == "true" then return true end
     end
+    return false
+end
+
+local function service_state(name)
+    if name == "nps" then return sys.call("pgrep -x npc >/dev/null 2>&1") == 0 end
+    if name == "passwall" then return uci_enabled({"passwall.@global[0].enabled"}) and sys.call("pgrep -f '/tmp/etc/passwall/' >/dev/null 2>&1") == 0 end
+    if name == "passwall2" then return uci_enabled({"passwall2.@global[0].enabled"}) and sys.call("pgrep -f '/tmp/etc/passwall2/' >/dev/null 2>&1") == 0 end
+    if name == "homeproxy" then return uci_enabled({"homeproxy.config.main.enabled", "homeproxy.@homeproxy[0].enabled"}) and sys.call("pgrep -f 'sing-box.*homeproxy' >/dev/null 2>&1") == 0 end
+    if name == "openclash" then return uci_enabled({"openclash.config.enable"}) and sys.call("pgrep -f 'mihomo|clash' >/dev/null 2>&1") == 0 end
     return false
 end
 
@@ -119,7 +124,7 @@ function api_status()
     if wan["ipv4-address"] and wan["ipv4-address"][1] then ip = wan["ipv4-address"][1].address or "" end
     local uptime = tonumber(firstline("cut -d. -f1 /proc/uptime")) or 0
     local ifaces, p = {}, io.popen("for d in /sys/class/net/*; do n=${d##*/}; [ \"$n\" = lo ] && continue; s=$(cat $d/operstate 2>/dev/null); c=$(cat $d/carrier 2>/dev/null); printf '%s|%s|%s\\n' \"$n\" \"$s\" \"$c\"; done")
-    if p then for line in p:lines() do local n,s,c=line:match("([^|]+)|([^|]*)|([^|]*)"); if n then ifaces[#ifaces+1]={name=n,state=s,carrier=c} end end p:close() end
+    if p then for line in p:lines() do local n,s,c=line:match("([^|]+)|([^|]*)|([^|]*)"); if n and n ~= "bonding_masters" and not n:match("^dummy") and not n:match("^apcli") then ifaces[#ifaces+1]={name=n,state=s,carrier=c} end end p:close() end
     local sta = stations()
     local running = {
         passwall=service_state("passwall"), passwall2=service_state("passwall2"),
@@ -174,6 +179,22 @@ function api_wireless_set()
     local changed = 0
     for _, b in ipairs(targets) do for _, path in ipairs(profiles(b)) do if update_profile(path, values) then changed=changed+1 end end end
     if changed == 0 then return reply({ok=false,error="未找到无线配置"}) end
+    for _, b in ipairs(targets) do
+        uci:foreach("wireless", "wifi-device", function(s)
+            local sb = s.band or ((s.hwmode == "11g") and "2g" or ((s.hwmode == "11a") and "5g" or ""))
+            if sb == b and values.Channel then uci:set("wireless", s[".name"], "channel", values.Channel) end
+        end)
+        uci:foreach("wireless", "wifi-iface", function(s)
+            local dev = s.device and uci:get_all("wireless", s.device) or nil
+            local sb = dev and (dev.band or ((dev.hwmode == "11g") and "2g" or ((dev.hwmode == "11a") and "5g" or ""))) or ""
+            if sb == b then
+                if values.SSID1 then uci:set("wireless", s[".name"], "ssid", values.SSID1) end
+                if values.WPAPSK1 then uci:set("wireless", s[".name"], "key", values.WPAPSK1); uci:set("wireless", s[".name"], "encryption", "psk2+ccmp") end
+                if values.HideSSID then uci:set("wireless", s[".name"], "hidden", values.HideSSID) end
+            end
+        end)
+    end
+    uci:commit("wireless")
     sys.call("(sleep 1; wifi reload >/dev/null 2>&1 || /etc/init.d/mtwifi restart >/dev/null 2>&1) &")
     reply({ok=true,changed=changed})
 end
