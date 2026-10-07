@@ -136,7 +136,7 @@ end)
 -- 2) Runtime/MTWiFi SSID-name fallback. AX6000/S20L closed MTWiFi can expose
 -- A1..A20 before netifd has completed wifi-iface -> network association.
 local runtime_ssids = {}
-local runtime_cmd = [[
+local runtime_cmd = [=[
 (
   if command -v iwinfo >/dev/null 2>&1; then
     for i in $(ls /sys/class/net 2>/dev/null); do
@@ -151,7 +151,7 @@ local runtime_cmd = [[
     sed -n 's/^SSID[0-9][0-9]*=//p' "$f"
   done
 ) | sed '/^[[:space:]]*$/d' | sort -u
-]]
+]=]
 for ssid in (sys.exec(runtime_cmd) or ""):gmatch("[^\r\n]+") do
   runtime_ssids[ssid] = true
 end
