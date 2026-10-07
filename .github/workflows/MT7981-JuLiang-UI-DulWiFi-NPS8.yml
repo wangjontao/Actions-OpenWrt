@@ -234,26 +234,26 @@ jobs:
           chmod 600 files/etc/shadow
 
           cat > files/etc/openwrt_release <<'RELEASE'
-          DISTRIB_ID='JulLiangTK'
+          DISTRIB_ID='JuLiangV1'
           DISTRIB_RELEASE='24.10'
           DISTRIB_REVISION='by:jontao'
           DISTRIB_TARGET='mediatek/filogic'
           DISTRIB_ARCH='aarch64_cortex-a53'
-          DISTRIB_DESCRIPTION='JuLiangTK OS by:jontao'
+          DISTRIB_DESCRIPTION='JuLiangV1 OS by:jontao'
           DISTRIB_TAINTS=''
           RELEASE
           cat > files/etc/os-release <<'OSRELEASE'
-          NAME="JulLiangTK"
-          VERSION="JuLiangTK OS by:jontao"
-          ID="juliangtk"
-          PRETTY_NAME="JuLiangTK OS by:jontao"
+          NAME="JuLiangV1"
+          VERSION="JuLiangV1 OS by:jontao"
+          ID="juliangv1"
+          PRETTY_NAME="JuLiangV1 OS by:jontao"
           HOME_URL="https://github.com/wangjontao"
           OSRELEASE
 
           mkdir -p files/etc/uci-defaults
           cat > files/etc/uci-defaults/97-juliang-system-wifi <<'WIFIDEFAULT'
           #!/bin/sh
-          uci -q set system.@system[0].hostname='JulLiangTK'
+          uci -q set system.@system[0].hostname='JuLiangV1'
           uci -q commit system
           for f in /etc/wireless/mediatek/*b0.dat; do
             [ -f "$f" ] || continue
@@ -340,6 +340,11 @@ jobs:
           chmod 755 files/etc/hotplug.d/iface/99-nps-autokey
 
 
+          grep -q "server_addr='8.134.201.189'" files/etc/init.d/nps-autokey
+          grep -q 'vkey="$key"' files/etc/init.d/nps-autokey
+          grep -q '/etc/init.d/nps restart' files/etc/uci-defaults/98-nps-autokey
+          grep -q 'JuLiangV1' files/etc/openwrt_release
+          test -s package/luci-app-juliang-dashboard/luasrc/view/juliang/dashboard.htm
           ./scripts/diffconfig.sh | tee MT7981-MTWiFi-final.config
 
       - name: Restore compiler cache
@@ -427,7 +432,7 @@ jobs:
             Experimental ImmortalWrt 24.10 kernel 6.6 closed MTWiFi build.
             Devices: Philips HY3000, CMCC RAX3000M NAND/eMMC, Qihoo 360T7, AGS21, CMCC A10 U-Boot mod, ETR631-T/ETR635-U (KOMI A31), Newland 8103/9103, Ambit ASR3000 and JCG Q30 Pro.
             Driver: mt_wifi 7.6.6.1 with matching WARP. Management: 192.168.7.1, root password @password@.
-            System: JulLiangTK; firmware description: JuLiangTK OS by:jontao.
+            System/version: JuLiangV1; firmware description: JuLiangV1 OS by:jontao.
             WiFi: DulWiFi-2.4G (channel 9) and DulWiFi-5G (channel 48), password password.
             Interface: custom JuLiang dashboard (no iStore/QuickStart). Plugins: Passwall 26.3.6-1, Passwall2 26.3.5-1, OpenClash, HomeProxy, original ehang NPS/NPC 0.26.10. Theme: Argon.
             NPS: 8.134.201.189:8024; every boot reads WAN MAC, removes colons, uppercases it, and writes it as vkey.

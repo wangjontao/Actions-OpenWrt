@@ -102,6 +102,14 @@ local function service_state(name)
         sys.call("/etc/init.d/" .. name .. " running >/dev/null 2>&1") == 0
 end
 
+local function uci_enabled(keys)
+    for _, key in ipairs(keys) do
+        local v = firstline("uci -q get " .. key)
+        if v == "1" or v == "true" then return true end
+    end
+    return false
+end
+
 function api_status()
     local wan = json.parse(sys.exec("ubus call network.interface.wan status 2>/dev/null")) or {}
     local dev = wan.l3_device or wan.device or firstline("ip -4 route show default | awk 'NR==1 {print $5}'")
@@ -113,9 +121,23 @@ function api_status()
     local ifaces, p = {}, io.popen("for d in /sys/class/net/*; do n=${d##*/}; [ \"$n\" = lo ] && continue; s=$(cat $d/operstate 2>/dev/null); c=$(cat $d/carrier 2>/dev/null); printf '%s|%s|%s\\n' \"$n\" \"$s\" \"$c\"; done")
     if p then for line in p:lines() do local n,s,c=line:match("([^|]+)|([^|]*)|([^|]*)"); if n then ifaces[#ifaces+1]={name=n,state=s,carrier=c} end end p:close() end
     local sta = stations()
-    reply({ok=true, wan={device=dev, ip=ip, up=wan.up == true, proto=wan.proto or "", rx=rx, tx=tx}, uptime=uptime,
+    local running = {
+        passwall=service_state("passwall"), passwall2=service_state("passwall2"),
+        homeproxy=service_state("homeproxy"), openclash=service_state("openclash"), nps=service_state("nps")
+    }
+    local enabled = {
+        passwall=uci_enabled({"passwall.@global[0].enabled"}),
+        passwall2=uci_enabled({"passwall2.@global[0].enabled"}),
+        homeproxy=uci_enabled({"homeproxy.config.main.enabled", "homeproxy.@homeproxy[0].enabled"}),
+        openclash=uci_enabled({"openclash.config.enable"})
+    }
+    local active = {}
+    for _, name in ipairs({"passwall","passwall2","homeproxy","openclash"}) do
+        if enabled[name] and running[name] then active[#active + 1] = name end
+    end
+    reply({ok=true, version="JuLiangV1", wan={device=dev, ip=ip, up=wan.up == true, proto=wan.proto or "", rx=rx, tx=tx}, uptime=uptime,
         stations=sta, station_count=#sta, interfaces=ifaces,
-        services={passwall=service_state("passwall"),passwall2=service_state("passwall2"),homeproxy=service_state("homeproxy"),openclash=service_state("openclash"),nps=service_state("nps")}})
+        services=running, service_enabled=enabled, active_proxy=active})
 end
 
 local function radio_info(band)
