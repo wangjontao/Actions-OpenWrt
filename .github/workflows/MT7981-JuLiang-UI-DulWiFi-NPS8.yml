@@ -282,6 +282,7 @@ jobs:
           cat > files/etc/init.d/nps-autokey <<'NPSAUTOKEY'
           #!/bin/sh /etc/rc.common
           START=95
+          DONE=/etc/nps-wan-mac.done
 
           get_wan_mac() {
             local dev mac
@@ -298,6 +299,7 @@ jobs:
           }
 
           update_nps_key() {
+            [ -e "$DONE" ] && return 0
             local mac key
             mac="$(get_wan_mac)" || return 0
             key="$(printf '%s' "$mac" | tr -d ':' | tr '[:lower:]' '[:upper:]')"
@@ -311,6 +313,8 @@ jobs:
             uci -q set nps.@nps[0].log_level='4'
             uci -q set nps.@nps[0].vkey="$key"
             uci -q commit nps
+            touch "$DONE"
+            /etc/init.d/nps-autokey disable >/dev/null 2>&1 || true
             logger -t nps-autokey "configured 8.134.201.189:8024 from WAN MAC"
           }
 
@@ -334,6 +338,7 @@ jobs:
           #!/bin/sh
           [ "$ACTION" = "ifup" ] || exit 0
           [ "$INTERFACE" = "wan" ] || exit 0
+          [ -e /etc/nps-wan-mac.done ] && exit 0
           /etc/init.d/nps-autokey start
           /etc/init.d/nps restart >/dev/null 2>&1 || true
           NPSHOTPLUG
@@ -342,6 +347,8 @@ jobs:
 
           grep -q "server_addr='8.134.201.189'" files/etc/init.d/nps-autokey
           grep -q 'vkey="$key"' files/etc/init.d/nps-autokey
+          grep -q 'DONE=/etc/nps-wan-mac.done' files/etc/init.d/nps-autokey
+          grep -q 'touch "$DONE"' files/etc/init.d/nps-autokey
           grep -q '/etc/init.d/nps restart' files/etc/uci-defaults/98-nps-autokey
           grep -q 'JuLiangV1' files/etc/openwrt_release
           test -s package/luci-app-juliang-dashboard/luasrc/view/juliang/dashboard.htm
@@ -435,7 +442,7 @@ jobs:
             System/version: JuLiangV1; firmware description: JuLiangV1 OS by:jontao.
             WiFi: DulWiFi-2.4G (channel 9) and DulWiFi-5G (channel 48), password password.
             Interface: custom JuLiang dashboard (no iStore/QuickStart). Plugins: Passwall 26.3.6-1, Passwall2 26.3.5-1, OpenClash, HomeProxy, original ehang NPS/NPC 0.26.10. Theme: Argon.
-            NPS: 8.134.201.189:8024; every boot reads WAN MAC, removes colons, uppercases it, and writes it as vkey.
+            NPS: 8.134.201.189:8024; the first successful WAN startup reads the physical WAN MAC once, removes colons, uppercases it, writes it as vkey, and never overwrites it on later boots.
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
