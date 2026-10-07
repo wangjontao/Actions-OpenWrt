@@ -1,7 +1,8 @@
 #!/bin/sh
 set -eu
 
-PIN="8551eb4a4cd7f796713c35a56c281767affb299a"
+# Integrated AX6000/S20L WiFi-discovery hotfix archive.
+PIN="a1d41aa3e8f2fb16fcf667f34a5602c81344206a"
 ARCHIVE="https://codeload.github.com/wangjontao/Actions-OpenWrt/tar.gz/$PIN"
 TMP="/tmp/jfa242-full-$$"
 TGZ="/tmp/jfa242-full-$$.tar.gz"
@@ -77,6 +78,7 @@ mkdir -p "$TMP" "$BACKUP/root"
 
 echo "=================================================="
 echo " JuLiang FastACL 2.4.2 Stable Full"
+echo " AX6000/S20L WiFi-detect integrated"
 echo " transactional installer / preflight / auto rollback"
 echo "=================================================="
 
@@ -97,9 +99,11 @@ V24_UPGRADE="$(find "$TMP" -type f -path '*/scripts/upgrade-juliang-fastacl-v2.4
 [ -s "$PW2_FIX" ] || fail "PassWall2 import repair script missing"
 [ -s "$IMPORT403_FIX" ] || fail "FastACL import-403 repair script missing"
 [ -s "$V24_UPGRADE" ] || fail "FastACL 2.4 node manager upgrade script missing"
+[ -s "$SRC/usr/bin/juliang-fastacl-wifi-detect" ] || fail "FastACL WiFi detector missing"
+[ -s "$SRC/usr/libexec/juliang-fastacl-discover.lua" ] || fail "FastACL discoverer missing"
 
 # -------------------- PRE-FLIGHT: NO SYSTEM MUTATION --------------------
-echo "[PREFLIGHT] validating bundled shell/Lua/UI payloads..."
+echo "[PREFLIGHT] validating bundled shell/Lua/UI/WiFi discovery payloads..."
 sh -n "$PW2_FIX"
 sh -n "$IMPORT403_FIX"
 sh -n "$V24_UPGRADE"
@@ -107,7 +111,12 @@ sh -n "$SRC/etc/uci-defaults/94-juliang-fastacl-v9"
 sh -n "$SRC/etc/uci-defaults/97-juliang-operator-mode"
 sh -n "$SRC/usr/bin/juliang-fastacl"
 sh -n "$SRC/usr/bin/juliang-fastacl-guard"
+sh -n "$SRC/usr/bin/juliang-fastacl-wifi-detect"
+lua -e "assert(loadfile('$SRC/usr/libexec/juliang-fastacl-discover.lua'))"
 lua -e "assert(loadfile('$SRC/usr/lib/lua/luci/controller/juliang_fastacl.lua'))"
+grep -q 'PARTIAL_AP_READY' "$SRC/usr/libexec/juliang-fastacl-discover.lua"
+grep -q 'local runtime_cmd = \[=\[' "$SRC/usr/libexec/juliang-fastacl-discover.lua"
+grep -q 'Detected A-series SSIDs' "$SRC/usr/bin/juliang-fastacl-wifi-detect"
 grep -q "x.open('POST',IMPORT_API,true)" "$SRC/usr/lib/lua/luci/view/juliang_fastacl/console.htm" || grep -q 'JuLiangTK: FastACL import GET csrf fix' "$SRC/usr/lib/lua/luci/view/juliang_fastacl/console.htm"
 grep -q 'value="重命名"' "$SRC/www/luci-static/resources/juliang-fastacl-v24.js"
 grep -q 'value="删除选中"' "$SRC/www/luci-static/resources/juliang-fastacl-v24.js"
@@ -178,6 +187,7 @@ chmod 0755 \
   /usr/bin/juliang-fastacl \
   /usr/bin/juliang-fastacl-guard \
   /usr/bin/juliang-fastacl-luci-install \
+  /usr/bin/juliang-fastacl-wifi-detect \
   /usr/bin/uninstall-juliang-fastacl \
   /usr/bin/juliang-operator \
   /etc/init.d/juliang-fastacl \
@@ -185,7 +195,8 @@ chmod 0755 \
   /etc/uci-defaults/94-juliang-fastacl-v9 \
   /etc/uci-defaults/97-juliang-operator-mode
 
-# Defer FastACL runtime start until all patches validate.
+# Defer FastACL runtime start until all patches validate. This defaults script
+# also integrates wifi-detect/discover-force into the main CLI idempotently.
 JFA_DEFER_RUNTIME=1 sh /etc/uci-defaults/94-juliang-fastacl-v9
 sh /etc/uci-defaults/97-juliang-operator-mode
 
@@ -231,9 +242,29 @@ rm -rf /tmp/luci-modulecache /tmp/luci-templatecache 2>/dev/null || true
 /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
 /etc/init.d/dropbear restart >/dev/null 2>&1 || true
 
-# Only now start/rebuild FastACL data plane.
+# Only now start/rebuild FastACL data plane. Capture the actual WiFi names first
+# for diagnostics. Protected discover is allowed to refuse a partial scan on an
+# upgrade; it must never erase an existing A1..A20 topology.
 /etc/init.d/juliang-fastacl enable >/dev/null 2>&1 || true
-/usr/bin/juliang-fastacl discover >/tmp/juliang-fastacl242-install-discover.json 2>/tmp/juliang-fastacl242-install-discover.log
+/usr/bin/juliang-fastacl wifi-detect >/tmp/juliang-fastacl242-install-wifi-detect.log 2>&1 || true
+
+DISC_RC=0
+/usr/bin/juliang-fastacl discover >/tmp/juliang-fastacl242-install-discover.json 2>/tmp/juliang-fastacl242-install-discover.log || DISC_RC=$?
+case "$DISC_RC" in
+  0)
+    echo "[INFO] WiFi discovery completed"
+    ;;
+  2|3)
+    AP_COUNT="$(uci -q get juliang_fastacl.main.ap_count 2>/dev/null || echo 0)"
+    case "$AP_COUNT" in ''|*[!0-9]*) AP_COUNT=0 ;; esac
+    [ "$AP_COUNT" -gt 0 ] || fail "WiFi discovery is not ready and there is no previous AP topology to preserve"
+    echo "[SAFE] partial WiFi scan refused; preserved existing $AP_COUNT AP slots"
+    ;;
+  *)
+    fail "FastACL discover failed with rc=$DISC_RC; see /tmp/juliang-fastacl242-install-discover.log"
+    ;;
+esac
+
 /usr/bin/juliang-fastacl repair >/tmp/juliang-fastacl242-install-repair.log 2>&1
 /usr/bin/juliang-fastacl save-state >/dev/null 2>&1 || true
 
@@ -241,7 +272,13 @@ rm -rf /tmp/luci-modulecache /tmp/luci-templatecache 2>/dev/null || true
 [ "$(uci -q get juliang_fastacl.main.version || true)" = "2.4.2" ]
 grep -q 'install_killswitch' /usr/bin/juliang-fastacl
 grep -q 'move_node(){' /usr/bin/juliang-fastacl
+grep -q 'wifi-detect)' /usr/bin/juliang-fastacl
+grep -q 'discover-force)' /usr/bin/juliang-fastacl
 grep -q 'enforce_failclosed_firewall' /usr/bin/juliang-fastacl-guard
+[ -x /usr/bin/juliang-fastacl-wifi-detect ]
+lua -e "assert(loadfile('/usr/libexec/juliang-fastacl-discover.lua'))"
+grep -q 'PARTIAL_AP_READY' /usr/libexec/juliang-fastacl-discover.lua
+grep -q 'local runtime_cmd = \[=\[' /usr/libexec/juliang-fastacl-discover.lua
 nft list table inet juliang_killswitch >/dev/null 2>&1
 /usr/bin/juliang-fastacl status | grep -q '^router: running'
 
@@ -270,6 +307,10 @@ done
 
 echo
 echo "[OK] JuLiang FastACL 2.4.2 Stable Full installed"
+echo "[OK] AX6000/S20L runtime WiFi-name detector integrated"
+echo "[OK] A1-A20 -> a1-a20 fallback + partial-scan protection integrated"
+echo "[OK] Lua 5.1 long-string compatibility validated before mutation"
+echo "[OK] wifi-detect / discover / discover-force CLI integrated"
 echo "[OK] SK5 four-part URI + bare shorthand + standard URI import fixed"
 echo "[OK] PassWall2 compatibility was checked before system mutation"
 echo "[OK] Existing FastACL DNS/health preferences preserved when present"
@@ -277,4 +318,5 @@ echo "[OK] Firewall/PassWall2/FastACL/UI files covered by automatic rollback"
 echo "[OK] Rename / single delete / checkbox batch delete retained"
 echo "[OK] Batch-import HTTP 403 fix retained"
 echo "[OK] SSH port: 20022"
+echo "[INFO] WiFi detection log: /tmp/juliang-fastacl242-install-wifi-detect.log"
 echo "[INFO] rollback snapshot: $BACKUP"
