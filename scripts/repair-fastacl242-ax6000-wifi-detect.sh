@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-PIN="3ca573a5b8999be6d949671b64d66d781d939da3"
+PIN="60bc42c48eb336efdb4a2c9af7bc56bd2ff3bbf8"
 BASE="https://raw.githubusercontent.com/wangjontao/Actions-OpenWrt/$PIN"
 TMP="/tmp/jfa242-ax6000-fix.$$"
 BK="/etc/juliang-fastacl/ax6000-wifi-detect-fix-$(date +%Y%m%d-%H%M%S)"
@@ -45,6 +45,7 @@ sh -n "$TMP/wifi-detect"
 
 grep -q 'PARTIAL_AP_READY' "$TMP/discover.lua"
 grep -q 'runtime_ssids' "$TMP/discover.lua"
+grep -q 'local runtime_cmd = \[=\[' "$TMP/discover.lua"
 grep -q 'Detected A-series SSIDs' "$TMP/wifi-detect"
 
 cp -af "$TMP/discover.lua" "$DISCOVER"
