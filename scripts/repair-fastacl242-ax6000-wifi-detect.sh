@@ -2,7 +2,7 @@
 set -eu
 
 PIN="60bc42c48eb336efdb4a2c9af7bc56bd2ff3bbf8"
-BASE="https://raw.githubusercontent.com/wangjontao/Actions-OpenWrt/$PIN"
+BASE="https://cdn.jsdelivr.net/gh/wangjontao/Actions-OpenWrt@$PIN"
 TMP="/tmp/jfa242-ax6000-fix.$$"
 BK="/etc/juliang-fastacl/ax6000-wifi-detect-fix-$(date +%Y%m%d-%H%M%S)"
 DISCOVER="/usr/libexec/juliang-fastacl-discover.lua"
@@ -53,7 +53,6 @@ cp -af "$TMP/wifi-detect" "$DETECT"
 chmod 0755 "$DETECT"
 chmod 0644 "$DISCOVER"
 
-# Add convenient subcommands to the installed FastACL launcher if not already present.
 if [ -s "$CORE" ]; then
   if ! grep -q 'wifi-detect)' "$CORE"; then
     sed -i '/^[[:space:]]*discover) lua \/usr\/libexec\/juliang-fastacl-discover.lua ;;/i\  wifi-detect) /usr/bin/juliang-fastacl-wifi-detect ;;\n  discover-force) JFA_DISCOVER_FORCE=1 lua /usr/libexec/juliang-fastacl-discover.lua ;;' "$CORE"
@@ -71,8 +70,6 @@ echo "===== Runtime WiFi detection ====="
 old_count="$(uci -q get juliang_fastacl.main.ap_count 2>/dev/null || echo 0)"
 case "$old_count" in ''|*[!0-9]*) old_count=0 ;; esac
 
-# If the broken 2.4.2 update already collapsed the topology to one AP, recover
-# the newest pre-update config containing A1-A5 before running protected discovery.
 if [ "$old_count" -le 1 ]; then
   REC=""
   for d in $(ls -1dt /etc/juliang-fastacl/v2.4.2-full-backup-* 2>/dev/null || true); do
