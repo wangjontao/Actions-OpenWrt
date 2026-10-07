@@ -6,7 +6,7 @@ local sys = require "luci.sys"
 local uci = require "luci.model.uci".cursor()
 
 function index()
-    entry({"admin", "juliang"}, firstchild(), _("JuLiangTK"), 1).dependent = false
+    entry({"admin", "juliang"}, firstchild(), _("JuLiang"), 1).dependent = false
     entry({"admin", "juliang", "dashboard"}, template("juliang/dashboard"), _("控制中心"), 1)
     entry({"admin", "juliang", "wireless"}, template("juliang/wireless"), _("无线与终端"), 2)
     entry({"admin", "juliang", "api", "status"}, call("api_status"), nil).leaf = true
@@ -140,7 +140,7 @@ function api_status()
     for _, name in ipairs({"passwall","passwall2","homeproxy","openclash"}) do
         if enabled[name] and running[name] then active[#active + 1] = name end
     end
-    reply({ok=true, version="JuLiangV1", wan={device=dev, ip=ip, up=wan.up == true, proto=wan.proto or "", rx=rx, tx=tx}, uptime=uptime,
+    reply({ok=true, version="JuLiang", wan={device=dev, ip=ip, up=wan.up == true, proto=wan.proto or "", rx=rx, tx=tx}, uptime=uptime,
         stations=sta, station_count=#sta, interfaces=ifaces,
         services=running, service_enabled=enabled, active_proxy=active})
 end
