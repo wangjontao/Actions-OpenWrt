@@ -1,8 +1,10 @@
 #!/bin/sh
 set -eu
 
-CTRL="/usr/lib/lua/luci/controller/juliang_operator.lua"
+CTRL_LUA="/usr/lib/lua/luci/controller/juliang_operator.lua"
+CTRL_UCODE="/usr/share/ucode/luci/controller/juliang_operator.uc"
 VIEW="/usr/lib/lua/luci/view/juliang_operator/wireless.htm"
+AUDIT="/tmp/juliang-fastacl-wireless-readonly-audit.log"
 
 # Remove the old temporary wireless persistence workaround. FastACL must never
 # restore SSID/password/hidden/channel at boot.
@@ -14,43 +16,32 @@ rm -f /etc/rc.d/S*juliang-ssid-preserve 2>/dev/null || true
 rm -f /etc/init.d/juliang-ssid-preserve /usr/bin/juliang-fastacl-ssid-preserve /etc/config/juliang_ssid_preserve
 rm -f /tmp/juliang-ssid-preserve* 2>/dev/null || true
 
-[ -s "$CTRL" ] || exit 0
-command -v lua >/dev/null 2>&1 || exit 1
-
-CTRL="$CTRL" lua <<'LUA'
+# Lua LuCI builds: hard-lock the Operator wireless API to status/clients only.
+# Missing Operator controller is valid on images that do not ship that UI.
+if [ -s "$CTRL_LUA" ]; then
+    command -v lua >/dev/null 2>&1 || exit 1
+    CTRL="$CTRL_LUA" lua <<'LUA'
 local path = assert(os.getenv("CTRL"))
 local f = assert(io.open(path, "r"))
 local s = f:read("*a")
 f:close()
-
 local a = assert(s:find("function handle_wireless()", 1, true), "handle_wireless start not found")
 local b = assert(s:find("\n\nfunction handle_dashboard()", a, true), "handle_dashboard anchor not found")
-
 local readonly = [=[function handle_wireless()
     local http = require "luci.http"
     local uci = require("uci").cursor()
     local action = http.formvalue("action") or "status"
-
-    -- FastACL wireless is strictly read-only. Never set/commit/reload wireless.
     if action == "status" then
         local devices, ifaces = wifi_status(uci)
         write_json({ok=true, readonly=true, devices=devices, ifaces=ifaces})
         return
     end
-
     if action == "clients" then
         write_json({ok=true, readonly=true, groups=wireless_clients(uci), timestamp=os.time()})
         return
     end
-
-    write_json({
-        ok=false,
-        readonly=true,
-        error="READ_ONLY",
-        message="FastACL wireless is read-only; use the system wireless page"
-    })
+    write_json({ok=false, readonly=true, error="READ_ONLY", message="FastACL wireless is read-only; use the system wireless page"})
 end]=]
-
 local out = s:sub(1, a - 1) .. readonly .. s:sub(b)
 local tmp = path .. ".readonly.tmp"
 local w = assert(io.open(tmp, "w"))
@@ -58,14 +49,15 @@ w:write(out)
 w:close()
 assert(os.rename(tmp, path))
 LUA
-
-lua -e "assert(loadfile('$CTRL'))"
+    lua -e "assert(loadfile('$CTRL_LUA'))"
+fi
 
 if [ -s "$VIEW" ]; then
     sed -i 's/<h2>无线设置<\/h2>/<h2>无线状态（FastACL 只读）<\/h2><div class="jow-note">SSID、密码、隐藏状态、信道请在系统原生无线页面修改；FastACL 这里只读取。<\/div>/' "$VIEW" || true
 fi
 
 # Hard invariant: FastACL runtime/boot components must contain no wireless write.
+: > "$AUDIT"
 for p in \
     /etc/init.d/juliang-fastacl \
     /etc/hotplug.d/iface/99-juliang-fastacl \
@@ -75,13 +67,18 @@ for p in \
     /usr/bin/juliang-fastacl-wifi-detect \
     /usr/libexec/juliang-fastacl-discover.lua \
     /usr/lib/lua/luci/controller/juliang_fastacl.lua \
-    /usr/lib/lua/luci/controller/juliang_operator.lua; do
+    "$CTRL_LUA" \
+    "$CTRL_UCODE"; do
     [ -f "$p" ] || continue
-    if grep -Eq 'uci[ :.-]*(set|add|delete).*wireless|uci:set\("wireless"|uci:commit\("wireless"|wifi[[:space:]]+reload' "$p" 2>/dev/null; then
-        logger -t juliang-fastacl "wireless read-only invariant failed: $p"
-        exit 2
-    fi
+    grep -nE 'uci[ :.-]*(set|add|delete).*wireless|uci:set\("wireless"|uci:commit\("wireless"|wifi[[:space:]]+reload|ubus[[:space:]].*wireless.*(set|down|up)' "$p" 2>/dev/null \
+        | sed "s#^#$p:#" >> "$AUDIT" || true
 done
+
+if [ -s "$AUDIT" ]; then
+    cat "$AUDIT" >&2
+    logger -t juliang-fastacl "wireless read-only invariant failed"
+    exit 2
+fi
 
 rm -f /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null || true
 rm -rf /tmp/luci-modulecache /tmp/luci-templatecache 2>/dev/null || true
