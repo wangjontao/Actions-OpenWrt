@@ -1,17 +1,19 @@
 #!/bin/sh
 set -eu
 
-CTRL="/usr/lib/lua/luci/controller/juliang_operator.lua"
+CTRL_LUA="/usr/lib/lua/luci/controller/juliang_operator.lua"
+CTRL_UCODE="/usr/share/ucode/luci/controller/juliang_operator.uc"
 VIEW="/usr/lib/lua/luci/view/juliang_operator/wireless.htm"
 BK="/etc/juliang-fastacl/wireless-readonly-backup-$(date +%Y%m%d-%H%M%S)"
 AUDIT="/tmp/juliang-fastacl-wireless-readonly-audit.log"
 
 mkdir -p "$BK"
-[ -f "$CTRL" ] && cp -af "$CTRL" "$BK/" || true
-[ -f "$VIEW" ] && cp -af "$VIEW" "$BK/" || true
-[ -f /etc/config/juliang_ssid_preserve ] && cp -af /etc/config/juliang_ssid_preserve "$BK/" || true
-[ -f /usr/bin/juliang-fastacl-ssid-preserve ] && cp -af /usr/bin/juliang-fastacl-ssid-preserve "$BK/" || true
-[ -f /etc/init.d/juliang-ssid-preserve ] && cp -af /etc/init.d/juliang-ssid-preserve "$BK/" || true
+for p in "$CTRL_LUA" "$CTRL_UCODE" "$VIEW" \
+    /etc/config/juliang_ssid_preserve \
+    /usr/bin/juliang-fastacl-ssid-preserve \
+    /etc/init.d/juliang-ssid-preserve; do
+    [ -f "$p" ] && cp -af "$p" "$BK/$(basename "$p")" || true
+done
 
 echo "=================================================="
 echo " FastACL 2.4.2 Wireless Read-Only Hotfix"
@@ -30,11 +32,15 @@ rm -f /usr/bin/juliang-fastacl-ssid-preserve
 rm -f /etc/config/juliang_ssid_preserve
 rm -f /tmp/juliang-ssid-preserve* /tmp/juliang-fastacl/ssid-* 2>/dev/null || true
 
-[ -s "$CTRL" ] || { echo "[ERROR] controller missing: $CTRL" >&2; exit 1; }
-command -v lua >/dev/null 2>&1 || { echo "[ERROR] lua not found" >&2; exit 1; }
+echo "[OK] removed legacy SSID/hidden persistence workaround"
 
-# Replace the whole wireless write API with a strictly read-only API.
-CTRL="$CTRL" lua <<'LUA'
+# Lua LuCI builds: replace the operator wireless write API with a strict
+# read-only API. Some images do not ship this controller at all; that is valid
+# and must not make the hotfix fail.
+if [ -s "$CTRL_LUA" ]; then
+    command -v lua >/dev/null 2>&1 || { echo "[ERROR] lua controller exists but lua is missing" >&2; exit 1; }
+
+    CTRL="$CTRL_LUA" lua <<'LUA'
 local path = assert(os.getenv("CTRL"))
 local f = assert(io.open(path, "r"))
 local s = f:read("*a")
@@ -49,8 +55,7 @@ local readonly = [=[function handle_wireless()
     local action = http.formvalue("action") or "status"
 
     -- FastACL 2.4.2 wireless contract: READ ONLY.
-    -- Never set/commit/reload wireless here. Wireless SSID/password/hidden/
-    -- channel/disabled state belongs exclusively to the system wireless UI.
+    -- Wireless SSID/password/hidden/channel/disabled are owned by OpenWrt.
     if action == "status" then
         local devices, ifaces = wifi_status(uci)
         write_json({ok=true, readonly=true, devices=devices, ifaces=ifaces})
@@ -66,7 +71,7 @@ local readonly = [=[function handle_wireless()
         ok=false,
         readonly=true,
         error="READ_ONLY",
-        message="FastACL wireless is read-only; change SSID/password/hidden/channel in the system wireless page"
+        message="FastACL wireless is read-only; change wireless settings in the system wireless page"
     })
 end]=]
 
@@ -78,21 +83,24 @@ w:close()
 assert(os.rename(tmp, path))
 LUA
 
-lua -e "assert(loadfile('$CTRL'))"
-
-# Make the UI clearly read-only. API enforcement above remains authoritative.
-if [ -s "$VIEW" ]; then
-    sed -i 's/<h2>无线设置<\/h2>/<h2>无线状态（FastACL 只读）<\/h2><div class="jow-note">SSID、密码、隐藏状态、信道请在系统原生无线页面修改；FastACL 这里只读取。<\/div>/' "$VIEW" || true
-    sed -i 's/id="jow_all_visibility"[^>]*value="一键隐藏全部"[^>]*onclick="toggleAllVisibility()"/disabled="disabled" value="FastACL只读"/' "$VIEW" || true
+    lua -e "assert(loadfile('$CTRL_LUA'))"
+    echo "[OK] Lua Operator wireless API locked READ ONLY"
+elif [ -s "$CTRL_UCODE" ]; then
+    # Do not blindly rewrite ucode. The audit below will reject the build if
+    # this controller contains a wireless write path.
+    echo "[INFO] ucode Operator controller detected; write-path audit will verify it"
+else
+    echo "[INFO] Operator wireless controller not installed on this image; API patch skipped"
 fi
 
-# Clear LuCI caches. No wifi reload is performed by this hotfix.
-rm -f /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null || true
-rm -rf /tmp/luci-modulecache /tmp/luci-templatecache 2>/dev/null || true
-/etc/init.d/rpcd restart >/dev/null 2>&1 || true
-/etc/init.d/uhttpd restart >/dev/null 2>&1 || true
+# Make the legacy Lua view clearly read-only when it exists. API enforcement
+# remains authoritative. Missing view is valid on images without Operator UI.
+if [ -s "$VIEW" ]; then
+    sed -i 's/<h2>无线设置<\/h2>/<h2>无线状态（FastACL 只读）<\/h2><div class="jow-note">SSID、密码、隐藏状态、信道请在系统原生无线页面修改；FastACL 这里只读取。<\/div>/' "$VIEW" || true
+fi
 
-# Verify no FastACL boot/runtime component can write wireless.
+# Verify no FastACL boot/runtime component can write wireless. Files that do
+# not exist on a particular image are simply skipped.
 : > "$AUDIT"
 for p in \
     /etc/init.d/juliang-fastacl \
@@ -101,28 +109,33 @@ for p in \
     /usr/bin/juliang-fastacl-guard \
     /usr/bin/juliang-fastacl-mode \
     /usr/bin/juliang-fastacl-wifi-detect \
+    /usr/bin/juliang-fastacl-wireless-readonly \
     /usr/libexec/juliang-fastacl-discover.lua \
     /usr/lib/lua/luci/controller/juliang_fastacl.lua \
-    /usr/lib/lua/luci/controller/juliang_operator.lua; do
+    "$CTRL_LUA" \
+    "$CTRL_UCODE"; do
     [ -f "$p" ] || continue
-    grep -nE 'uci[ :.-]*(set|add|delete).*wireless|uci:set\("wireless"|uci:commit\("wireless"|wifi[[:space:]]+reload' "$p" 2>/dev/null \
+    grep -nE 'uci[ :.-]*(set|add|delete).*wireless|uci:set\("wireless"|uci:commit\("wireless"|wifi[[:space:]]+reload|ubus[[:space:]].*wireless.*(set|down|up)' "$p" 2>/dev/null \
         | sed "s#^#$p:#" >> "$AUDIT" || true
 done
 
 if [ -s "$AUDIT" ]; then
     echo "[ERROR] FastACL wireless write path still detected:" >&2
     cat "$AUDIT" >&2
-    echo "[ROLLBACK] restoring controller/view" >&2
-    [ -f "$BK/$(basename "$CTRL")" ] && cp -af "$BK/$(basename "$CTRL")" "$CTRL" || true
-    [ -f "$BK/$(basename "$VIEW")" ] && cp -af "$BK/$(basename "$VIEW")" "$VIEW" || true
+    echo "[INFO] Nothing in /etc/config/wireless was modified by this hotfix." >&2
     exit 2
 fi
 
-echo "[OK] removed SSID/hidden persistence workaround"
-echo "[OK] FastACL wireless API is now READ ONLY"
+# Clear LuCI caches only. Deliberately do NOT call wifi reload/restart.
+rm -f /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null || true
+rm -rf /tmp/luci-modulecache /tmp/luci-templatecache 2>/dev/null || true
+/etc/init.d/rpcd restart >/dev/null 2>&1 || true
+/etc/init.d/uhttpd restart >/dev/null 2>&1 || true
+
 echo "[OK] FastACL boot/runtime wireless write audit: clean"
-echo "[OK] No wifi reload was triggered"
+echo "[OK] FastACL wireless contract: READ ONLY"
+echo "[OK] No wifi reload/restart was triggered"
 echo
-echo "[INFO] From now on, change SSID/password/hidden/channel only in the system wireless page."
-echo "[INFO] FastACL will read the current wireless names/networks dynamically."
+echo "[INFO] Change SSID/password/hidden/channel only in the system wireless page."
+echo "[INFO] FastACL only reads the current wireless topology and clients."
 echo "[INFO] backup: $BK"
