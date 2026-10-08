@@ -1,0 +1,15 @@
+#!/bin/sh
+
+# FastACL must never own wireless configuration. It only reads wireless state
+# for AP discovery/status/client display. SSID/password/hidden/channel/disabled
+# remain owned by the system wireless configuration.
+
+if [ -s /usr/bin/juliang-fastacl-wireless-readonly ]; then
+    chmod 0755 /usr/bin/juliang-fastacl-wireless-readonly
+    /usr/bin/juliang-fastacl-wireless-readonly || {
+        logger -t juliang-fastacl "wireless read-only enforcement failed"
+        exit 1
+    }
+fi
+
+exit 0
