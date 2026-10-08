@@ -42,6 +42,16 @@ sh -n /usr/bin/juliang-fastacl || {
     exit 1
 }
 
+# Hard ownership boundary: FastACL only READS wireless. It must never persist,
+# restore or mutate SSID/password/hidden/channel/disabled state at boot/runtime.
+if [ -s /usr/bin/juliang-fastacl-wireless-readonly ]; then
+    chmod 0755 /usr/bin/juliang-fastacl-wireless-readonly
+    /usr/bin/juliang-fastacl-wireless-readonly || {
+        logger -t juliang-fastacl "wireless read-only enforcement failed; refusing FastACL runtime start"
+        exit 1
+    }
+fi
+
 # Remove every legacy A1..A10 -> WAN forwarding, including anonymous sections
 # left by an earlier build. This is deliberate: FastACL owns those APs and its
 # fail-closed contract requires no direct WAN bypass.
@@ -75,7 +85,7 @@ uci -q get passwall2.@global[0] >/dev/null && {
 /etc/init.d/passwall2 stop >/dev/null 2>&1 || true
 /etc/init.d/passwall2 disable >/dev/null 2>&1 || true
 
-chmod 0755 /usr/bin/juliang-fastacl /usr/bin/juliang-fastacl-guard /usr/bin/juliang-fastacl-luci-install /usr/bin/juliang-fastacl-wifi-detect >/dev/null 2>&1 || true
+chmod 0755 /usr/bin/juliang-fastacl /usr/bin/juliang-fastacl-guard /usr/bin/juliang-fastacl-luci-install /usr/bin/juliang-fastacl-wifi-detect /usr/bin/juliang-fastacl-wireless-readonly >/dev/null 2>&1 || true
 chmod 0755 /etc/init.d/juliang-fastacl /etc/hotplug.d/iface/99-juliang-fastacl >/dev/null 2>&1 || true
 
 # Full installer V2.4.2 defers service start until every patch has validated.
@@ -86,5 +96,5 @@ if [ "${JFA_DEFER_RUNTIME:-0}" != "1" ]; then
     /etc/init.d/juliang-fastacl restart >/dev/null 2>&1 || true
 fi
 
-logger -t juliang-fastacl "2.4.2 migration applied: settings-preserving defaults + AX6000 MTWiFi SSID discovery protection"
+logger -t juliang-fastacl "2.4.2 migration applied: wireless read-only + settings-preserving defaults + protected WiFi discovery"
 exit 0
