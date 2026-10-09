@@ -1,0 +1,85 @@
+<details class="cbi-section jfw-fold" id="jfw_panel" style="margin:16px 0;padding:16px;border:1px solid #8884;border-radius:12px">
+ <summary style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;list-style:none;font-size:17px;font-weight:700"><span>批量建立无线</span><span style="font-size:13px;color:#6875d9"><span class="jfw-expand">展开 ▾</span><span class="jfw-collapse">折叠 ▴</span></span></summary>
+ <p>新增独立网段的无线，保留现有无线。数量包含新增的专用无线，不包含主无线。</p>
+ <div style="display:flex;gap:14px;flex-wrap:wrap">
+  <label>名称前缀 <input id="jfw_prefix" value="WiFi-" class="cbi-input-text"></label>
+  <label>起始编号 <input id="jfw_start" type="number" min="1" max="9999" value="1" style="width:80px"></label>
+  <label>统一密码 <input id="jfw_key" type="password" autocomplete="new-password" placeholder="8～63 个字符" class="cbi-input-password"></label>
+  <label><input id="jfw_hidden" type="checkbox">隐藏新增无线</label>
+ </div>
+ <div id="jfw_radios" style="margin:12px 0">读取频段容量…</div>
+ <label>默认联网 <select id="jfw_node"><option value="">直连国内网络</option></select></label>
+ <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+  <button type="button" class="btn cbi-button cbi-button-apply" id="jfw_create">预览并建立</button>
+  <button type="button" class="btn cbi-button cbi-button-negative" id="jfw_clear">清除批量无线</button>
+  <button type="button" class="btn cbi-button" id="jfw_refresh">刷新</button>
+ </div>
+ <p id="jfw_managed"></p><p id="jfw_message" role="status"></p>
+ <p style="font-size:12px;opacity:.7">单次最多新增 5 个，5GHz 最多新增 4 个，2.4GHz 最多新增 1 个，保留主无线；已有批量无线计入新增上限；驱动容量更低时按驱动限制。清除仅处理本功能建立的无线；应用会短暂重载网络，失败时自动恢复配置。</p>
+</details>
+<style>.jfw-fold>summary::-webkit-details-marker{display:none}.jfw-collapse{display:none}.jfw-fold[open]>summary .jfw-expand{display:none}.jfw-fold[open]>summary .jfw-collapse{display:inline}</style>
+<script>
+(function(){
+ var STATUS='<%=luci.dispatcher.build_url("admin","services","juliang_fastacl_wifi_status")%>',
+     CHANGE='<%=luci.dispatcher.build_url("admin","services","juliang_fastacl_wifi")%>',
+     token='<%=token%>', radios=[],busy=false;
+ function el(id){return document.getElementById('jfw_'+id)}
+ function message(t,failed){el('message').textContent=t;el('message').style.color=failed?'#d43':'#159957'}
+ function lock(v){busy=v;el('create').disabled=v;el('clear').disabled=v;el('refresh').disabled=v}
+ function request(method,url,data,cb){
+  var x=new XMLHttpRequest();x.open(method,url,true);x.timeout=15000;
+  x.onload=function(){var r;try{r=JSON.parse(x.responseText)}catch(e){}cb(x.status===200?r:null)};
+  x.onerror=x.ontimeout=function(){cb(null)};
+  if(method==='POST'){var f=new FormData();for(var k in data)f.append(k,data[k]);x.send(f)}else x.send();
+ }
+ function refresh(){
+  request('GET',STATUS,{},function(r){
+   if(!r||!r.ok){message('无法读取无线配置',true);return}
+   radios=r.radios||[];el('radios').textContent='';
+   radios.forEach(function(r){
+    var label=document.createElement('label');label.style.marginRight='18px';
+    label.appendChild(document.createTextNode((r.band==='2g'?'2.4GHz':r.band==='5g'?'5GHz':r.id)+' 新增数量 '));
+    var input=document.createElement('input');input.type='number';input.min=0;input.max=r.available;input.value=0;input.id='jfw_count_'+r.id;input.style.width='70px';label.appendChild(input);
+    label.appendChild(document.createTextNode(' 剩余 '+r.available+' / 新增上限 '+r.additional_limit+(r.verified?'':'（设置上限）')));el('radios').appendChild(label);
+   });
+   var node=el('node'),old=node.value;node.textContent='';node.add(new Option('直连国内网络',''));
+   (r.nodes||[]).forEach(function(n){node.add(new Option(n.name,n.id))});node.value=old;node.disabled=r.mode==='normal_proxy';
+   el('managed').textContent='可清除的批量无线 '+(r.managed||[]).length+' 个：'+(r.managed||[]).map(function(w){return w.ssid}).join('、');
+   if(r.pending)message('存在未提交配置，请先保存或撤销',true);
+  });
+ }
+ function poll(id,attempt){
+  request('GET',STATUS+'?job='+encodeURIComponent(id),{},function(r){
+   if(r&&r.state==='done'){lock(false);localStorage.removeItem('jfw_job');el('key').value='';message(r.message+'（'+r.count+' 个）');refresh();if(typeof window.loadStatus==='function')window.loadStatus();return}
+   if(r&&(r.state==='failed'||r.error)){
+    lock(false);localStorage.removeItem('jfw_job');message(r.error+(r.rolled_back?'；已恢复原配置':r.rollback_failed?'；恢复失败，请通过有线连接检查':'') ,true);refresh();return;
+   }
+   message(r&&r.message?r.message:'正在应用，网络可能暂时重载…');
+   if(attempt>=90){lock(false);message('任务暂未返回结果，请恢复连接后刷新查看',true);return}
+   setTimeout(function(){poll(id,attempt+1)},2000);
+  });
+ }
+ function run(action){
+  if(busy)return;
+  var req={action:action};
+  if(action==='create'){
+   req.prefix=el('prefix').value;req.start=el('start').value;req.key=el('key').value;req.hidden=el('hidden').checked?'1':'0';req.node=el('node').value||'';req.counts={};
+   radios.forEach(function(r){req.counts[r.id]=document.getElementById('jfw_count_'+r.id).value});
+  }
+  lock(true);message('正在检查名称、网段和无线容量…');
+  request('POST',CHANGE,{token:token,preview:'1',request:JSON.stringify(req)},function(r){
+   if(!r||!r.ok){lock(false);message(r&&r.error||'预览失败',true);return}
+   var plan=r.plan,rows=plan.rows||[];
+   var text=(action==='create'?'建立':'清除')+'以下 '+rows.length+' 个无线：\n'+rows.map(function(w){return w.ssid+' · '+w.device+(w.subnet?' · '+w.subnet:'')}).join('\n')+'\n\n应用会短暂重载网络，是否继续？';
+   if(!window.confirm(text)){lock(false);message('已取消');return}
+   req.revision=plan.revision;
+   request('POST',CHANGE,{token:token,request:JSON.stringify(req)},function(r){
+    if(!r||!r.ok){lock(false);message(r&&r.error||'启动失败',true);return}
+    localStorage.setItem('jfw_job',r.job);poll(r.job,0);
+   });
+  });
+ }
+ el('create').onclick=function(){run('create')};el('clear').onclick=function(){run('clear')};el('refresh').onclick=refresh;
+ refresh();var saved=localStorage.getItem('jfw_job');if(saved){lock(true);poll(saved,0)}
+})();
+</script>

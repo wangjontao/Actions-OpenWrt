@@ -1,10 +1,10 @@
-name: MT7981 JuLiang UI DulWiFi NPS-Domain Multi-Device
+name: MT7981 JuLiang FastACL2.4.4 MainWiFi NPS-Domain Multi-Device
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - codex/mt7981-juliang-nps-domain
+      - codex/mt7981-fastacl244-mainwifi-domain
 
 permissions:
   contents: write
@@ -30,7 +30,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib gettext git \
             libncurses-dev libssl-dev python3-setuptools rsync swig unzip zlib1g-dev file wget curl jq \
-            openssl ccache zstd
+            openssl ccache zstd lua5.1
           sudo apt-get clean
           df -h /
 
@@ -307,6 +307,7 @@ jobs:
             case "$band:$hw" in 2g:*|*:11g) uci set wireless.$radio.channel='9';; 5g:*|*:11a) uci set wireless.$radio.channel='48';; esac
           done
           for iface in $(uci -q show wireless | sed -n 's/^wireless\.\([^=]*\)=wifi-iface$/\1/p'); do
+            [ "$(uci -q get wireless.$iface.jfa_owner)" = fastacl-batch-v1 ] && continue
             radio="$(uci -q get wireless.$iface.device)"; band="$(uci -q get wireless.$radio.band)"; hw="$(uci -q get wireless.$radio.hwmode)"
             case "$band:$hw" in 2g:*|*:11g) ssid='DulWiFi-2.4G';; 5g:*|*:11a) ssid='DulWiFi-5G';; *) continue;; esac
             uci set wireless.$iface.ssid="$ssid"
@@ -414,6 +415,10 @@ jobs:
           grep -q "uci commit wireless" files/usr/libexec/juliang-wifi-defaults
           ./scripts/diffconfig.sh | tee MT7981-MTWiFi-final.config
 
+      - name: Integrate and validate FastACL 2.4.4
+        working-directory: openwrt
+        run: sh "$GITHUB_WORKSPACE/scripts/integrate-fastacl244-juliang-mt7981.sh"
+
       - name: Restore compiler cache
         uses: actions/cache@v4
         with:
@@ -467,7 +472,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7981-JuLiang-UI-DulWiFi-NPS-Domain-raw-${{ env.BUILD_DATE }}
+          name: MT7981-JuLiang-FastACL2.4.4-MainWiFi-NPS-Domain-raw-${{ env.BUILD_DATE }}
           path: openwrt/bin/targets/mediatek/filogic/*
           if-no-files-found: warn
           retention-days: 30
@@ -493,14 +498,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           target_commitish: ${{ github.sha }}
-          tag_name: MT7981-JuLiang-UI-DulWiFi-NPS-Domain-24.10-${{ env.BUILD_DATE }}
-          name: MT7981 JuLiang UI DulWiFi NPS-Domain Multi-Device ${{ env.BUILD_DATE }}
+          tag_name: MT7981-JuLiang-FastACL2.4.4-MainWiFi-NPS-Domain-24.10-${{ env.BUILD_DATE }}
+          name: MT7981 JuLiang FastACL2.4.4 MainWiFi NPS-Domain Multi-Device ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
           body: |
             Experimental ImmortalWrt 24.10 kernel 6.6 closed MTWiFi build.
             Devices: Philips HY3000, CMCC RAX3000M NAND/eMMC, Qihoo 360T7, AGS21, CMCC A10 U-Boot mod, ETR631-T/ETR635-U (KOMI A31), Newland 8103/9103, Ambit ASR3000 and JCG Q30 Pro.
             Driver: mt_wifi 7.6.6.1 with matching WARP. Management: 192.168.7.1, root password @password@.
             System/version: JuLiang; firmware description: JuLiang OS by:jontao.
+            FastACL: 2.4.4 with SOCKS5/SK5/HTTP batch import, proxy chains and corrected PassWall ACL templates. Extra WiFi: at most four 5GHz and one 2.4GHz; factory defaults contain main WiFi only.
             WiFi: DulWiFi-2.4G (channel 9) and DulWiFi-5G (channel 48), password password.
             Interface: custom JuLiang dashboard (no iStore/QuickStart), bold gradient title and public egress IP card with country flag, location, ISP and detection time. Plugins: Passwall 26.3.6-1, Passwall2 26.3.5-1, OpenClash, HomeProxy, original ehang NPS/NPC 0.26.10. Theme: Argon.
             NPS: nps.jontao.top:8024; the first successful WAN startup reads the physical WAN MAC once, removes colons, uppercases it, writes it as vkey, and never overwrites it on later boots.
@@ -509,7 +515,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7981-JuLiang-UI-DulWiFi-NPS-Domain-MultiDevice-24.10-${{ env.BUILD_DATE }}
+          name: MT7981-JuLiang-FastACL2.4.4-MainWiFi-NPS-Domain-MultiDevice-24.10-${{ env.BUILD_DATE }}
           path: openwrt/upload/*
           if-no-files-found: error
           retention-days: 30

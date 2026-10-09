@@ -1,0 +1,55 @@
+#!/bin/sh
+set -u
+
+BACKUP_DIR="/etc/juliang-fastacl/backup"
+NODE_LIST="/usr/lib/lua/luci/view/passwall2/node_list/node_list.htm"
+
+echo "=================================================="
+echo " JuLiang FastACL v2 rollback"
+echo "=================================================="
+
+/etc/init.d/juliang-fastacl stop >/dev/null 2>&1 || true
+/etc/init.d/juliang-fastacl disable >/dev/null 2>&1 || true
+
+# FastACL stop intentionally leaves the independent kill-switch fail-closed.
+# A deliberate uninstall must remove it before restoring PassWall2.
+nft list table inet juliang_killswitch >/dev/null 2>&1 && nft delete table inet juliang_killswitch >/dev/null 2>&1 || true
+
+# Keep all current PassWall2 nodes and the AP mappings FastACL mirrored into
+# the original ACL sections. Only remove our shadow SOCKS holders and restore
+# the three original engine switches.
+n=1
+while [ "$n" -le 64 ]; do
+    uci -q delete passwall2.jfa_ap$n
+    uci -q delete passwall2.jfa_pre$n
+    n=$((n + 1))
+done
+
+if [ -f "$BACKUP_DIR/original-flags" ]; then
+    . "$BACKUP_DIR/original-flags"
+    uci -q set passwall2.@global[0].enabled="${PW2_ENABLED:-0}"
+    uci -q set passwall2.@global[0].acl_enable="${PW2_ACL_ENABLE:-1}"
+    uci -q set passwall2.@global[0].socks_enabled="${PW2_SOCKS_ENABLED:-0}"
+fi
+uci -q commit passwall2
+
+if [ -f "$BACKUP_DIR/node_list.htm" ]; then
+    cp -af "$BACKUP_DIR/node_list.htm" "$NODE_LIST"
+    echo "[OK] restored PassWall2 node list UI"
+fi
+
+rm -f /etc/config/juliang_fastacl
+rm -f /tmp/luci-indexcache
+rm -rf /tmp/luci-modulecache /tmp/luci-templatecache
+rm -rf /tmp/juliang-fastacl
+
+/etc/init.d/uhttpd restart >/dev/null 2>&1 || true
+if [ "${PW2_ENABLED:-0}" = "1" ]; then
+    /etc/init.d/passwall2 enable >/dev/null 2>&1 || true
+    /etc/init.d/passwall2 restart >/tmp/passwall2-fastacl-rollback.log 2>&1 &
+else
+    /etc/init.d/passwall2 disable >/dev/null 2>&1 || true
+fi
+
+echo "[OK] FastACL disabled; current nodes/AP mappings kept"
+echo "PassWall2 is restoring in background; log: /tmp/passwall2-fastacl-rollback.log"

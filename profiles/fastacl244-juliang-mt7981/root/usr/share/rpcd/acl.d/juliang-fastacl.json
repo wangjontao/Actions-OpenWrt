@@ -1,0 +1,19 @@
+{
+  "juliang-fastacl-operator": {
+    "description": "Allow access to the restricted FastACL console",
+    "read": {
+      "uci": [
+        "juliang_fastacl"
+      ],
+      "ubus": {
+        "session": [
+          "access",
+          "get"
+        ],
+        "luci": [
+          "getFeatures"
+        ]
+      }
+    }
+  }
+}

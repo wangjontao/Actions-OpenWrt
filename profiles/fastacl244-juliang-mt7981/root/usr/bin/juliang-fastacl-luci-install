@@ -1,0 +1,393 @@
+#!/bin/sh
+set -eu
+
+FILE="${JFA_NODE_LIST_FILE:-/usr/lib/lua/luci/view/passwall2/node_list/node_list.htm}"
+CTRL="${JFA_CTRL_FILE:-/usr/lib/lua/luci/controller/juliang_fastacl.lua}"
+MARKER="JULIANG_FASTACL_V240"
+
+[ -f "$FILE" ] || {
+    echo "[ERROR] PassWall2 node_list.htm not found: $FILE"
+    exit 1
+}
+[ -f "$CTRL" ] || {
+    echo "[ERROR] FastACL LuCI controller not found: $CTRL"
+    exit 1
+}
+
+# Remove the old Quick-ACL UI cleanly. Its backup is the original PassWall2
+# node list from before the experimental v1 patch.
+if [ -f "$FILE.quick-acl.bak" ]; then
+    cp -af "$FILE.quick-acl.bak" "$FILE"
+    echo "[INFO] restored original PassWall2 node list from Quick-ACL backup"
+fi
+
+if grep -q "$MARKER" "$FILE"; then
+    echo "[OK] FastACL Fix4 LuCI already installed"
+    exit 0
+fi
+
+# Upgrade safely from any previous FastACL v2 UI patch. Always repatch from
+# the original PassWall2 node list backup to avoid duplicate buttons/modals.
+if grep -q 'JULIANG_FASTACL_V2' "$FILE" 2>/dev/null && [ -f "$FILE.jfa-v2.bak" ]; then
+    cp -af "$FILE.jfa-v2.bak" "$FILE"
+    echo "[INFO] restored original PassWall2 node list before v2.2 repatch"
+fi
+
+[ -f "$FILE.jfa-v2.bak" ] || cp -a "$FILE" "$FILE.jfa-v2.bak"
+
+FILE="$FILE" lua <<'LUA_PATCH'
+local file = assert(os.getenv("FILE"))
+local f = assert(io.open(file, "r"))
+local text = f:read("*a")
+f:close()
+
+local function replace_once(src, needle, repl, label)
+    local s, e = src:find(needle, 1, true)
+    assert(s, (label or "anchor") .. " missing")
+    return src:sub(1, s - 1) .. repl .. src:sub(e + 1)
+end
+
+local top_old = 'local appname = api.appname\n'
+local top_new = 'local appname = api.appname\nlocal jfa_url = require("luci.dispatcher").build_url("admin", "services", "juliang_fastacl")\n'
+text = replace_once(text, top_old, top_new, "top anchor")
+
+local js_anchor = '\n\tfunction to_edit_node(cbi_id) {'
+local js = [=[
+
+    // JULIANG_FASTACL_V240
+    var jfaNode = "";
+    var jfaMap = {};
+    var jfaLabels = {};
+    var jfaIps = {};
+    var jfaEngine = "unknown";
+    var jfaPreproxy = {};
+    var jfaAps = [];
+
+    function jfa_label(ap) {
+        return jfaLabels[ap] || ("无线" + ap);
+    }
+
+    function jfa_assignments(node) {
+        return jfaMap[node] || [];
+    }
+
+    function jfa_update_buttons() {
+        var buttons = document.getElementsByClassName("jfa-btn");
+        for (var i = 0; i < buttons.length; i++) {
+            var node = buttons[i].getAttribute("data-node-id");
+            var aps = jfa_assignments(node);
+            var labels = [];
+            var ips = [];
+
+            for (var j = 0; j < aps.length; j++) {
+                labels.push(jfa_label(aps[j]));
+                if (jfaIps[aps[j]])
+                    ips.push(jfaIps[aps[j]]);
+            }
+
+            buttons[i].value = labels.length ? labels.join(",") : "分配无线";
+            buttons[i].title = labels.length
+                ? ("FastACL 已绑定：" + labels.join(", ") + (ips.length ? "\n出口 IP：" + ips.join(", ") : ""))
+                : "FastACL：点击即时分配到无线 AP";
+
+            var ipNode = document.getElementById("jfa_ip_" + node);
+            if (ipNode) {
+                ipNode.textContent = ips.join(" / ");
+                ipNode.style.display = ips.length ? "inline-block" : "none";
+            }
+        }
+    }
+
+    function jfa_refresh_select() {
+        var sel = document.getElementById("jfa_select");
+        if (!sel) return;
+
+        var keep = sel.value || "";
+        while (sel.options.length) sel.remove(0);
+
+        var head = document.createElement("option");
+        head.value = "";
+        head.text = "请选择无线";
+        sel.add(head);
+
+        for (var i = 0; i < jfaAps.length; i++) {
+            var a = jfaAps[i];
+            var o = document.createElement("option");
+            o.value = a.ap;
+            var name = a.ssid || a.ap;
+            var net = a.network ? (" · " + a.network) : "";
+            var subnet = a.subnet ? (" · " + a.subnet) : "";
+            o.text = name + net + subnet;
+            sel.add(o);
+        }
+
+        if (keep) sel.value = keep;
+    }
+
+    function jfa_load_status(done) {
+        XHR.get('<%=jfa_url%>', { action: 'status' }, function(x, result) {
+            if (x && x.status == 200 && result && result.ok) {
+                jfaMap = result.map || {};
+                jfaLabels = result.wireless_labels || {};
+                jfaIps = result.ips || {};
+                jfaEngine = result.engine || "unknown";
+                jfaPreproxy = result.preproxy || {};
+                jfaAps = result.aps || [];
+                jfa_refresh_select();
+                jfa_update_buttons();
+            }
+            if (done) done(result || {});
+        });
+    }
+
+    function jfa_preproxy_current(node) {
+        var p = jfaPreproxy[node] || {};
+        return (p.enabled && p.remarks) ? p.remarks : "不使用";
+    }
+
+    function jfa_load_preproxy_options(node, done) {
+        XHR.get('<%=jfa_url%>', {
+            action: 'preproxy_options',
+            node: node
+        }, function(x, result) {
+            var sel = document.getElementById("jfa_preproxy_select");
+            if (sel) {
+                while (sel.options.length) sel.remove(0);
+                var o0 = document.createElement("option");
+                o0.value = "";
+                o0.text = "不使用前置代理（直连落地）";
+                sel.add(o0);
+
+                if (x && x.status == 200 && result && result.ok) {
+                    var opts = result.options || [];
+                    for (var i = 0; i < opts.length; i++) {
+                        var o = document.createElement("option");
+                        o.value = opts[i].id;
+                        var core = opts[i].type || "";
+                        var proto = opts[i].protocol || "";
+                        var suffix = "";
+                        if (core || proto)
+                            suffix = " · " + core + (proto && proto.toLowerCase() != core.toLowerCase() ? ("/" + proto) : "");
+                        o.text = opts[i].remarks + suffix;
+                        sel.add(o);
+                    }
+                    sel.value = result.enabled ? (result.current || "") : "";
+                }
+            }
+            if (done) done(result || {});
+        });
+    }
+
+    function jfa_apply_preproxy() {
+        if (!jfaNode) return;
+
+        var sel = document.getElementById("jfa_preproxy_select");
+        var pre = sel ? sel.value : "";
+        var status = document.getElementById("jfa_preproxy_status");
+        status.innerText = pre ? "正在切换前置代理…" : "正在关闭前置代理…";
+        status.style.color = "#606266";
+
+        XHR.get('<%=jfa_url%>', {
+            action: 'set_preproxy',
+            node: jfaNode,
+            preproxy: pre
+        }, function(x, result) {
+            if (x && x.status == 200 && result && result.ok) {
+                var msg = pre ? ("✓ 前置已切换：" + (result.preproxy_remarks || pre)) : "✓ 已关闭前置代理";
+                if (result.affected && result.affected.length)
+                    msg += "；即时刷新 " + result.affected.join(",");
+                if (result.ip && result.ip != "-")
+                    msg += "；出口 IP " + result.ip;
+                status.innerText = msg;
+                status.style.color = "#159957";
+                jfa_load_status(function() {
+                    document.getElementById("jfa_preproxy_current").innerText = jfa_preproxy_current(jfaNode);
+                });
+            } else {
+                status.innerText = "前置切换失败：" + jfa_error_text(result);
+                status.style.color = "#e43f3b";
+            }
+        });
+    }
+
+    function jfa_open(cbi_id) {
+        jfaNode = cbi_id;
+        var remarks = (document.getElementById("cbid.<%=appname%>." + cbi_id + ".remarks") || {}).value || cbi_id;
+        document.getElementById("jfa_node_name").innerText = remarks;
+        document.getElementById("jfa_div").style.display = "block";
+        document.getElementById("jfa_status").innerText = "";
+
+        jfa_load_status(function() {
+            var aps = jfa_assignments(cbi_id);
+            var labels = [];
+            for (var i = 0; i < aps.length; i++) labels.push(jfa_label(aps[i]));
+
+            document.getElementById("jfa_current").innerText = labels.length ? labels.join(", ") : "未分配";
+            document.getElementById("jfa_engine").innerText =
+                jfaEngine == "running" ? "FastACL：运行中" : "FastACL：未运行";
+            document.getElementById("jfa_engine").style.color =
+                jfaEngine == "running" ? "#159957" : "#e43f3b";
+            document.getElementById("jfa_preproxy_current").innerText = jfa_preproxy_current(cbi_id);
+            document.getElementById("jfa_preproxy_status").innerText = "";
+            jfa_load_preproxy_options(cbi_id);
+
+            if (aps.length && /^AP[0-9]+$/.test(aps[0]))
+                document.getElementById("jfa_select").value = aps[0];
+        });
+    }
+
+    function jfa_close() {
+        document.getElementById("jfa_div").style.display = "none";
+        jfaNode = "";
+    }
+
+    function jfa_error_text(result) {
+        var e = (result && result.error) || "ERROR";
+        if (e == "BUSY") return "FastACL 正在处理另一个切换，请稍候再试";
+        if (e == "FINAL_EGRESS_FAILED") return "节点本地端口已启动，但真实出口不可用，已自动回滚";
+        if (e == "NODE_START_FAILED") return "节点/本地 SOCKS 未正常启动，已自动回滚";
+        if (e == "PREPROXY_START_FAILED") {
+            var d = result && result.detail && result.detail.error;
+            if (d == "FINAL_EGRESS_FAILED") return "前置链路或落地真实出口不可用，已自动回滚";
+            if (d == "BUSY") return "FastACL 正在处理另一个切换，请稍候再试";
+            return "前置代理启动或实际连通检测失败，已自动回滚";
+        }
+        return e;
+    }
+
+    function jfa_assign() {
+        if (!jfaNode) return;
+
+        var ap = document.getElementById("jfa_select").value;
+        if (!ap) {
+            alert("请选择无线 AP");
+            return;
+        }
+
+        var exclusive = document.getElementById("jfa_exclusive").checked ? "1" : "0";
+        var status = document.getElementById("jfa_status");
+        status.innerText = "正在即时切换 " + jfa_label(ap) + "…";
+
+        XHR.get('<%=jfa_url%>', {
+            action: 'assign',
+            node: jfaNode,
+            ap: ap,
+            exclusive: exclusive
+        }, function(x, result) {
+            if (x && x.status == 200 && result && result.ok) {
+                var msg = "✓ " + jfa_label(ap) + " 已切换";
+                if (result.ip && result.ip != "-")
+                    msg += "；出口 IP " + result.ip;
+                if (result.seconds != null)
+                    msg += "；耗时 " + result.seconds + "s";
+                status.innerText = msg;
+                status.style.color = "#159957";
+
+                jfa_load_status(function() {
+                    var aps = jfa_assignments(jfaNode);
+                    var labels = [];
+                    for (var i = 0; i < aps.length; i++) labels.push(jfa_label(aps[i]));
+                    document.getElementById("jfa_current").innerText = labels.length ? labels.join(", ") : "未分配";
+                });
+            } else {
+                status.innerText = "切换失败：" + jfa_error_text(result);
+                status.style.color = "#e43f3b";
+            }
+        });
+    }
+
+    function jfa_clear() {
+        if (!jfaNode) return;
+        if (!confirm("解除这个节点当前绑定的无线 AP？")) return;
+
+        var status = document.getElementById("jfa_status");
+        status.innerText = "正在解除…";
+
+        XHR.get('<%=jfa_url%>', {
+            action: 'clear_node',
+            node: jfaNode
+        }, function(x, result) {
+            if (x && x.status == 200 && result && result.ok) {
+                status.innerText = "✓ 已解除绑定";
+                status.style.color = "#159957";
+                jfa_load_status(function() {
+                    document.getElementById("jfa_current").innerText = "未分配";
+                });
+            } else {
+                status.innerText = "解除失败：" + ((result && result.error) || "ERROR");
+                status.style.color = "#e43f3b";
+            }
+        });
+    }
+]=]
+text = replace_once(text, js_anchor, js .. js_anchor, "JS anchor")
+
+local copy_anchor = '\n\t\t\t\t<input class="btn cbi-button cbi-button-add" type="button" value="<%:Copy%>" onclick="copy_node(\'{{id}}\')"/>'
+local button = [=[
+				<input class="btn cbi-button cbi-button-edit jfa-btn" type="button" id="jfa_{{id}}" data-node-id="{{id}}" value="分配无线" onclick="jfa_open('{{id}}')" title="FastACL 即时分配无线"/>
+				<span id="jfa_ip_{{id}}" style="display:none;margin-left:5px;color:#159957;font-weight:600;font-size:12px;white-space:nowrap;"></span>
+]=]
+text = replace_once(text, copy_anchor, "\n" .. button .. copy_anchor, "button anchor")
+
+local ping_call = '\n\t\t\tpingAllNodes();'
+text = replace_once(text, ping_call, ping_call .. '\n\t\t\tjfa_load_status();', "load-status anchor")
+
+local modal = [=[
+
+<div id="jfa_div" style="display:none;width:35rem;max-width:94vw;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:220;padding:22px;text-align:center;background:var(--main-bg-color,#fff);border-radius:12px;box-shadow:0 12px 42px rgba(0,0,0,.38);">
+    <div style="font-size:17px;font-weight:700;margin-bottom:7px;">FastACL 即时分配无线</div>
+    <div style="font-size:12px;opacity:.72;margin-bottom:13px;">自动读取 SSID / network / IPv4 网段 · 不重启系统 DNS · 只切换当前无线</div>
+    <div style="margin:7px 0;">节点：<strong id="jfa_node_name" style="color:#159957"></strong></div>
+    <div style="margin:7px 0;">当前：<strong id="jfa_current" style="color:#e6a23c">读取中…</strong></div>
+    <div id="jfa_engine" style="margin:7px 0;font-weight:600;">FastACL：检测中…</div>
+    <div style="margin:13px 0;">
+        <select id="jfa_select" class="cbi-input-select" style="min-width:300px;">
+            <option value="">自动读取中…</option>
+        </select>
+    </div>
+    <div style="margin:16px 0 8px;padding:12px;border-top:1px solid rgba(128,128,128,.22);">
+        <div style="font-weight:700;margin-bottom:8px;">快速前置代理</div>
+        <div style="font-size:12px;opacity:.72;margin-bottom:9px;">支持跨内核：Xray/VLESS 前置 → sing-box/SOCKS5 落地；只切当前 AP，本地桥接端口 141xx</div>
+        <div style="margin:6px 0;">当前前置：<strong id="jfa_preproxy_current" style="color:#e6a23c">读取中…</strong></div>
+        <div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;align-items:center;">
+            <select id="jfa_preproxy_select" class="cbi-input-select" style="min-width:260px;">
+                <option value="">不使用前置代理（直连落地）</option>
+            </select>
+            <input class="btn cbi-button cbi-button-apply" type="button" value="应用前置" onclick="jfa_apply_preproxy()"/>
+        </div>
+        <div id="jfa_preproxy_status" style="min-height:22px;margin-top:8px;font-weight:600;"></div>
+    </div>
+    <label style="display:block;margin:10px 0;">
+        <input id="jfa_exclusive" type="checkbox" checked="checked"/>
+        唯一绑定：同一个节点只分配给一个无线 AP
+    </label>
+    <div id="jfa_status" style="min-height:24px;margin:9px 0;font-weight:600;color:#159957;"></div>
+    <div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;">
+        <input class="btn cbi-button cbi-button-apply" type="button" value="立即切换" onclick="jfa_assign()"/>
+        <input class="btn cbi-button cbi-button-remove" type="button" value="解除绑定" onclick="jfa_clear()"/>
+        <input class="btn cbi-button cbi-button-edit" type="button" value="关闭" onclick="jfa_close()"/>
+    </div>
+</div>
+]=]
+
+text = text .. modal
+
+local out = assert(io.open(file .. ".new", "w"))
+out:write(text)
+out:close()
+os.rename(file .. ".new", file)
+LUA_PATCH
+
+grep -q "$MARKER" "$FILE"
+grep -q 'jfa-btn' "$FILE"
+grep -q 'FastACL 即时分配无线' "$FILE"
+grep -q '快速前置代理' "$FILE"
+
+if [ "${JFA_OFFLINE:-0}" != "1" ]; then
+    rm -f /tmp/luci-indexcache
+    rm -rf /tmp/luci-modulecache /tmp/luci-templatecache
+    /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
+fi
+
+echo "[OK] FastACL Fix4 LuCI installed"
+echo "PassWall2 -> 节点列表：自动读取真实无线/网段 + 即时分配 + 跨内核快速前置，并显示出口 IP。"

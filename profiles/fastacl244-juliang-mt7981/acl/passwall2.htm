@@ -1,0 +1,27 @@
+<%
+local _jfa_enabled = require("luci.model.uci").cursor():get("juliang_fastacl", "main", "enabled") == "1"
+if not _jfa_enabled then
+%>
+<div style="padding:8px 0 14px 0">
+<input id="passwall2_acl_quick" type="button" class="cbi-button cbi-button-action" value="快速更新实际出口 IP" onclick="passwall2AclRefresh(false);" />
+<input id="passwall2_acl_full" type="button" class="cbi-button cbi-button-apply" value="强制重新检测全部" onclick="passwall2AclRefresh(true);" />
+<span id="passwall2_acl_state" style="margin-left:12px">读取检测状态...</span>
+</div>
+<script type="text/javascript">
+//<![CDATA[
+function passwall2AclRefresh(force){
+  var a=document.getElementById('passwall2_acl_quick'),b=document.getElementById('passwall2_acl_full'),s=document.getElementById('passwall2_acl_state');
+  a.disabled=b.disabled=true;s.textContent=force?'正在并行重新检测全部节点...':'正在快速更新...';
+  XHR.get('<%=luci.dispatcher.build_url("admin","services","passwall2","acl_exit_ip_status")%>',{refresh:force?'1':'0'},function(x,d){
+    a.disabled=b.disabled=false;
+    var o=d;try{if(typeof o==='string')o=JSON.parse(o);if((!o||typeof o!=='object')&&x&&x.responseText)o=JSON.parse(x.responseText);}catch(e){o=null;}
+    if(!o||o.status!=='OK'){s.innerHTML='<span style="color:#e43f3b">检测失败</span>';return;}
+    var ok=0;(o.rows||[]).forEach(function(r){if(r.status==='OK')ok++;});
+    s.innerHTML='<span style="color:#159957">'+ok+'/'+(o.count||0)+' 正常，实际检测节点：'+(o.detected_nodes||0)+'</span>';
+    setTimeout(function(){location.reload();},600);
+  });
+}
+//]]>
+</script>
+
+<% end %>

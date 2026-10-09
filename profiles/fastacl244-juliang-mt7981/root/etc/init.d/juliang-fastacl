@@ -1,0 +1,32 @@
+#!/bin/sh /etc/rc.common
+
+USE_PROCD=1
+START=95
+STOP=10
+
+start_service() {
+    [ "$(uci -q get juliang_fastacl.main.runtime_mode 2>/dev/null)" != normal_proxy ] || return 0
+    [ "$(uci -q get juliang_fastacl.main.enabled 2>/dev/null)" = "1" ] || return 0
+
+    # PassWall2 is retained only as the node database/UI. Its late S99 start
+    # would otherwise see FastACL's /tmp/etc/passwall2/bin children and stop
+    # them. Keep its service disabled permanently while FastACL owns dataplane.
+    /etc/init.d/passwall2 disable >/dev/null 2>&1 || true
+
+    mkdir -p /tmp/juliang-fastacl
+
+    procd_open_instance
+    procd_set_param command /usr/bin/juliang-fastacl-guard
+    procd_set_param respawn 3600 5 5
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_close_instance
+}
+
+stop_service() {
+    /usr/bin/juliang-fastacl stop >/dev/null 2>&1 || true
+}
+
+service_triggers() {
+    procd_add_reload_trigger juliang_fastacl
+}

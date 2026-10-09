@@ -1,0 +1,130 @@
+#!/bin/sh
+# PassWall2 SOCKS5 / HTTP import repair. No network restart.
+set -eu
+TARGET=/usr/share/passwall2/subscribe.lua
+BASE=/etc/passwall2-import-repair
+if [ "${1:-}" = rollback ]; then
+    test -s "$BASE/original.lua" || { echo 'No original backup found'; exit 1; }
+    lua -e 'assert(loadfile("/etc/passwall2-import-repair/original.lua"))'
+    cp -p "$BASE/original.lua" "$TARGET"
+    echo 'Original importer restored. Refresh the node page.'
+    exit 0
+fi
+test -s "$TARGET" || { echo 'PassWall2 subscribe.lua not found'; exit 1; }
+command -v lua >/dev/null || { echo 'Lua is required'; exit 1; }
+TASK=$(mktemp -d /tmp/pw2-import-repair.XXXXXX)
+trap 'rm -rf "$TASK"' EXIT HUP INT TERM
+cat > "$TASK/patch.lua" <<'LUA'
+local target, base, temp = arg[1], arg[2], arg[3]
+local f = assert(io.open(target, 'rb'))
+local source = f:read('*a'); f:close()
+if source:find('PW2_SIMPLE_PROXY_IMPORT_V1', 1, true) then
+    print('Already patched.'); os.exit(0)
+end
+local anchor = source:match('(local function processData%s*%([^%)]*%))')
+assert(anchor and anchor:match('szType%s*,%s*content%s*,%s*add_mode%s*,%s*group'), 'Unsupported processData parameters; nothing changed')
+local start, finish = source:find(anchor, 1, true)
+assert(start, 'Unsupported importer version: processData signature differs; nothing changed')
+assert(not source:find(anchor, finish+1, true), 'Ambiguous importer; nothing changed')
+local helper = [==[
+-- PW2_SIMPLE_PROXY_IMPORT_V1
+local function pw2_simple_proxy(kind, text, mode, group)
+    kind = tostring(kind):lower()
+    if not ({sk5=true,socks=true,socks5=true,http=true,https=true})[kind] then return nil, false end
+    local function decode(s)
+        return (s:gsub('%%(%x%x)', function(h) return string.char(tonumber(h,16)) end))
+    end
+    local body, name = text:match('^(.-)#(.*)$')
+    body = body or text
+    local query
+    body, query = body:match('^(.-)%?(.*)$') or body, body:match('%?(.*)$')
+    body = body:gsub('/$', '')
+    local hostport, user, password = body
+    local auth, endpoint = body:match('^(.*)@([^@]+)$')
+    if auth then
+        hostport = endpoint
+        if not auth:find(':',1,true) then
+            local ok, decoded = pcall(base64Decode, auth)
+            if not ok or type(decoded) ~= 'string' then return nil, true end
+            auth = decoded
+        end
+        user, password = auth:match('^([^:]+):(.*)$')
+        if not user then return nil, true end
+    else
+        local h,p,u,pw = body:match('^(%b[]):(%d+):([^:]+):(.*)$')
+        if not h then h,p,u,pw = body:match('^([^:]+):(%d+):([^:]+):(.*)$') end
+        if h then hostport, user, password = h..':'..p,u,pw end
+    end
+    local host, port = hostport:match('^%[([^%]]+)%]:(%d+)$')
+    if not host then host, port = hostport:match('^([^:/%s]+):(%d+)$') end
+    if not host or not tonumber(port) or tonumber(port)<1 or tonumber(port)>65535 then return nil,true end
+    local core = has_xray and 'Xray' or (has_singbox and 'sing-box' or nil)
+    if not core then return nil,true end
+    local tls = kind=='https'
+    local sni
+    if query then
+        for k,v in query:gmatch('([^&=]+)=([^&]*)') do
+            k,v=decode(k),decode(v)
+            if k=='sni' then sni=v end
+            if k=='tls' and v=='1' then tls=true end
+        end
+    end
+    local protocol = (kind=='http' or kind=='https') and 'http' or 'socks'
+    if protocol=='socks' and tls then return nil,true end
+    return {
+        type=core, protocol=protocol, address=host, port=port,
+        username=user and decode(user) or nil, password=password and decode(password) or nil,
+        remarks=(name and name~='' and decode(name)) or (protocol..' '..host..':'..port),
+        tls=tls and '1' or '0', tls_serverName=tls and (sni or host) or nil,
+        tls_allowInsecure=tls and '0' or nil,
+        transport='raw', tcp_guise='none', tcp_fast_open='0', tcpMptcp='0',
+        timeout=60, add_mode=mode, group=group
+    },true
+end
+]==]
+-- Test the exact parser before editing any installed file.
+local sandbox = setmetatable({has_xray=true, has_singbox=false,
+    base64Decode=function() return 'alice:secret' end}, {__index=_G})
+local load = loadstring or load
+local parser = assert(load(helper .. '\nreturn pw2_simple_proxy'))
+if setfenv then setfenv(parser, sandbox) else
+    parser = assert(load(helper .. '\nreturn pw2_simple_proxy', 'parser', 't', sandbox))
+end
+local parse=parser()
+local n, handled=parse('sk5','example.com:1080:alice:a:b#test', '1','manual')
+assert(handled and n.protocol=='socks' and n.password=='a:b' and n.address=='example.com')
+n=parse('socks5','alice:p%40ss%2Bword@[2001:db8::1]:1080#IPv6','1','manual')
+assert(n.address=='2001:db8::1' and n.password=='p@ss+word')
+n=parse('http','alice:secret@example.com:8080','1','manual')
+assert(n.protocol=='http' and n.tls=='0')
+n=parse('https','example.com:443?sni=proxy.example#HTTPS','1','manual')
+assert(n.tls=='1' and n.tls_allowInsecure=='0' and n.tls_serverName=='proxy.example')
+n=parse('socks','YWxpY2U6c2VjcmV0@example.com:1080','1','manual')
+assert(n.username=='alice' and n.password=='secret')
+n,handled=parse('sk5','example.com:70000','1','manual'); assert(not n and handled)
+n,handled=parse('vless','untouched','1','manual'); assert(not n and not handled)
+sandbox.has_xray=false; sandbox.has_singbox=true
+n=parse('http','example.com:80','1','manual'); assert(n.type=='sing-box')
+sandbox.has_singbox=false
+n,handled=parse('http','example.com:80','1','manual'); assert(not n and handled)
+local hook = '\n\tlocal pw2_node, pw2_handled = pw2_simple_proxy(szType, content, add_mode, group)\n\tif pw2_handled then return pw2_node end\n'
+local patched = source:sub(1,start-1)..helper..anchor..hook..source:sub(finish+1)
+local syntax_source = patched:gsub('^#![^\n]*\n', '\n')
+local compiled, syntax_error = load(syntax_source)
+assert(compiled, 'Patched importer syntax failed; nothing changed: '..tostring(syntax_error))
+local out=assert(io.open(temp,'wb')); out:write(patched); out:close()
+print('Parser tests and importer syntax passed.')
+LUA
+lua "$TASK/patch.lua" "$TARGET" "$BASE" "$TASK/subscribe.lua"
+if [ ! -f "$TASK/subscribe.lua" ]; then exit 0; fi
+mkdir -p "$BASE"
+chmod 700 "$BASE"
+if [ ! -f "$BASE/original.lua" ]; then cp -p "$TARGET" "$BASE/original.lua"; fi
+BACKUP="$BASE/subscribe-$(date +%Y%m%d-%H%M%S)-$$.lua"
+cp -p "$TARGET" "$BACKUP"
+cp -p "$TARGET" "$TARGET.pw2-repair-new"
+cat "$TASK/subscribe.lua" > "$TARGET.pw2-repair-new"
+mv "$TARGET.pw2-repair-new" "$TARGET"
+echo "Installed. Backup: $BACKUP"
+echo 'Refresh PassWall2 nodes, then paste links into the existing import dialog.'
+echo 'Rollback: sh PassWall2-import-repair.sh rollback'

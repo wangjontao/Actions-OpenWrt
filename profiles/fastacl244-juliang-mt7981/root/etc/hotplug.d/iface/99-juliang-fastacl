@@ -1,0 +1,13 @@
+#!/bin/sh
+[ "$ACTION" = "ifup" ] || exit 0
+[ "$(uci -q get juliang_fastacl.main.runtime_mode 2>/dev/null)" != normal_proxy ] || exit 0
+[ "$(uci -q get juliang_fastacl.main.enabled 2>/dev/null)" = "1" ] || exit 0
+[ "$INTERFACE" = "loopback" ] && exit 0
+
+# Dynamic version: any interface may be one of the discovered wireless
+# networks (a1/a2/tk1/custom names). Re-assert only FastACL's nft/policy rules.
+# Node relays and the FastACL router are not restarted.
+(
+    sleep 1
+    /usr/bin/juliang-fastacl firewall >/dev/null 2>&1 || true
+) &

@@ -12,7 +12,7 @@
 .jl-egress-meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;color:#5a6c87;font-size:13px}.jl-egress-meta span:not(:empty){padding:5px 10px;background:#eaf1fc;border-radius:7px}.jl-egress-note{margin:14px 0 0;font-size:12px;color:#8391a6;line-height:1.6}@media(max-width:600px){#egress-ip{font-size:28px}.jl-egress-main{gap:10px}}
 </style>
 <div class="jl">
- <div class="jl-head"><div class="jl-title"><h1>JuLiang 控制中心</h1><p>网络、无线、终端与常用服务的实时状态。</p></div><div class="jl-nav"><a href="<%=url('admin/juliang/dashboard')%>">首页</a><a href="<%=url('admin/juliang/wireless')%>">无线与终端</a><a href="<%=url('admin/network/network')%>">网络接口</a></div></div>
+ <div class="jl-head"><div class="jl-title"><h1>JuLiang 控制中心</h1><p>网络、无线、终端与常用服务的实时状态。</p></div><div class="jl-nav"><a href="<%=url('admin/services/juliang_fastacl_console')%>">FastACL 2.4.4</a><a href="<%=url('admin/juliang/dashboard')%>">首页</a><a href="<%=url('admin/juliang/wireless')%>">无线与终端</a><a href="<%=url('admin/network/network')%>">网络接口</a></div></div>
  <div class="jl-grid">
   <div class="jl-card"><h3>WAN 网络</h3><div class="jl-big" id="wanip">读取中</div><p id="wanmeta">--</p></div>
   <div class="jl-card"><h3>无线设备</h3><div class="jl-big"><span id="clients">0</span> 个</div><p>当前关联终端</p></div>
