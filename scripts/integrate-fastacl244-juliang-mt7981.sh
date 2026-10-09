@@ -7,12 +7,14 @@ for script in files/usr/bin/juliang-fastacl* files/usr/bin/uninstall-juliang-fas
     chmod 0755 "$script"
 done
 for plugin in passwall passwall2; do
-    dest=$(find "package/${plugin}-luci" -path "*/luasrc/view/${plugin}/acl_ip_refresh.htm" -print -quit)
-    test -n "$dest"
-    cp "$PROFILE/acl/${plugin}.htm" "$dest"
+    package_dir="package/${plugin}-luci/luci-app-${plugin}"
+    test -f "$package_dir/Makefile" || { echo "[ERROR] Missing pinned package: $package_dir"; exit 1; }
+    mkdir -p "$package_dir/luasrc/view/$plugin"
+    cp "$PROFILE/acl/${plugin}.htm" "$package_dir/luasrc/view/$plugin/acl_ip_refresh.htm"
+    echo "[OK] Installed custom $plugin ACL template"
 done
 importer=$(find package/passwall2-luci -path '*/root/usr/share/passwall2/subscribe.lua' -print -quit)
-test -n "$importer"
+test -n "$importer" || { echo "[ERROR] PassWall2 importer missing"; exit 1; }
 task_dir=$(mktemp -d)
 trap 'rm -rf "$task_dir"' EXIT HUP INT TERM
 sed "s|^TARGET=/usr/share/passwall2/subscribe.lua$|TARGET=$PWD/$importer|;s|^BASE=/etc/passwall2-import-repair$|BASE=$task_dir/import-backup|" files/usr/bin/juliang-fastacl-import-repair > "$task_dir/import-repair.sh"
