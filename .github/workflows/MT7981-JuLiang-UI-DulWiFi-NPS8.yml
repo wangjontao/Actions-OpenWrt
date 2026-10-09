@@ -1,10 +1,10 @@
-name: MT7981 JuLiang UI DulWiFi NPS8 Multi-Device
+name: MT7981 JuLiang UI DulWiFi NPS-Domain Multi-Device
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - jontaoNpS-mt7981-juliang-ui-dulwifi-nps8
+      - codex/mt7981-juliang-nps-domain
 
 permissions:
   contents: write
@@ -362,7 +362,7 @@ jobs:
             key="$(printf '%s' "$mac" | tr -d ':' | tr '[:lower:]' '[:upper:]')"
             uci -q get nps.@nps[0] >/dev/null || uci -q add nps nps >/dev/null
             uci -q set nps.@nps[0].enabled='1'
-            uci -q set nps.@nps[0].server_addr='8.134.201.189'
+            uci -q set nps.@nps[0].server_addr='nps.jontao.top'
             uci -q set nps.@nps[0].server_port='8024'
             uci -q set nps.@nps[0].protocol='tcp'
             uci -q set nps.@nps[0].compress='1'
@@ -372,7 +372,7 @@ jobs:
             uci -q commit nps
             touch "$DONE"
             /etc/init.d/nps-autokey disable >/dev/null 2>&1 || true
-            logger -t nps-autokey "configured 8.134.201.189:8024 from WAN MAC"
+            logger -t nps-autokey "configured nps.jontao.top:8024 from WAN MAC"
           }
 
           start() { update_nps_key; }
@@ -402,7 +402,7 @@ jobs:
           chmod 755 files/etc/hotplug.d/iface/99-nps-autokey
 
 
-          grep -q "server_addr='8.134.201.189'" files/etc/init.d/nps-autokey
+          grep -q "server_addr='nps.jontao.top'" files/etc/init.d/nps-autokey
           grep -q 'vkey="$key"' files/etc/init.d/nps-autokey
           grep -q 'DONE=/etc/nps-wan-mac.done' files/etc/init.d/nps-autokey
           grep -q 'touch "$DONE"' files/etc/init.d/nps-autokey
@@ -467,7 +467,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7981-JuLiang-UI-DulWiFi-NPS8-raw-${{ env.BUILD_DATE }}
+          name: MT7981-JuLiang-UI-DulWiFi-NPS-Domain-raw-${{ env.BUILD_DATE }}
           path: openwrt/bin/targets/mediatek/filogic/*
           if-no-files-found: warn
           retention-days: 30
@@ -492,8 +492,9 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: MT7981-JuLiang-UI-DulWiFi-NPS8-24.10-${{ env.BUILD_DATE }}
-          name: MT7981 JuLiang UI DulWiFi NPS8 Multi-Device ${{ env.BUILD_DATE }}
+          target_commitish: ${{ github.sha }}
+          tag_name: MT7981-JuLiang-UI-DulWiFi-NPS-Domain-24.10-${{ env.BUILD_DATE }}
+          name: MT7981 JuLiang UI DulWiFi NPS-Domain Multi-Device ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
           body: |
             Experimental ImmortalWrt 24.10 kernel 6.6 closed MTWiFi build.
@@ -501,14 +502,14 @@ jobs:
             Driver: mt_wifi 7.6.6.1 with matching WARP. Management: 192.168.7.1, root password @password@.
             System/version: JuLiang; firmware description: JuLiang OS by:jontao.
             WiFi: DulWiFi-2.4G (channel 9) and DulWiFi-5G (channel 48), password password.
-            Interface: custom JuLiang dashboard (no iStore/QuickStart). Plugins: Passwall 26.3.6-1, Passwall2 26.3.5-1, OpenClash, HomeProxy, original ehang NPS/NPC 0.26.10. Theme: Argon.
-            NPS: 8.134.201.189:8024; the first successful WAN startup reads the physical WAN MAC once, removes colons, uppercases it, writes it as vkey, and never overwrites it on later boots.
+            Interface: custom JuLiang dashboard (no iStore/QuickStart), bold gradient title and public egress IP card with country flag, location, ISP and detection time. Plugins: Passwall 26.3.6-1, Passwall2 26.3.5-1, OpenClash, HomeProxy, original ehang NPS/NPC 0.26.10. Theme: Argon.
+            NPS: nps.jontao.top:8024; the first successful WAN startup reads the physical WAN MAC once, removes colons, uppercases it, writes it as vkey, and never overwrites it on later boots.
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7981-JuLiang-UI-DulWiFi-NPS8-MultiDevice-24.10-${{ env.BUILD_DATE }}
+          name: MT7981-JuLiang-UI-DulWiFi-NPS-Domain-MultiDevice-24.10-${{ env.BUILD_DATE }}
           path: openwrt/upload/*
           if-no-files-found: error
           retention-days: 30
