@@ -1,11 +1,11 @@
 {
   "version": "2.4.4",
-  "status": "stable-frozen",
-  "date": "2026-10-04",
+  "status": "1010-repair",
+  "date": "2026-10-10",
   "limits": {
-    "5GHz": 12,
-    "2.4GHz": 8,
-    "includes_existing": true
+    "5GHz": 4,
+    "2.4GHz": 1,
+    "includes_existing_batch": true
   },
   "features": [
     "batch-wifi-create",
@@ -15,15 +15,28 @@
     "batch-panel-collapsed-by-default"
   ],
   "files": {
-    "usr/bin/juliang-fastacl-guard": "79261faeb57be37a8f753e2e9fec4dd4861a7a7ea73612f29293ebab7814cb7b",
-    "usr/lib/lua/juliang_fastacl_wifi.lua": "c3010a5eb9f5d0432f2315ff1035ba95ff1e27c56c95934f8a55f2229434b111",
-    "usr/lib/lua/juliang_fastacl_wifi_env.lua": "0d0b5dac4a87cabe20a5f6faa9e5ea147a4a60be63f7991f16ff049709e84898",
-    "usr/lib/lua/luci/controller/juliang_fastacl_wifi.lua": "1e5081eb134c967e59761da986112ed5a7a4a4d78b6e975bde0efd8aa0e90395",
-    "usr/lib/lua/luci/view/juliang_fastacl/batch_wifi.htm": "3580f12dd1544444635cfd732c62c446f8a63e6f242b8820515b9da44919a951",
-    "usr/lib/lua/luci/view/juliang_fastacl/console.htm": "a4ad22fbbd3b29aa9439ec04fe748eb040c1d5eec108004c28c07e62f2a5258d",
-    "usr/lib/lua/luci/view/juliang_operator/wireless.htm": "7def8782395a3ca7e4519ec3ed2e10d3a87c3b7b0d99930fdc12ff4ae4b578fa",
-    "usr/libexec/juliang-fastacl-discover.lua": "39099d332e9d1076af104c9eac269b81ae6216db887a637322dd451654630ee3",
-    "usr/libexec/juliang-fastacl-wifi.lua": "d2ca20c2224534937d4a5f6390baf2f810a741c8bbf3ce56dd338ec9e1c0f8b4"
+    "etc/init.d/juliang-domestic-dns": "506307d87ddbd7aa233899ba513276915fd6e65e45b5d4238fa34e8d49dd8352",
+    "usr/libexec/juliang-fastacl-domestic-dns.lua": "776eaa46a6a8c754ea7e742eebffc652049e46b101e8ac74e01376f628f79c81",
+    "usr/libexec/juliang-fastacl-router.lua": "81b8e089059d5b1f230fdfc7076ae328d39fa81dd5c813c40c84070611cd8514",
+    "usr/lib/lua/juliang_fastacl_dns.lua": "70c025b4aef8c5990e4b1dc645193afe254c356677957a3d731140ae30248c97",
+    "usr/lib/lua/luci/controller/juliang_fastacl_dns.lua": "653b295eb7cda402bcc51ebded70c118be9054d14796d7da8d6cb242de5d9746",
+    "usr/lib/lua/luci/view/juliang_fastacl/console.htm": "872ca2b37eba5e18a9bf5cc0ba8f2150de70a299e1211fcb09944befca09a3bf",
+    "usr/lib/lua/luci/view/juliang_fastacl/dns.htm": "1f9f5ac86caf55c85df0cb9813904930672f60f39c945853e20de109f32a6dbe",
+    "usr/lib/lua/luci/view/juliang_fastacl/node_dns.htm": "4d995aef7b95c9a0f90c7a3fcabbec362b1dd06c250078c5bcb04b0b5e218fa8",
+    "www/luci-static/resources/juliang-fastacl-node-dns.js": "4187b8a8a9770fcda33a293cee8a706c5fefd9bb77edb723b464c358c87cb011",
+    "www/luci-static/resources/juliang-fastacl-v24.js": "59bd74dbdfdf35bd07065a2d6048d68d5d97f73faaae398d725045b9d453a562",
+    "etc/config/juliang_fastacl": "bb32993ce97f9e2c647e7405e6d58855d9bf78f9404ab889c9a5b983eb3922e2",
+    "etc/uci-defaults/96-juliang-fastacl-dns": "0d5dd696d261c50abc020ff9f35a57abd69d47bde7dc5b277826501a8099f2f0"
   },
-  "fix": "Refresh node assignment list after batch WiFi create/clear"
+  "fix": "Refresh node assignment list after batch WiFi create/clear",
+  "variants": {
+    "1010V1": {
+      "5GHz": 4,
+      "2.4GHz": 1
+    },
+    "1010V2-10WiFi": {
+      "5GHz": 8,
+      "2.4GHz": 3
+    }
+  }
 }

@@ -15,6 +15,7 @@ uci:foreach(cfg, "ap", function(s)
   if slot and subnet and subnet ~= "" and sport then
     aps[#aps + 1] = {
       slot = slot,
+      node = s.node,
       subnet = subnet,
       sport = sport,
       name = s[".name"] or ("ap" .. slot),
@@ -68,6 +69,17 @@ for _, a in ipairs(aps) do
       },
       detour = tag
     }
+  end
+  if uci:get(cfg,'main','dns_providers_enabled') == '1' then
+    local private = uci:get(cfg,'main','dns_policy') == 'private' and a.node and a.node ~= ''
+    dns_server = require('juliang_fastacl_dns').get(uci, private and 'proxy' or 'domestic')
+    dns_server.tag = 'dns-' .. tag
+    dns_server.detour = private and tag or nil
+    local override,through_proxy=require('juliang_fastacl_dns').for_node(uci,a.node)
+    if override then
+      dns_server=override;dns_server.tag='dns-'..tag
+      dns_server.detour=through_proxy and tag or nil
+    end
   end
   dns_servers[#dns_servers + 1] = dns_server
   dns_rules[#dns_rules + 1] = {

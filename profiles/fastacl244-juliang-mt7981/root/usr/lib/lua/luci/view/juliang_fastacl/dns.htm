@@ -1,0 +1,29 @@
+<style>
+#jfd_panel{margin:12px 0;padding:12px 14px;border:1px solid #dfe5f2;border-radius:12px;background:linear-gradient(110deg,#f1f5ff,#fafbff);color:#354365;font-size:14px;box-sizing:border-box}
+#jfd_panel .jfd-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+#jfd_panel .jfd-title{font-weight:700;color:#4862bf;margin-right:2px;white-space:nowrap}
+#jfd_panel label{display:flex;align-items:center;gap:7px;margin:0;white-space:nowrap;font-size:14px}
+#jfd_panel select{margin:0!important;width:auto!important;min-width:112px;max-width:230px;height:36px!important;padding:5px 28px 5px 10px!important;line-height:24px!important;font-size:14px!important;border-radius:8px}
+#jfd_fields{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap}
+#jfd_panel button{margin:0!important;min-height:36px!important;height:auto!important;padding:7px 14px!important;white-space:nowrap;font-size:14px!important;line-height:20px!important;border-radius:8px}
+#jfd_panel .jfd-custom{max-width:300px;padding-top:6px}
+#jfd_panel .jfd-custom[hidden]{display:none!important}
+#jfd_panel input{display:block;width:100%;box-sizing:border-box;margin:5px 0!important;height:34px!important;font-size:14px!important}
+#jfd_panel details{margin-top:6px;color:#78839a;font-size:12px}
+#jfd_panel details p{margin:6px 0 0;font-size:12px}
+#jfd_message{font-size:12px}
+@media(max-width:650px){#jfd_panel .jfd-toolbar{gap:10px}#jfd_fields{width:100%}#jfd_panel select{max-width:210px}}
+</style>
+<div id="jfd_panel">
+<div class="jfd-toolbar"><span class="jfd-title">加密 DNS</span><label>模式 <select id="jfd_policy"><option value="direct">默认：直连加密</option><option value="private">高级隐私：经过代理</option></select></label><div id="jfd_fields"></div><button type="button" class="cbi-button cbi-button-apply" id="jfd_save">保存 DNS</button><span id="jfd_message" role="status"></span></div>
+<details><summary>解析说明与自定义配置</summary><p>默认使用国内直连 DoH；高级隐私模式的代理网络使用所选代理 DNS，经对应节点解析。自定义需填写 HTTPS 地址和服务商 IPv4；失败不回落明文 DNS。</p></details>
+</div>
+<script>
+(function(){
+var panel=document.getElementById('jfd_panel'),target=document.getElementById('jfa242_route_section');if(target)target.parentNode.insertBefore(panel,target);
+var statusUrl='<%=url("admin/services/juliang_fastacl_dns")%>',saveUrl='<%=url("admin/services/juliang_fastacl_dns_save")%>',root=document.getElementById('jfd_fields'),state;
+function field(scope,title){var box=document.createElement('div');box.className='jfd-field';var label=document.createElement('label');label.textContent=title+' ';var select=document.createElement('select');select.id='jfd_'+scope+'_provider';state.providers.filter(function(p){return p.region===(scope==='domestic'?'domestic':'global')}).forEach(function(p){select.add(new Option(p.name,p.id))});select.add(new Option('自定义 DoH','custom'));select.value=state[scope+'_provider'];label.appendChild(select);box.appendChild(label);var custom=document.createElement('div');custom.className='jfd-custom';['url','ip'].forEach(function(k){var input=document.createElement('input');input.id='jfd_'+scope+'_'+k;input.placeholder=k==='url'?'https://服务商域名/dns-query':'服务商 IPv4 地址';input.value=state[scope+'_'+k]||'';input.setAttribute('aria-label',title+(k==='url'?' DoH 地址':'服务商 IPv4'));custom.appendChild(input)});box.appendChild(custom);function show(){custom.hidden=select.value!=='custom'}select.onchange=show;show();root.appendChild(box)}
+fetch(statusUrl,{cache:'no-store'}).then(function(r){if(!r.ok)throw Error('读取失败 '+r.status);return r.json()}).then(function(d){if(!d.ok)throw Error(d.error);state=d;document.getElementById('jfd_policy').value=d.policy;field('domestic','国内');field('proxy','代理')}).catch(function(e){document.getElementById('jfd_message').textContent=e.message});
+document.getElementById('jfd_save').onclick=function(){if(!state)return;var b=this;b.disabled=true;var data=new URLSearchParams();data.set('token','<%=token%>');data.set('policy',document.getElementById('jfd_policy').value);['domestic','proxy'].forEach(function(s){['provider','url','ip'].forEach(function(k){data.set(s+'_'+k,document.getElementById('jfd_'+s+'_'+k).value)})});document.getElementById('jfd_message').textContent='检查并应用中…';fetch(saveUrl,{method:'POST',body:data}).then(function(r){if(!r.ok)throw Error('请求失败 '+r.status);return r.json()}).then(function(d){if(!d.ok)throw Error(d.error);document.getElementById('jfd_message').textContent='DNS 已应用'}).catch(function(e){document.getElementById('jfd_message').textContent=e.message}).finally(function(){b.disabled=false})};
+})();
+</script>

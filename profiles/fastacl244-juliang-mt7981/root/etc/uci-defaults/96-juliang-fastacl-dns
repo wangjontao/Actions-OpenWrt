@@ -1,0 +1,12 @@
+#!/bin/sh
+uci -q get juliang_fastacl.main.dns_providers_enabled >/dev/null || uci set juliang_fastacl.main.dns_providers_enabled='1'
+uci -q get juliang_fastacl.main.dns_policy >/dev/null || uci set juliang_fastacl.main.dns_policy='direct'
+uci -q get juliang_fastacl.main.domestic_dns_provider >/dev/null || uci set juliang_fastacl.main.domestic_dns_provider='alidns'
+uci -q get juliang_fastacl.main.proxy_dns_provider >/dev/null || uci set juliang_fastacl.main.proxy_dns_provider='cloudflare'
+uci commit juliang_fastacl
+/etc/init.d/juliang-domestic-dns enable
+uci set dhcp.@dnsmasq[0].noresolv='1'
+uci -q delete dhcp.@dnsmasq[0].server || true
+uci add_list dhcp.@dnsmasq[0].server='127.0.0.1#5354'
+uci commit dhcp
+exit 0

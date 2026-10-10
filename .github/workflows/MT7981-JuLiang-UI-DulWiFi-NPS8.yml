@@ -16,6 +16,12 @@ env:
 
 jobs:
   build:
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [1010V1, 1010V2-10WiFi]
+    env:
+      BUILD_VARIANT: ${{ matrix.variant }}
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
@@ -472,7 +478,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7981-JuLiang-FastACL2.4.4-MainWiFi-NPS-Domain-raw-${{ env.BUILD_DATE }}
+          name: MT7981-JuLiang-FastACL2.4.4-${{ matrix.variant }}-MainWiFi-NPS-Domain-raw-${{ env.BUILD_DATE }}
           path: openwrt/bin/targets/mediatek/filogic/*
           if-no-files-found: warn
           retention-days: 30
@@ -498,15 +504,16 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           target_commitish: ${{ github.sha }}
-          tag_name: MT7981-JuLiang-FastACL2.4.4-MainWiFi-NPS-Domain-24.10-${{ env.BUILD_DATE }}
-          name: MT7981 JuLiang FastACL2.4.4 MainWiFi NPS-Domain Multi-Device ${{ env.BUILD_DATE }}
+          tag_name: MT7981-JuLiang-FastACL2.4.4-${{ matrix.variant }}-MainWiFi-NPS-Domain-24.10-${{ env.BUILD_DATE }}
+          name: MT7981 JuLiang FastACL2.4.4 ${{ matrix.variant }} MainWiFi NPS-Domain Multi-Device ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
           body: |
             Experimental ImmortalWrt 24.10 kernel 6.6 closed MTWiFi build.
             Devices: Philips HY3000, CMCC RAX3000M NAND/eMMC, Qihoo 360T7, AGS21, CMCC A10 U-Boot mod, ETR631-T/ETR635-U (KOMI A31), Newland 8103/9103, Ambit ASR3000 and JCG Q30 Pro.
             Driver: mt_wifi 7.6.6.1 with matching WARP. Management: 192.168.7.1, root password @password@.
             System/version: JuLiang; firmware description: JuLiang OS by:jontao.
-            FastACL: 2.4.4 with SOCKS5/SK5/HTTP batch import, proxy chains and corrected PassWall ACL templates. Extra WiFi: at most four 5GHz and one 2.4GHz; factory defaults contain main WiFi only.
+            FastACL: 2.4.4 with SOCKS5/SK5/HTTP batch import, proxy chains and corrected PassWall ACL templates. Variant ${{ matrix.variant }}: V1 allows four additional 5GHz and one 2.4GHz; V2-10WiFi allows eight additional 5GHz and three 2.4GHz; factory defaults contain main WiFi only.
+            Fixes: global DNS providers, custom DoH, independent per-node DNS routing, compact DNS toolbar, gradient FastACL 2.4.4 title, corrected node DNS template.
             WiFi: DulWiFi-2.4G (channel 9) and DulWiFi-5G (channel 48), password password.
             Interface: custom JuLiang dashboard (no iStore/QuickStart), bold gradient title and public egress IP card with country flag, location, ISP and detection time. Plugins: Passwall 26.3.6-1, Passwall2 26.3.5-1, OpenClash, HomeProxy, original ehang NPS/NPC 0.26.10. Theme: Argon.
             NPS: nps.jontao.top:8024; the first successful WAN startup reads the physical WAN MAC once, removes colons, uppercases it, writes it as vkey, and never overwrites it on later boots.
@@ -515,7 +522,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7981-JuLiang-FastACL2.4.4-MainWiFi-NPS-Domain-MultiDevice-24.10-${{ env.BUILD_DATE }}
+          name: MT7981-JuLiang-FastACL2.4.4-${{ matrix.variant }}-MainWiFi-NPS-Domain-MultiDevice-24.10-${{ env.BUILD_DATE }}
           path: openwrt/upload/*
           if-no-files-found: error
           retention-days: 30
