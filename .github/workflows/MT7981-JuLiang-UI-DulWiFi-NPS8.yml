@@ -21,7 +21,7 @@ jobs:
       matrix:
         variant: [1010V1, 1010V2-10WiFi]
     env:
-      BUILD_VARIANT: ${{ matrix.variant }}
+      JULIANG_FIRMWARE_VARIANT: ${{ matrix.variant }}
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
@@ -449,7 +449,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: openwrt/dl
-          key: mt7981-mtwifi-2410-dl-${{ github.run_id }}-${{ github.run_attempt }}
+          key: mt7981-mtwifi-2410-dl-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             mt7981-mtwifi-2410-dl-
 

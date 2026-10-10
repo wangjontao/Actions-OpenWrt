@@ -30,7 +30,7 @@ grep -q 'additional_limit=additional' files/usr/lib/lua/juliang_fastacl_wifi.lua
 test ! -e files/etc/uci-defaults/97-juliang-operator-mode
 printf '%s\n' '[OK] FastACL 2.4.4: parser, Lua, shell and extra-WiFi limits verified.'
 
-case "${BUILD_VARIANT:-1010V1}" in
+case "${JULIANG_FIRMWARE_VARIANT:-1010V1}" in
 1010V1) ;; 
 1010V2-10WiFi)
  python3 - <<'PYVAR'
@@ -44,4 +44,4 @@ PYVAR
 *) exit 1;;
 esac
 luac -p files/usr/lib/lua/juliang_fastacl_wifi.lua
-printf '%s\n' "$BUILD_VARIANT" > files/etc/juliang-build-version
+printf '%s\n' "$JULIANG_FIRMWARE_VARIANT" > files/etc/juliang-build-version
