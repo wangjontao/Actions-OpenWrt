@@ -152,58 +152,60 @@ function api_status()
         services=running, service_enabled=enabled, active_proxy=active})
 end
 
-local function radio_info(band)
-    local ps = profiles(band); local path = ps[1]
-    if not path then return {band=band, available=false, clients={}} end
-    local clients = stations(); local filtered = {}
-    local want = band == "2g" and "ra" or "rax"
-    for _, c in ipairs(clients) do if c.radio:match("^" .. want) then filtered[#filtered+1]=c end end
-    return {band=band,available=true,ssid=profile_value(path,"SSID1"),channel=profile_value(path,"Channel"),hidden=profile_value(path,"HideSSID") == "1",clients=filtered,count=#filtered}
+local function wireless_rows()
+    local u = require("luci.model.uci").cursor()
+    local runtime = json.parse(sys.exec("ubus call network.wireless status 2>/dev/null")) or {}
+    local by_section = {}
+    for _, radio in pairs(runtime) do
+        for _, it in ipairs(radio.interfaces or {}) do
+            if it.section then by_section[it.section] = it.ifname end
+        end
+    end
+    local clients, rows = stations(), {}
+    u:foreach("wireless", "wifi-iface", function(f)
+        if (f.mode or "ap") ~= "ap" then return end
+        local radio = u:get_all("wireless", f.device) or {}
+        local ifname = by_section[f[".name"]]
+        local associated = {}
+        for _, client in ipairs(clients) do
+            if ifname and client.radio == ifname then associated[#associated+1] = client end
+        end
+        rows[#rows+1] = {section=f[".name"], band=radio.band or (radio.hwmode=="11a" and "5g" or "2g"),
+            ssid=f.ssid or f[".name"], channel=radio.channel or "auto", hidden=f.hidden=="1",
+            available=ifname~=nil and f.disabled~="1", ifname=ifname or "", network=f.network,
+            clients=associated, count=#associated}
+    end)
+    return rows
 end
 
 function api_wireless()
-    reply({ok=true, radios={radio_info("2g"),radio_info("5g")}})
+    reply({ok=true, radios=wireless_rows()})
 end
 
 function api_wireless_set()
-    local band = http.formvalue("band") or ""
+    local u = require("luci.model.uci").cursor()
     local action = http.formvalue("action") or "save"
-    if band ~= "2g" and band ~= "5g" and band ~= "all" then return reply({ok=false,error="invalid band"}) end
-    local targets = band == "all" and {"2g","5g"} or {band}
-    local values = {}
-    if action == "hide" then values.HideSSID = "1"
-    elseif action == "show" then values.HideSSID = "0"
-    elseif action == "save" then
-        local ssid = http.formvalue("ssid") or ""
-        local key = http.formvalue("key") or ""
-        local channel = http.formvalue("channel") or ""
-        if #ssid < 1 or #ssid > 32 or ssid:find("[\r\n]") then return reply({ok=false,error="SSID 格式错误"}) end
-        if key ~= "" and (#key < 8 or #key > 63 or key:find("[\r\n]")) then return reply({ok=false,error="密码必须为 8-63 个字符"}) end
-        if not channel:match("^%d+$") then return reply({ok=false,error="信道格式错误"}) end
-        values.SSID1=ssid; values.Channel=channel; values.AuthMode="WPA2PSK"; values.EncrypType="AES"
-        if key ~= "" then values.WPAPSK1=key end
+    local section = http.formvalue("section") or ""
+    local all = http.formvalue("band") == "all"
+    local f = u:get_all("wireless", section)
+    if not all and (not f or f[".type"]~="wifi-iface" or (f.mode or "ap")~="ap") then return reply({ok=false,error="无线接口不存在，请刷新"}) end
+    if all and action~="hide" and action~="show" then return reply({ok=false,error="invalid action"}) end
+    if action=="save" then
+        local ssid,key,channel = http.formvalue("ssid") or "",http.formvalue("key") or "",http.formvalue("channel") or ""
+        if #ssid<1 or #ssid>32 or ssid:find("[\r\n]") then return reply({ok=false,error="SSID 格式错误"}) end
+        if key~="" and (#key<8 or #key>63 or key:find("[\r\n]")) then return reply({ok=false,error="密码必须为 8-63 个字符"}) end
+        if channel~="auto" and not channel:match("^%d+$") then return reply({ok=false,error="信道格式错误"}) end
+        u:set("wireless",section,"ssid",ssid)
+        if key~="" then u:set("wireless",section,"key",key);u:set("wireless",section,"encryption","psk2+ccmp") end
+        u:set("wireless",f.device,"channel",channel)
+    elseif action=="hide" or action=="show" then
+        if all then
+            u:foreach("wireless","wifi-iface",function(x) if (x.mode or "ap")=="ap" then u:set("wireless",x[".name"],"hidden",action=="hide" and "1" or "0") end end)
+        else u:set("wireless",section,"hidden",action=="hide" and "1" or "0") end
     else return reply({ok=false,error="invalid action"}) end
-    local changed = 0
-    for _, b in ipairs(targets) do for _, path in ipairs(profiles(b)) do if update_profile(path, values) then changed=changed+1 end end end
-    if changed == 0 then return reply({ok=false,error="未找到无线配置"}) end
-    for _, b in ipairs(targets) do
-        uci:foreach("wireless", "wifi-device", function(s)
-            local sb = s.band or ((s.hwmode == "11g") and "2g" or ((s.hwmode == "11a") and "5g" or ""))
-            if sb == b and values.Channel then uci:set("wireless", s[".name"], "channel", values.Channel) end
-        end)
-        uci:foreach("wireless", "wifi-iface", function(s)
-            local dev = s.device and uci:get_all("wireless", s.device) or nil
-            local sb = dev and (dev.band or ((dev.hwmode == "11g") and "2g" or ((dev.hwmode == "11a") and "5g" or ""))) or ""
-            if sb == b then
-                if values.SSID1 then uci:set("wireless", s[".name"], "ssid", values.SSID1) end
-                if values.WPAPSK1 then uci:set("wireless", s[".name"], "key", values.WPAPSK1); uci:set("wireless", s[".name"], "encryption", "psk2+ccmp") end
-                if values.HideSSID then uci:set("wireless", s[".name"], "hidden", values.HideSSID) end
-            end
-        end)
-    end
-    uci:commit("wireless")
-    sys.call("(sleep 1; wifi reload >/dev/null 2>&1 || /etc/init.d/mtwifi restart >/dev/null 2>&1) &")
-    reply({ok=true,changed=changed})
+    u:commit("wireless")
+    sys.call("(sleep 1; wifi reload >/tmp/juliang-wireless-reload.log 2>&1) >/dev/null 2>&1 &")
+    reply({ok=true})
 end
 
 
