@@ -38,10 +38,13 @@ from pathlib import Path
 p=Path('files/usr/lib/lua/juliang_fastacl_wifi.lua')
 s=p.read_text().replace('band=="5g" and 4 or band=="2g" and 1','band=="5g" and 8 or band=="2g" and 3').replace('0,0,4,"每个频段的新增数量需为 0～4"','0,0,8,"每个频段的新增数量需为 0～8"').replace('total>5','total>11').replace('1～5','1～11')
 p.write_text(s)
+# Capacity includes the main AP; V2 permits eight/three additional APs.
+p=Path('files/usr/lib/lua/juliang_fastacl_wifi_env.lua');s=p.read_text();old='band=="5g" and 5 or band=="2g" and 2 or 0';assert old in s;s=s.replace(old,'band=="5g" and 9 or band=="2g" and 4 or 0');p.write_text(s)
 p=Path('files/usr/lib/lua/luci/view/juliang_fastacl/batch_wifi.htm');s=p.read_text().replace('单次最多新增 5 个，5GHz 最多新增 4 个，2.4GHz 最多新增 1 个','单次最多新增 11 个，5GHz 最多新增 8 个，2.4GHz 最多新增 3 个');p.write_text(s)
 PYVAR
  ;; 
 *) exit 1;;
 esac
 luac -p files/usr/lib/lua/juliang_fastacl_wifi.lua
+luac -p files/usr/lib/lua/juliang_fastacl_wifi_env.lua
 printf '%s\n' "$JULIANG_FIRMWARE_VARIANT" > files/etc/juliang-build-version
