@@ -1,0 +1,51 @@
+name: Recover 1010V1 5WiFi release
+on:
+  push:
+    branches: [codex/recover-1010v1-38127489417]
+    paths: [.github/workflows/recover-1010v1-release.yml]
+permissions:
+  contents: write
+  actions: read
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: wangjontao/Actions-OpenWrt
+          run-id: 38127489417
+          name: MT7981-JuLiang-FastACL2.4.4-1010V1-MainWiFi-NPS-Domain-raw-2026.10.11-17.13.42
+          path: firmware
+      - name: Verify and recover existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: MT7981-JuLiang-FastACL2.4.4-1010V1-MainWiFi-NPS-Domain-24.10-2026.10.11-17.13.42
+        run: |
+          set -euo pipefail
+          mkdir release
+          find firmware -type f \( -name '*-squashfs-sysupgrade.bin' -o -name '*-squashfs-sysupgrade.itb' -o -name '*-squashfs-factory.bin' -o -name '*-initramfs-kernel.bin' -o -name '*-initramfs-recovery.itb' \) -exec cp -t release {} +
+          test "$(find release -type f | wc -l)" -ge 40
+          checksum=$(find firmware -type f -name sha256sums -print -quit)
+          test -n "$checksum"
+          python3 - "$checksum" <<'PY'
+          import sys,pathlib,hashlib
+          expected={}
+          for line in pathlib.Path(sys.argv[1]).read_text().splitlines():
+              digest,name=line.split(None,1)
+              expected[pathlib.Path(name.lstrip('*')).name]=digest
+          for p in pathlib.Path('release').iterdir():
+              assert p.name in expected, p.name
+              assert hashlib.sha256(p.read_bytes()).hexdigest()==expected[p.name],p.name
+          print('Firmware SHA256 verification passed')
+          PY
+          (cd release && sha256sum * > SHA256SUMS)
+          for f in release/*; do
+            success=0
+            for attempt in 1 2 3; do
+              if gh release upload "$TAG" "$f" --clobber --repo wangjontao/Actions-OpenWrt; then success=1; break; fi
+              sleep 5
+            done
+            test "$success" = 1
+          done
+          gh release edit "$TAG" --draft=false --repo wangjontao/Actions-OpenWrt
