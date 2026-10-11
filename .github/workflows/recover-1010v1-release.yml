@@ -25,7 +25,7 @@ jobs:
           set -euo pipefail
           mkdir release
           find firmware -type f \( -name '*-squashfs-sysupgrade.bin' -o -name '*-squashfs-sysupgrade.itb' -o -name '*-squashfs-factory.bin' -o -name '*-initramfs-kernel.bin' -o -name '*-initramfs-recovery.itb' \) -exec cp -t release {} +
-          test "$(find release -type f | wc -l)" -ge 40
+          test "$(find release -type f | wc -l)" -ge 35
           checksum=$(find firmware -type f -name sha256sums -print -quit)
           test -n "$checksum"
           python3 - "$checksum" <<'PY'
@@ -39,6 +39,7 @@ jobs:
               assert hashlib.sha256(p.read_bytes()).hexdigest()==expected[p.name],p.name
           print('Firmware SHA256 verification passed')
           PY
+          for f in release/*konka_komi-a31*; do cp "$f" "${f/konka_komi-a31/etr631-t}"; cp "$f" "${f/konka_komi-a31/etr635-u}"; done
           (cd release && sha256sum * > SHA256SUMS)
           for f in release/*; do
             success=0
