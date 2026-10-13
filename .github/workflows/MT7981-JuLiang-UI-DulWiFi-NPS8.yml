@@ -519,14 +519,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           target_commitish: ${{ github.sha }}
-          tag_name: MT7981-JuLiang-FastACL2.4.4-${{ matrix.variant }}-MainWiFi-NPS-Domain-24.10-${{ env.BUILD_DATE }}
-          name: MT7981 JuLiang FastACL2.4.4 ${{ matrix.variant }} MainWiFi NPS-Domain Multi-Device ${{ env.BUILD_DATE }}
+          tag_name: MT7981-JuLiang-Admin-FastACL2.4.4-${{ matrix.variant }}-MainWiFi-NPS-Domain-24.10-${{ env.BUILD_DATE }}
+          name: MT7981 JuLiang Admin FastACL2.4.4 ${{ matrix.variant }} MainWiFi NPS-Domain Multi-Device ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
           body: |
             Experimental ImmortalWrt 24.10 kernel 6.6 closed MTWiFi build.
             Devices: Philips HY3000, CMCC RAX3000M NAND/eMMC, Qihoo 360T7, AGS21, CMCC A10 U-Boot mod, ETR631-T/ETR635-U (KOMI A31), Newland 8103/9103, Ambit ASR3000 JCG Q30 Pro, Xiaomi AX3000T stock/MTK U-Boot/OpenWrt U-Boot, Xiaomi WR30U stock/modified, and Nokia Bell EA0326GMP.
             Driver: mt_wifi 7.6.6.1 with matching WARP. Management: 192.168.7.1, root password @password@.
             System/version: JuLiang; firmware description: JuLiang OS by:jontao.
+            Restricted LuCI account: admin / admin888. Only JuLiang dashboard, wireless and terminals, FastACL console, and Network/Wireless are accessible; other pages and endpoints denied. Root access preserved.
             FastACL: 2.4.4 with SOCKS5/SK5/HTTP batch import, proxy chains and corrected PassWall ACL templates. Variant ${{ matrix.variant }}: V1 allows four additional 5GHz and one 2.4GHz; V2-10WiFi allows eight additional 5GHz and three 2.4GHz; factory defaults contain main WiFi only.
             Fixes: global DNS providers, custom DoH, independent per-node DNS routing, compact DNS toolbar, gradient FastACL 2.4.4 title, corrected node DNS template.
             WiFi: DulWiFi-2.4G (channel 9) and DulWiFi-5G (channel 48), password password.

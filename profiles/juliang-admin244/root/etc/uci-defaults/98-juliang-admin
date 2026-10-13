@@ -1,0 +1,11 @@
+#!/bin/sh
+uci -q delete rpcd.juliang_operator
+uci set rpcd.juliang_operator='login'
+uci set rpcd.juliang_operator.username='admin'
+uci set rpcd.juliang_operator.password='$1$JFA239$ygsM7RgdJnZKjhDZe/DRv0'
+for group in juliang-navigation juliang-dashboard-operator juliang-wireless-operator juliang-fastacl-operator; do uci add_list rpcd.juliang_operator.read="$group"; done
+uci add_list rpcd.juliang_operator.write='juliang-wireless-operator'
+uci add_list rpcd.juliang_operator.write='juliang-fastacl-operator'
+uci commit rpcd
+rm -f /tmp/luci-indexcache /tmp/luci-indexcache.*
+exit 0

@@ -48,3 +48,11 @@ esac
 luac -p files/usr/lib/lua/juliang_fastacl_wifi.lua
 luac -p files/usr/lib/lua/juliang_fastacl_wifi_env.lua
 printf '%s\n' "$JULIANG_FIRMWARE_VARIANT" > files/etc/juliang-build-version
+
+# Restricted LuCI-only admin account; no shell user is created.
+cp -a "$GITHUB_WORKSPACE/profiles/juliang-admin244/root/." files/
+dispatcher="$(find feeds/luci package -type f -path '*/luci-base/ucode/dispatcher.uc' -print -quit)"
+test -n "$dispatcher"
+python3 "$GITHUB_WORKSPACE/scripts/juliang-admin-dispatcher.py" "$dispatcher" files/usr/share/ucode/luci/dispatcher.uc "$GITHUB_WORKSPACE/profiles/juliang-admin244/policy.uc"
+sh -n files/etc/uci-defaults/98-juliang-admin
+chmod 0755 files/etc/uci-defaults/98-juliang-admin

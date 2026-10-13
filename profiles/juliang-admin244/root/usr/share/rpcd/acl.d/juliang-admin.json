@@ -1,0 +1,188 @@
+{
+  "juliang-navigation": {
+    "description": "Restricted navigation and authenticated session",
+    "read": {
+      "ubus": {
+        "session": [
+          "access",
+          "get"
+        ],
+        "luci": [
+          "getFeatures"
+        ]
+      }
+    }
+  },
+  "juliang-root-only": {
+    "description": "All other LuCI pages require root access",
+    "read": {
+      "uci": [
+        "rpcd"
+      ]
+    }
+  },
+  "juliang-dashboard-operator": {
+    "description": "juliang-dashboard-operator",
+    "read": {
+      "ubus": {
+        "session": [
+          "access",
+          "get"
+        ],
+        "luci": [
+          "getFeatures"
+        ],
+        "uci": [
+          "get",
+          "changes"
+        ],
+        "luci-rpc": [
+          "getBoardJSON",
+          "getHostHints",
+          "getNetworkDevices",
+          "getWirelessDevices"
+        ],
+        "network": [
+          "get_proto_handlers"
+        ],
+        "network.interface": [
+          "dump"
+        ],
+        "iwinfo": [
+          "devices",
+          "info",
+          "assoclist",
+          "freqlist",
+          "countrylist",
+          "txpowerlist"
+        ]
+      },
+      "uci": [
+        "luci",
+        "system",
+        "network",
+        "wireless",
+        "dhcp",
+        "firewall"
+      ]
+    }
+  },
+  "juliang-wireless-operator": {
+    "description": "juliang-wireless-operator",
+    "read": {
+      "ubus": {
+        "session": [
+          "access",
+          "get"
+        ],
+        "luci": [
+          "getFeatures"
+        ],
+        "uci": [
+          "get",
+          "changes"
+        ],
+        "luci-rpc": [
+          "getBoardJSON",
+          "getHostHints",
+          "getNetworkDevices",
+          "getWirelessDevices"
+        ],
+        "network": [
+          "get_proto_handlers"
+        ],
+        "network.interface": [
+          "dump"
+        ],
+        "iwinfo": [
+          "devices",
+          "info",
+          "assoclist",
+          "freqlist",
+          "countrylist",
+          "txpowerlist"
+        ]
+      },
+      "uci": [
+        "luci",
+        "system",
+        "network",
+        "wireless",
+        "dhcp",
+        "firewall"
+      ]
+    },
+    "write": {
+      "uci": [
+        "wireless"
+      ],
+      "ubus": {
+        "uci": [
+          "set",
+          "add",
+          "delete",
+          "order",
+          "apply",
+          "confirm",
+          "commit"
+        ],
+        "luci": [
+          "setApplyChanges"
+        ],
+        "network.wireless": [
+          "status",
+          "reload"
+        ]
+      }
+    }
+  },
+  "juliang-fastacl-operator": {
+    "description": "juliang-fastacl-operator",
+    "read": {
+      "ubus": {
+        "session": [
+          "access",
+          "get"
+        ],
+        "luci": [
+          "getFeatures"
+        ],
+        "uci": [
+          "get",
+          "changes"
+        ],
+        "luci-rpc": [
+          "getBoardJSON",
+          "getHostHints",
+          "getNetworkDevices",
+          "getWirelessDevices"
+        ],
+        "network": [
+          "get_proto_handlers"
+        ],
+        "network.interface": [
+          "dump"
+        ],
+        "iwinfo": [
+          "devices",
+          "info",
+          "assoclist",
+          "freqlist",
+          "countrylist",
+          "txpowerlist"
+        ]
+      },
+      "uci": [
+        "luci",
+        "system",
+        "network",
+        "wireless",
+        "dhcp",
+        "firewall"
+      ]
+    },
+    "write": {
+      "uci": []
+    }
+  }
+}
