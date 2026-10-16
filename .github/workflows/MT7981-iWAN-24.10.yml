@@ -13,7 +13,6 @@ env:
   SOURCE_REPO: https://github.com/padavanonly/immortalwrt-mt798x-24.10.git
   SOURCE_BRANCH: openwrt-24.10-6.6
   IWAND_REF: v0.2.0
-  AGS21_COMMIT: e202accd42f244e9d683a171c07e2fedaab79982
   TZ: Asia/Shanghai
 
 jobs:
@@ -24,6 +23,8 @@ jobs:
     steps:
       - name: Checkout Actions-OpenWrt
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Free disk and install dependencies
         env:
@@ -53,32 +54,6 @@ jobs:
             grep -q "TARGET_DEVICES += ${dev}" target/linux/mediatek/image/filogic.mk
           done
           echo 'MT7981 source and target definitions verified.'
-
-      - name: Backport AIGO AGS21 support
-        working-directory: openwrt
-        env:
-          AGS21_COMMIT: ${{ env.AGS21_COMMIT }}
-        run: |
-          set -eux
-          if grep -q '^TARGET_DEVICES += aigo_ags21$' target/linux/mediatek/image/filogic.mk; then
-            echo 'AIGO AGS21 support already exists in source; skip backport.'
-          else
-            PATCH_URL="https://github.com/chasey-dev/immortalwrt-mt798x-rebase/commit/${AGS21_COMMIT}.patch"
-            curl -fL --retry 3 --retry-delay 2 "$PATCH_URL" -o /tmp/aigo-ags21.patch
-            if git apply --check /tmp/aigo-ags21.patch; then
-              git apply /tmp/aigo-ags21.patch
-            else
-              echo 'Direct AGS21 patch apply check failed; trying 3-way apply.'
-              git apply --3way /tmp/aigo-ags21.patch
-            fi
-          fi
-
-          grep -q '^define Device/aigo_ags21$' target/linux/mediatek/image/filogic.mk
-          grep -q '^TARGET_DEVICES += aigo_ags21$' target/linux/mediatek/image/filogic.mk
-          test -s target/linux/mediatek/dts/mt7981b-aigo-ags21.dts
-          grep -q 'aigo,ags21' target/linux/mediatek/filogic/base-files/etc/board.d/02_network
-          grep -q 'aigo,ags21' target/linux/mediatek/filogic/base-files/lib/upgrade/platform.sh
-          echo 'AIGO AGS21 target support verified.'
 
       - name: Update feeds
         working-directory: openwrt
@@ -110,7 +85,6 @@ jobs:
           CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_cmcc_rax3000m-nand-mtk=y
           CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_cmcc_rax3000m-emmc-mtk=y
           CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_qihoo_360t7=y
-          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_aigo_ags21=y
 
           CONFIG_PACKAGE_kmod-mt_wifi=y
           CONFIG_PACKAGE_kmod-warp=y
@@ -144,7 +118,6 @@ jobs:
             CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_cmcc_rax3000m-nand-mtk \
             CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_cmcc_rax3000m-emmc-mtk \
             CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_qihoo_360t7 \
-            CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_aigo_ags21 \
             CONFIG_PACKAGE_kmod-mt_wifi CONFIG_PACKAGE_kmod-warp \
             CONFIG_PACKAGE_iwand CONFIG_PACKAGE_luci-app-iwand CONFIG_PACKAGE_kmod-tun; do
             grep -qx "$sym=y" .config || { echo "ERROR: $sym unavailable"; exit 1; }
@@ -203,7 +176,8 @@ jobs:
           ccache -M 5G || true
           make download -j"$(nproc)"
           find dl -type f -size -1024c -print -delete
-          make -j"$(nproc)" || make -j1 V=s
+          set -o pipefail
+          make -j"$(nproc)" 2>&1 | tee build.log || make -j1 V=s 2>&1 | tee build-verbose.log
 
       - name: Verify iWAN ARM64 package and firmware
         working-directory: openwrt
@@ -222,10 +196,6 @@ jobs:
             cp -a "${fw[@]}" upload/
           done
 
-          mapfile -t ags21_fw < <(find bin/targets/mediatek/filogic -maxdepth 1 -type f -iname '*aigo*ags21*sysupgrade.itb' -size +5M)
-          [ "${#ags21_fw[@]}" -gt 0 ] || { echo 'ERROR: AIGO AGS21 sysupgrade.itb missing'; exit 1; }
-          cp -a "${ags21_fw[@]}" upload/
-
           cp MT7981-iWAN-final.config upload/
           sha256sum upload/* | tee upload/SHA256SUMS
 
@@ -241,8 +211,8 @@ jobs:
             LuCI menu: VPN -> 派网 iWAN.
             Default iWAN interface: iwan0; service is installed and enabled but connection is disabled until server credentials are entered.
             Configure server/domain, port, username and password in LuCI, then enable and Save & Apply.
-            Included targets: Philips HY3000, CMCC RAX3000M NAND, CMCC RAX3000M eMMC, Qihoo 360T7, AIGO AGS21 eMMC.
-            AIGO AGS21 firmware output: sysupgrade.itb.
+            Included targets: Philips HY3000, CMCC RAX3000M NAND, CMCC RAX3000M eMMC, Qihoo 360T7.
+            AGS21 is excluded until its board port is compatible with this 24.10 source.
             Management: 192.168.7.1; root password: @password@.
             The release also includes standalone iwand and luci-app-iwand IPKs for testing on compatible MT7981 builds.
 
@@ -254,3 +224,14 @@ jobs:
           path: openwrt/upload/*
           if-no-files-found: error
           retention-days: 30
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MT7981-iWAN-failure-${{ github.run_id }}
+          path: |
+            openwrt/build*.log
+            openwrt/.config
+            openwrt/logs/
+          if-no-files-found: ignore
