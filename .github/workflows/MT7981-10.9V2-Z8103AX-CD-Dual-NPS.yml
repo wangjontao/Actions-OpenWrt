@@ -131,6 +131,12 @@ jobs:
               workdir = step.get('working-directory')
               cwd = root / workdir if workdir else root
               env = os.environ.copy()
+              # Child process must inherit the original workflow-level source settings.
+              for key, value in (data.get('env') or {}).items():
+                  env.setdefault(key, str(value))
+              # Also preserve environment declared on each inherited step.
+              for key, value in (step.get('env') or {}).items():
+                  env[key] = str(value)
               subprocess.run(
                   ['bash', '-e', '-o', 'pipefail', '-c', run],
                   cwd=str(cwd), env=env, check=True
