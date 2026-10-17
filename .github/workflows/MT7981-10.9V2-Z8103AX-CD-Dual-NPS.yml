@@ -6,6 +6,10 @@ on:
     branches:
       - codex/mt7981-10-9v2-z8103ax-cd-dual-nps
 
+concurrency:
+  group: mt7981-z8103ax-cd-dual-nps-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
@@ -53,20 +57,11 @@ jobs:
           domain = os.environ['NPS_DOMAIN']
 
           zbt_patch = r'''
-          # Add official OpenWrt ZBT-Z8103AX-C/D support. C and D share one DTS/profile.
-          ZBT_REF='cd2c55e43b4e648c6e74101284ebff70fb050403'
-          ZBT_RAW="https://raw.githubusercontent.com/openwrt/openwrt/${ZBT_REF}"
-          curl -fL --retry 3 -o target/linux/mediatek/dts/mt7981b-zbtlink-zbt-z8103ax-c.dts \
-            "${ZBT_RAW}/target/linux/mediatek/dts/mt7981b-zbtlink-zbt-z8103ax-c.dts"
-          curl -fL --retry 3 -o target/linux/mediatek/dts/mt7981b-zbtlink-zbt-z8103ax.dtsi \
-            "${ZBT_RAW}/target/linux/mediatek/dts/mt7981b-zbtlink-zbt-z8103ax.dtsi"
-          curl -fL --retry 3 -o /tmp/openwrt-filogic.mk \
-            "${ZBT_RAW}/target/linux/mediatek/image/filogic.mk"
-
-          if ! grep -q '^TARGET_DEVICES += zbtlink_zbt-z8103ax-c$' target/linux/mediatek/image/filogic.mk; then
-            sed -n '/^define Device\/zbtlink_zbt-z8103ax-c$/,/^TARGET_DEVICES += zbtlink_zbt-z8103ax-c$/p' \
-              /tmp/openwrt-filogic.mk >> target/linux/mediatek/image/filogic.mk
-          fi
+          # Use this MTWiFi fork's matched 6.6 DTS/profile, not OpenWrt mainline files.
+          test -s target/linux/mediatek/files-6.6/arch/arm64/boot/dts/mediatek/mt7981.dtsi
+          grep -q '#include "mt7981.dtsi"' target/linux/mediatek/dts/mt7981b-zbtlink-zbt-z8103ax.dtsi
+          ! grep -q '#include "mt7981b.dtsi"' target/linux/mediatek/dts/mt7981b-zbtlink-zbt-z8103ax.dtsi
+          grep -q '^TARGET_DEVICES += zbtlink_zbt-z8103ax-c$' target/linux/mediatek/image/filogic.mk
 
           python3 - <<'PYNET'
           from pathlib import Path
@@ -107,6 +102,15 @@ jobs:
               run = step.get('run')
               if not run:
                   continue
+
+              if name == 'Clone ImmortalWrt 24.10 MTWiFi source':
+                  # Pin the exact matched source; SOURCE_HASH and toolchain cache follow this commit.
+                  run = run.replace(
+                      'echo "SOURCE_HASH=',
+                      'git -C openwrt fetch --depth=1 origin ec9ef10efc65da1e6d1de4e2c043c0e13d08eed8\n'
+                      'git -C openwrt checkout --detach ec9ef10efc65da1e6d1de4e2c043c0e13d08eed8\n'
+                      'echo "SOURCE_HASH=', 1
+                  )
 
               if name == 'Add verified AGS21 and Newland device definitions':
                   run += '\n' + zbt_patch
