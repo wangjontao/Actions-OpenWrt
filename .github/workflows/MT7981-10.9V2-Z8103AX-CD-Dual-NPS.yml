@@ -1,4 +1,4 @@
-name: MT7981 10.9V2 Z8103AX-C-D Dual NPS
+name: MT7981 nps二进制V1 Z8103AX-C-D
 
 on:
   workflow_dispatch:
@@ -17,10 +17,10 @@ jobs:
         include:
           - nps_domain: nps.jontao.top
             release_slug: nps.jontao.top
-            release_name: 10.9V2 Z8103AX-C-D nps.jontao.top版
+            release_name: nps二进制V1-nps.jontao.top版
           - nps_domain: nps.66ccs.com
             release_slug: nps.66ccs.com
-            release_name: 10.9V2 Z8103AX-C-D nps.66ccs.com版
+            release_name: nps二进制V1-nps.66ccs.com版
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     env:
@@ -37,7 +37,7 @@ jobs:
         run: |
           python3 -m pip install --user --break-system-packages PyYAML
 
-      - name: Run verified 10.9V2 build with Z8103AX-C-D patch
+      - name: Run verified 10.9V2 build as nps binary V1
         shell: bash
         run: |
           cat > /tmp/run_109v2.py <<'PY'
@@ -92,6 +92,16 @@ jobs:
           echo 'Added Zbtlink ZBT-Z8103AX-C/D target.'
           '''
 
+          npc_only_step = r'''
+          NPS_MAKEFILE=feeds/packages/net/nps/Makefile
+          sed -i 's/^PKG_VERSION:=.*/PKG_VERSION:=0.26.10/' "$NPS_MAKEFILE"
+          sed -i 's#^PKG_SOURCE_URL:=.*#PKG_SOURCE_URL:=https://codeload.github.com/ehang-io/nps/tar.gz/v$(PKG_VERSION)?#' "$NPS_MAKEFILE"
+          sed -i 's/^PKG_HASH:=.*/PKG_HASH:=1b2fe9d251f55105d65027a1cee464f65d2f6ab3bd4a20e4655e5135db68aee7/' "$NPS_MAKEFILE"
+          grep -q '^PKG_VERSION:=0.26.10$' "$NPS_MAKEFILE"
+          grep -q 'github.com/ehang-io/nps' "$NPS_MAKEFILE"
+          echo 'Pinned original ehang-io NPC binary 0.26.10; LuCI NPS is intentionally omitted.'
+          '''
+
           for step in steps:
               name = step.get('name', '')
               run = step.get('run')
@@ -110,6 +120,9 @@ jobs:
                       'all twelve build targets'
                   )
 
+              if name == 'Pin original ehang NPS client 0.26.10 and enable domain server':
+                  run = npc_only_step
+
               if name == 'Configure all requested firmware images':
                   run = run.replace(
                       'CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_jcg_q30-pro=y',
@@ -117,6 +130,25 @@ jobs:
                       '          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_zbtlink_zbt-z8103ax-c=y',
                       1
                   )
+                  run = run.replace(
+                      'CONFIG_PACKAGE_luci-app-nps=y',
+                      'CONFIG_PACKAGE_npc=y\n'
+                      '          # CONFIG_PACKAGE_luci-app-nps is not set'
+                  )
+                  run = run.replace(
+                      'CONFIG_PACKAGE_luci-i18n-nps-zh-cn=y',
+                      '# CONFIG_PACKAGE_luci-i18n-nps-zh-cn is not set'
+                  )
+                  run = run.replace(
+                      'CONFIG_PACKAGE_luci-app-nps CONFIG_PACKAGE_npc',
+                      'CONFIG_PACKAGE_npc'
+                  )
+                  run += r'''
+          grep -qx 'CONFIG_PACKAGE_npc=y' .config
+          ! grep -qx 'CONFIG_PACKAGE_luci-app-nps=y' .config
+          ! grep -qx 'CONFIG_PACKAGE_luci-i18n-nps-zh-cn=y' .config
+          echo 'Verified npc binary enabled and LuCI NPS packages disabled.'
+          '''
 
               if name == 'Apply login and MTWiFi defaults':
                   run = run.replace('nps.66ccs.com', domain)
@@ -131,10 +163,8 @@ jobs:
               workdir = step.get('working-directory')
               cwd = root / workdir if workdir else root
               env = os.environ.copy()
-              # Child process must inherit the original workflow-level source settings.
               for key, value in (data.get('env') or {}).items():
                   env.setdefault(key, str(value))
-              # Also preserve environment declared on each inherited step.
               for key, value in (step.get('env') or {}).items():
                   env[key] = str(value)
               subprocess.run(
@@ -145,32 +175,36 @@ jobs:
           PY
           python3 /tmp/run_109v2.py
 
-      - name: Confirm Z8103AX-C-D firmware and NPS domain
+      - name: Confirm nps binary V1 output
         working-directory: openwrt
         run: |
           find upload -maxdepth 1 -type f -printf '%f\n' | sort
           find upload -maxdepth 1 -type f -iname '*zbtlink_zbt-z8103ax-c*' \
             \( -iname '*.bin' -o -iname '*.itb' \) -size +5M | grep -q .
           grep -q "server_addr='${NPS_DOMAIN}'" files/etc/init.d/nps-autokey
+          grep -qx 'CONFIG_PACKAGE_npc=y' .config
+          ! grep -qx 'CONFIG_PACKAGE_luci-app-nps=y' .config
+          ! grep -qx 'CONFIG_PACKAGE_luci-i18n-nps-zh-cn=y' .config
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           target_commitish: ${{ github.sha }}
-          tag_name: MT7981-10.9V2-Z8103AX-CD-${{ matrix.release_slug }}-${{ env.BUILD_DATE }}
+          tag_name: MT7981-nps-binary-V1-${{ matrix.release_slug }}-${{ env.BUILD_DATE }}
           name: ${{ matrix.release_name }} ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
           body: |
-            Based on the verified MT7981 10.9V2 source/build from release MT7981-10.9V2-nps.66ccs.com-2026.10.09-15.36.15.
-            Added Zbtlink ZBT-Z8103AX-C / ZBT-Z8103AX-D support using the shared official OpenWrt C/D DTS/profile.
-            NPS: ${{ matrix.nps_domain }}:8024. WAN physical MAC is converted to uppercase without colons and used once as vkey, matching the original 10.9V2 behavior.
-            Other JuLiang UI, MTWiFi, PassWall/PassWall2, OpenClash, HomeProxy and existing MT7981 device settings inherit the verified 10.9V2 build flow.
+            nps二进制V1，基于已验证的 MT7981 10.9V2 构建。
+            NPS 客户端：原版 ehang-io npc 0.26.10 二进制；不安装 luci-app-nps 和 luci-i18n-nps-zh-cn。
+            NPS：${{ matrix.nps_domain }}:8024；首次成功 WAN 启动读取物理 WAN MAC，去冒号并转大写作为 vkey，后续启动不覆盖。
+            支持 Zbtlink ZBT-Z8103AX-C / ZBT-Z8103AX-D，共用官方 OpenWrt C/D DTS/profile。
+            保留 JuLiang UI、MTWiFi、PassWall/PassWall2、OpenClash、HomeProxy 及原 10.9V2 其他 MT7981 机型配置。
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: MT7981-10.9V2-Z8103AX-CD-${{ matrix.release_slug }}-${{ env.BUILD_DATE }}
+          name: nps-binary-V1-${{ matrix.release_slug }}-${{ env.BUILD_DATE }}
           path: openwrt/upload/*
           if-no-files-found: error
           retention-days: 30
