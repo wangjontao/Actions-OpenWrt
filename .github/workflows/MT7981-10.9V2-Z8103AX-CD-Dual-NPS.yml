@@ -131,13 +131,13 @@ jobs:
                   run = run.replace(
                       'CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_jcg_q30-pro=y',
                       'CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_jcg_q30-pro=y\n'
-                      '          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_zbtlink_zbt-z8103ax-c=y',
+                      'CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_zbtlink_zbt-z8103ax-c=y',
                       1
                   )
                   run = run.replace(
                       'CONFIG_PACKAGE_luci-app-nps=y',
                       'CONFIG_PACKAGE_npc=y\n'
-                      '          # CONFIG_PACKAGE_luci-app-nps is not set'
+                      '# CONFIG_PACKAGE_luci-app-nps is not set'
                   )
                   run = run.replace(
                       'CONFIG_PACKAGE_luci-i18n-nps-zh-cn=y',
@@ -153,6 +153,9 @@ jobs:
           ! grep -qx 'CONFIG_PACKAGE_luci-i18n-nps-zh-cn=y' .config
           echo 'Verified npc binary enabled and LuCI NPS packages disabled.'
           '''
+
+              if name == 'Configure all requested firmware images':
+                  run += '\ngrep -qx "CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_zbtlink_zbt-z8103ax-c=y" .config || { echo "ERROR: Z8103AX-C/D was dropped by make defconfig"; exit 1; }\n'
 
               if name == 'Apply login and MTWiFi defaults':
                   run = run.replace('nps.66ccs.com', domain)
