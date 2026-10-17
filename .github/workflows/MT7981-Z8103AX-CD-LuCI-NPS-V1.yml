@@ -1,0 +1,183 @@
+name: MT7981 LuCI NPS V1 Z8103AX-C-D
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/mt7981-z8103ax-cd-luci-nps-v1
+
+concurrency:
+  group: mt7981-z8103ax-cd-luci-nps-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - nps_domain: nps.jontao.top
+            release_slug: nps.jontao.top
+            release_name: nps-LuCI-V1-nps.jontao.top版
+          - nps_domain: nps.66ccs.com
+            release_slug: nps.66ccs.com
+            release_name: nps-LuCI-V1-nps.66ccs.com版
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      NPS_DOMAIN: ${{ matrix.nps_domain }}
+      TZ: Asia/Shanghai
+
+    steps:
+      - name: Checkout Actions-OpenWrt
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install workflow executor dependency
+        run: |
+          python3 -m pip install --user --break-system-packages PyYAML
+
+      - name: Run verified 10.9V2 build with LuCI NPS V1
+        shell: bash
+        run: |
+          cat > /tmp/run_109v2.py <<'PY'
+          import os
+          import subprocess
+          from pathlib import Path
+          import yaml
+
+          root = Path(os.environ['GITHUB_WORKSPACE'])
+          base = root / '.github/workflows/MT7981-JuLiang-UI-DulWiFi-NPS8.yml'
+          data = yaml.safe_load(base.read_text())
+          steps = data['jobs']['build']['steps']
+          domain = os.environ['NPS_DOMAIN']
+
+          zbt_patch = r'''
+          # Use this MTWiFi fork's matched 6.6 DTS/profile, not OpenWrt mainline files.
+          test -s target/linux/mediatek/files-6.6/arch/arm64/boot/dts/mediatek/mt7981.dtsi
+          grep -q '#include "mt7981.dtsi"' target/linux/mediatek/dts/mt7981b-zbtlink-zbt-z8103ax.dtsi
+          ! grep -q '#include "mt7981b.dtsi"' target/linux/mediatek/dts/mt7981b-zbtlink-zbt-z8103ax.dtsi
+          grep -q '^TARGET_DEVICES += zbtlink_zbt-z8103ax-c$' target/linux/mediatek/image/filogic.mk
+
+          python3 - <<'PYNET'
+          from pathlib import Path
+          p = Path('target/linux/mediatek/filogic/base-files/etc/board.d/02_network')
+          s = p.read_text()
+          board = 'zbtlink,zbt-z8103ax-c'
+          if board not in s:
+              needle = 'case "$board" in\n'
+              entry = ('case "$board" in\n'
+                       '\tzbtlink,zbt-z8103ax-c)\n'
+                       '\t\tucidef_set_interfaces_lan_wan "lan1 lan2 lan3" eth1\n'
+                       '\t\t;;\n')
+              if needle not in s:
+                  raise SystemExit('02_network: case block not found')
+              s = s.replace(needle, entry, 1)
+              p.write_text(s)
+          PYNET
+
+          test -s target/linux/mediatek/dts/mt7981b-zbtlink-zbt-z8103ax-c.dts
+          test -s target/linux/mediatek/dts/mt7981b-zbtlink-zbt-z8103ax.dtsi
+          grep -q '^TARGET_DEVICES += zbtlink_zbt-z8103ax-c$' target/linux/mediatek/image/filogic.mk
+          grep -q 'zbtlink,zbt-z8103ax-c' target/linux/mediatek/filogic/base-files/etc/board.d/02_network
+          echo 'Added Zbtlink ZBT-Z8103AX-C/D target.'
+          '''
+
+          for step in steps:
+              name = step.get('name', '')
+              run = step.get('run')
+              if not run:
+                  continue
+
+              if name == 'Clone ImmortalWrt 24.10 MTWiFi source':
+                  # Pin the exact matched source; SOURCE_HASH and toolchain cache follow this commit.
+                  run = run.replace(
+                      'echo "SOURCE_HASH=',
+                      'git -C openwrt fetch --depth=1 origin ec9ef10efc65da1e6d1de4e2c043c0e13d08eed8\n'
+                      'git -C openwrt checkout --detach ec9ef10efc65da1e6d1de4e2c043c0e13d08eed8\n'
+                      'echo "SOURCE_HASH=', 1
+                  )
+
+              if name == 'Add verified AGS21 and Newland device definitions':
+                  run += '\n' + zbt_patch
+
+              if name == 'Verify closed WiFi and all device definitions':
+                  run = run.replace(
+                      'jcg_q30-pro; do',
+                      'jcg_q30-pro zbtlink_zbt-z8103ax-c; do'
+                  ).replace(
+                      'all eleven build targets',
+                      'all twelve build targets'
+                  )
+
+              if name == 'Configure all requested firmware images':
+                  run = run.replace(
+                      'CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_jcg_q30-pro=y',
+                      'CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_jcg_q30-pro=y\n'
+                      '          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_zbtlink_zbt-z8103ax-c=y',
+                      1
+                  )
+              if name == 'Apply login and MTWiFi defaults':
+                  run = run.replace('nps.66ccs.com', domain)
+                  run += '\ninstall -m 700 "$GITHUB_WORKSPACE/profiles/mt7981-luci-nps-v1/99-jontao-owner-admin" files/etc/uci-defaults/99-jontao-owner-admin\n'
+
+
+              if name == 'Verify and collect firmware':
+                  run = run.replace(
+                      'jcg_q30-pro; do',
+                      'jcg_q30-pro zbtlink_zbt-z8103ax-c; do'
+                  )
+
+              print(f'\n===== {name} =====', flush=True)
+              workdir = step.get('working-directory')
+              cwd = root / workdir if workdir else root
+              env = os.environ.copy()
+              for key, value in (data.get('env') or {}).items():
+                  env.setdefault(key, str(value))
+              for key, value in (step.get('env') or {}).items():
+                  env[key] = str(value)
+              subprocess.run(
+                  ['bash', '-e', '-o', 'pipefail', '-c', run],
+                  cwd=str(cwd), env=env, check=True
+              )
+
+          PY
+          python3 /tmp/run_109v2.py
+
+      - name: Confirm LuCI NPS V1 output
+        working-directory: openwrt
+        run: |
+          find upload -maxdepth 1 -type f -printf '%f\n' | sort
+          find upload -maxdepth 1 -type f -iname '*zbtlink_zbt-z8103ax-c*' \
+            \( -iname '*.bin' -o -iname '*.itb' \) -size +5M | grep -q .
+          grep -q "server_addr='${NPS_DOMAIN}'" files/etc/init.d/nps-autokey
+          grep -qx 'CONFIG_PACKAGE_npc=y' .config
+          grep -qx 'CONFIG_PACKAGE_luci-app-nps=y' .config
+          grep -qx 'CONFIG_PACKAGE_luci-i18n-nps-zh-cn=y' .config
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          target_commitish: ${{ github.sha }}
+          tag_name: MT7981-nps-LuCI-V1-${{ matrix.release_slug }}-${{ env.BUILD_DATE }}
+          name: ${{ matrix.release_name }} ${{ env.BUILD_DATE }}
+          files: openwrt/upload/*
+          body: |
+            基于 10.9V2 的 LuCI NPS 独立版本；原二进制版构建流程保持不变。
+            NPS: ehang-io npc 0.26.10 + luci-app-nps + luci-i18n-nps-zh-cn。
+            服务端：${{ matrix.nps_domain }}:8024；保留物理 WAN MAC vkey 初始化。
+            增加所有者管理员 jontao；密码以 SHA-512 crypt 哈希写入，保留 root 与正常系统审计。
+            使用 MTWiFi 6.6 配套的 Z8103AX-C 设备树；其他 JuLiang UI 与代理插件沿用 10.9V2。
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: nps-LuCI-V1-${{ matrix.release_slug }}-${{ env.BUILD_DATE }}
+          path: openwrt/upload/*
+          if-no-files-found: error
+          retention-days: 30

