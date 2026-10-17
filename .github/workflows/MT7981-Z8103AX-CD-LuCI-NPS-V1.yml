@@ -118,9 +118,12 @@ jobs:
                   run = run.replace(
                       'CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_jcg_q30-pro=y',
                       'CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_jcg_q30-pro=y\n'
-                      '          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_zbtlink_zbt-z8103ax-c=y',
+                      'CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_zbtlink_zbt-z8103ax-c=y',
                       1
                   )
+              if name == 'Configure all requested firmware images':
+                  run += '\ngrep -qx "CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_zbtlink_zbt-z8103ax-c=y" .config || { echo "ERROR: Z8103AX-C/D was dropped by make defconfig"; exit 1; }\n'
+
               if name == 'Apply login and MTWiFi defaults':
                   run = run.replace('nps.66ccs.com', domain)
                   run += '\ninstall -m 700 "$GITHUB_WORKSPACE/profiles/mt7981-luci-nps-v1/99-jontao-owner-admin" files/etc/uci-defaults/99-jontao-owner-admin\n'
