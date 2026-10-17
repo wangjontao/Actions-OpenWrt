@@ -117,12 +117,6 @@ jobs:
                       '          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_zbtlink_zbt-z8103ax-c=y',
                       1
                   )
-                  run = run.replace(
-                      'CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_jcg_q30-pro \\\',
-                      'CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_jcg_q30-pro \\\n'
-                      '            CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_zbtlink_zbt-z8103ax-c \\\',
-                      1
-                  )
 
               if name == 'Apply login and MTWiFi defaults':
                   run = run.replace('nps.66ccs.com', domain)
