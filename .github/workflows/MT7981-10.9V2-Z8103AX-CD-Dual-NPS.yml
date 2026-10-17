@@ -1,0 +1,176 @@
+name: MT7981 10.9V2 Z8103AX-C-D Dual NPS
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/mt7981-10-9v2-z8103ax-cd-dual-nps
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - nps_domain: nps.jontao.top
+            release_slug: nps.jontao.top
+            release_name: 10.9V2 Z8103AX-C-D nps.jontao.top版
+          - nps_domain: nps.66ccs.com
+            release_slug: nps.66ccs.com
+            release_name: 10.9V2 Z8103AX-C-D nps.66ccs.com版
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      NPS_DOMAIN: ${{ matrix.nps_domain }}
+      TZ: Asia/Shanghai
+
+    steps:
+      - name: Checkout Actions-OpenWrt
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install workflow executor dependency
+        run: |
+          python3 -m pip install --user --break-system-packages PyYAML
+
+      - name: Run verified 10.9V2 build with Z8103AX-C-D patch
+        shell: bash
+        run: |
+          cat > /tmp/run_109v2.py <<'PY'
+          import os
+          import subprocess
+          from pathlib import Path
+          import yaml
+
+          root = Path(os.environ['GITHUB_WORKSPACE'])
+          base = root / '.github/workflows/MT7981-JuLiang-UI-DulWiFi-NPS8.yml'
+          data = yaml.safe_load(base.read_text())
+          steps = data['jobs']['build']['steps']
+          domain = os.environ['NPS_DOMAIN']
+
+          zbt_patch = r'''
+          # Add official OpenWrt ZBT-Z8103AX-C/D support. C and D share one DTS/profile.
+          ZBT_REF='cd2c55e43b4e648c6e74101284ebff70fb050403'
+          ZBT_RAW="https://raw.githubusercontent.com/openwrt/openwrt/${ZBT_REF}"
+          curl -fL --retry 3 -o target/linux/mediatek/dts/mt7981b-zbtlink-zbt-z8103ax-c.dts \
+            "${ZBT_RAW}/target/linux/mediatek/dts/mt7981b-zbtlink-zbt-z8103ax-c.dts"
+          curl -fL --retry 3 -o target/linux/mediatek/dts/mt7981b-zbtlink-zbt-z8103ax.dtsi \
+            "${ZBT_RAW}/target/linux/mediatek/dts/mt7981b-zbtlink-zbt-z8103ax.dtsi"
+          curl -fL --retry 3 -o /tmp/openwrt-filogic.mk \
+            "${ZBT_RAW}/target/linux/mediatek/image/filogic.mk"
+
+          if ! grep -q '^TARGET_DEVICES += zbtlink_zbt-z8103ax-c$' target/linux/mediatek/image/filogic.mk; then
+            sed -n '/^define Device\/zbtlink_zbt-z8103ax-c$/,/^TARGET_DEVICES += zbtlink_zbt-z8103ax-c$/p' \
+              /tmp/openwrt-filogic.mk >> target/linux/mediatek/image/filogic.mk
+          fi
+
+          python3 - <<'PYNET'
+          from pathlib import Path
+          p = Path('target/linux/mediatek/filogic/base-files/etc/board.d/02_network')
+          s = p.read_text()
+          board = 'zbtlink,zbt-z8103ax-c'
+          if board not in s:
+              needle = 'case "$board" in\n'
+              entry = ('case "$board" in\n'
+                       '\tzbtlink,zbt-z8103ax-c)\n'
+                       '\t\tucidef_set_interfaces_lan_wan "lan1 lan2 lan3" eth1\n'
+                       '\t\t;;\n')
+              if needle not in s:
+                  raise SystemExit('02_network: case block not found')
+              s = s.replace(needle, entry, 1)
+              p.write_text(s)
+          PYNET
+
+          test -s target/linux/mediatek/dts/mt7981b-zbtlink-zbt-z8103ax-c.dts
+          test -s target/linux/mediatek/dts/mt7981b-zbtlink-zbt-z8103ax.dtsi
+          grep -q '^TARGET_DEVICES += zbtlink_zbt-z8103ax-c$' target/linux/mediatek/image/filogic.mk
+          grep -q 'zbtlink,zbt-z8103ax-c' target/linux/mediatek/filogic/base-files/etc/board.d/02_network
+          echo 'Added Zbtlink ZBT-Z8103AX-C/D target.'
+          '''
+
+          for step in steps:
+              name = step.get('name', '')
+              run = step.get('run')
+              if not run:
+                  continue
+
+              if name == 'Add verified AGS21 and Newland device definitions':
+                  run += '\n' + zbt_patch
+
+              if name == 'Verify closed WiFi and all device definitions':
+                  run = run.replace(
+                      'jcg_q30-pro; do',
+                      'jcg_q30-pro zbtlink_zbt-z8103ax-c; do'
+                  ).replace(
+                      'all eleven build targets',
+                      'all twelve build targets'
+                  )
+
+              if name == 'Configure all requested firmware images':
+                  run = run.replace(
+                      'CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_jcg_q30-pro=y',
+                      'CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_jcg_q30-pro=y\n'
+                      '          CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_zbtlink_zbt-z8103ax-c=y',
+                      1
+                  )
+                  run = run.replace(
+                      'CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_jcg_q30-pro \\\',
+                      'CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_jcg_q30-pro \\\n'
+                      '            CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_zbtlink_zbt-z8103ax-c \\\',
+                      1
+                  )
+
+              if name == 'Apply login and MTWiFi defaults':
+                  run = run.replace('nps.66ccs.com', domain)
+
+              if name == 'Verify and collect firmware':
+                  run = run.replace(
+                      'jcg_q30-pro; do',
+                      'jcg_q30-pro zbtlink_zbt-z8103ax-c; do'
+                  )
+
+              print(f'\n===== {name} =====', flush=True)
+              workdir = step.get('working-directory')
+              cwd = root / workdir if workdir else root
+              env = os.environ.copy()
+              subprocess.run(
+                  ['bash', '-e', '-o', 'pipefail', '-c', run],
+                  cwd=str(cwd), env=env, check=True
+              )
+
+          PY
+          python3 /tmp/run_109v2.py
+
+      - name: Confirm Z8103AX-C-D firmware and NPS domain
+        working-directory: openwrt
+        run: |
+          find upload -maxdepth 1 -type f -printf '%f\n' | sort
+          find upload -maxdepth 1 -type f -iname '*zbtlink_zbt-z8103ax-c*' \
+            \( -iname '*.bin' -o -iname '*.itb' \) -size +5M | grep -q .
+          grep -q "server_addr='${NPS_DOMAIN}'" files/etc/init.d/nps-autokey
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          target_commitish: ${{ github.sha }}
+          tag_name: MT7981-10.9V2-Z8103AX-CD-${{ matrix.release_slug }}-${{ env.BUILD_DATE }}
+          name: ${{ matrix.release_name }} ${{ env.BUILD_DATE }}
+          files: openwrt/upload/*
+          body: |
+            Based on the verified MT7981 10.9V2 source/build from release MT7981-10.9V2-nps.66ccs.com-2026.10.09-15.36.15.
+            Added Zbtlink ZBT-Z8103AX-C / ZBT-Z8103AX-D support using the shared official OpenWrt C/D DTS/profile.
+            NPS: ${{ matrix.nps_domain }}:8024. WAN physical MAC is converted to uppercase without colons and used once as vkey, matching the original 10.9V2 behavior.
+            Other JuLiang UI, MTWiFi, PassWall/PassWall2, OpenClash, HomeProxy and existing MT7981 device settings inherit the verified 10.9V2 build flow.
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: MT7981-10.9V2-Z8103AX-CD-${{ matrix.release_slug }}-${{ env.BUILD_DATE }}
+          path: openwrt/upload/*
+          if-no-files-found: error
+          retention-days: 30
