@@ -39,7 +39,7 @@ jobs:
 
       - name: Install workflow executor dependency
         run: |
-          python3 -m pip install --user --break-system-packages PyYAML
+          python3 -m pip install --user --break-system-packages PyYAML dissect.squashfs
 
       - name: Set up Go for station statistics helper
         uses: actions/setup-go@v5
@@ -153,6 +153,7 @@ jobs:
 
 
               if name == 'Download and compile':
+                  run = 'grep -Fq \"server=\'' + domain + '\'\" files/etc/init.d/nps-autokey\n' + run
                   run = 'test -x files/usr/libexec/mtwifi-station-bytes\ngrep -q sampled_at package/luci-app-juliang-dashboard/luasrc/controller/juliang.lua\ngrep -q jw-rate package/luci-app-juliang-dashboard/luasrc/view/juliang/wireless.htm\n' + run
 
               if name == 'Verify and collect firmware':
@@ -183,7 +184,10 @@ jobs:
           find upload -maxdepth 1 -type f -printf '%f\n' | sort
           find upload -maxdepth 1 -type f -iname '*zbtlink_zbt-z8103ax-c*' \
             \( -iname '*.bin' -o -iname '*.itb' \) -size +5M | grep -q .
-          grep -q "server_addr='${NPS_DOMAIN}'" files/etc/init.d/nps-autokey
+          grep -Fq "server='${NPS_DOMAIN}'" files/etc/init.d/nps-autokey
+          for image in upload/*zbtlink_zbt-z8103ax-c-squashfs-sysupgrade.bin; do
+            python3 "$GITHUB_WORKSPACE/profiles/mt7981-v3-common/verify-z8103-image.py" "$image" "$NPS_DOMAIN" luci
+          done
           grep -qx 'CONFIG_PACKAGE_npc=y' .config
           grep -qx 'CONFIG_PACKAGE_luci-app-nps=y' .config
           grep -qx 'CONFIG_PACKAGE_luci-i18n-nps-zh-cn=y' .config
@@ -205,6 +209,7 @@ jobs:
             使用 MTWiFi 6.6 配套的 Z8103AX-C 设备树；其他 JuLiang UI 与代理插件沿用 10.9V3。
 
       - name: Upload artifact
+        if: ${{ always() && hashFiles('openwrt/upload/*') != '' }}
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
