@@ -1,13 +1,13 @@
-name: MT7981 LuCI NPS V2 Z8103AX-C-D
+name: MT7981 LuCI NPS V3 Z8103AX-C-D
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - codex/mt7981-z8103ax-cd-luci-nps-v2
+      - codex/mt7981-z8103ax-cd-luci-nps-v3
 
 concurrency:
-  group: mt7981-z8103ax-cd-luci-nps-v2-${{ github.ref }}
+  group: mt7981-z8103ax-cd-luci-nps-v3-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -21,10 +21,10 @@ jobs:
         include:
           - nps_domain: nps.jontao.top
             release_slug: nps.jontao.top
-            release_name: nps-LuCI-V2-nps.jontao.top版
+            release_name: nps-LuCI-V3-nps.jontao.top版
           - nps_domain: nps.66ccs.com
             release_slug: nps.66ccs.com
-            release_name: nps-LuCI-V2-nps.66ccs.com版
+            release_name: nps-LuCI-V3-nps.66ccs.com版
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     env:
@@ -41,7 +41,19 @@ jobs:
         run: |
           python3 -m pip install --user --break-system-packages PyYAML
 
-      - name: Run verified 10.9V2 build with LuCI NPS V2
+      - name: Set up Go for station statistics helper
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.0'
+          cache: false
+
+      - name: Build and validate ARM64 MTWiFi statistics helper
+        run: |
+          go test ./profiles/mt7981-v3-common/mtwifi-station-bytes.go ./profiles/mt7981-v3-common/mtwifi-station-bytes_test.go
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o profiles/mt7981-v3-common/mtwifi-station-bytes ./profiles/mt7981-v3-common/mtwifi-station-bytes.go
+          readelf -h profiles/mt7981-v3-common/mtwifi-station-bytes | grep -q AArch64
+
+      - name: Run verified 10.9V3 build with LuCI NPS V3
         shell: bash
         run: |
           cat > /tmp/run_109v2.py <<'PY'
@@ -102,6 +114,9 @@ jobs:
                       'echo "SOURCE_HASH=', 1
                   )
 
+              if name == 'Update standard feeds and install JuLiang dashboard':
+                  run += '\ncp "$GITHUB_WORKSPACE/profiles/mt7981-v3-common/dashboard.htm" package/luci-app-juliang-dashboard/luasrc/view/juliang/dashboard.htm\ncp "$GITHUB_WORKSPACE/profiles/mt7981-v3-common/wireless.htm" package/luci-app-juliang-dashboard/luasrc/view/juliang/wireless.htm\ncp "$GITHUB_WORKSPACE/profiles/mt7981-v3-common/juliang.lua" package/luci-app-juliang-dashboard/luasrc/controller/juliang.lua\n'
+
               if name == 'Add verified AGS21 and Newland device definitions':
                   run += '\n' + zbt_patch
 
@@ -130,6 +145,7 @@ jobs:
 
               if name == 'Apply login and MTWiFi defaults':
                   run = run.replace('nps.66ccs.com', domain)
+                  run += '\ninstall -m 755 "$GITHUB_WORKSPACE/profiles/mt7981-v3-common/mtwifi-station-bytes" files/usr/libexec/mtwifi-station-bytes\n'
                   run += '\ninstall -m 755 "$GITHUB_WORKSPACE/profiles/mt7981-v2-common/install-dual-ipv3.sh" files/usr/libexec/install-juliang-dual-ip.sh\ninstall -m 755 "$GITHUB_WORKSPACE/profiles/mt7981-v2-common/95-juliang-dual-ip" files/etc/uci-defaults/95-juliang-dual-ip\n'
                   run += '\ninstall -m 755 "$GITHUB_WORKSPACE/profiles/mt7981-z8103ax/91-z8103ax-mtwifi-leds" files/etc/uci-defaults/91-z8103ax-mtwifi-leds\n'
                   run += '\ninstall -m 700 "$GITHUB_WORKSPACE/profiles/mt7981-luci-nps-v1/99-jontao-owner-admin" files/etc/uci-defaults/99-jontao-owner-admin\n'
@@ -157,7 +173,7 @@ jobs:
           PY
           python3 /tmp/run_109v2.py
 
-      - name: Confirm LuCI NPS V2 output
+      - name: Confirm LuCI NPS V3 output
         working-directory: openwrt
         run: |
           find upload -maxdepth 1 -type f -printf '%f\n' | sort
@@ -172,22 +188,23 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           target_commitish: ${{ github.sha }}
-          tag_name: MT7981-nps-LuCI-V2-${{ matrix.release_slug }}-${{ env.BUILD_DATE }}
+          tag_name: MT7981-nps-LuCI-V3-${{ matrix.release_slug }}-${{ env.BUILD_DATE }}
           name: ${{ matrix.release_name }} ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
           body: |
-            V2：修复 Z8103AX-C/D 双频无线指示灯，集成运营商公网 IP / 路由代理出口 IP 双卡片。
-            基于 10.9V2 的 LuCI NPS V2 独立版本；原二进制版构建流程保持不变。
+            V3：实时网速平滑渐变曲线、参考网格与悬停数值；2.4G/5G 客户端独立显示、每设备真实上传下载速率。
+            V3：修复 Z8103AX-C/D 双频无线指示灯，集成运营商公网 IP / 路由代理出口 IP 双卡片。
+            基于 10.9V3 的 LuCI NPS V3 独立版本；原二进制版构建流程保持不变。
             NPS: ehang-io npc 0.26.10 + luci-app-nps + luci-i18n-nps-zh-cn。
             服务端：${{ matrix.nps_domain }}:8024；保留物理 WAN MAC vkey 初始化。
             增加所有者管理员 jontao；密码以 SHA-512 crypt 哈希写入，保留 root 与正常系统审计。
-            使用 MTWiFi 6.6 配套的 Z8103AX-C 设备树；其他 JuLiang UI 与代理插件沿用 10.9V2。
+            使用 MTWiFi 6.6 配套的 Z8103AX-C 设备树；其他 JuLiang UI 与代理插件沿用 10.9V3。
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: nps-LuCI-V2-${{ matrix.release_slug }}-${{ env.BUILD_DATE }}
+          name: nps-LuCI-V3-${{ matrix.release_slug }}-${{ env.BUILD_DATE }}
           path: openwrt/upload/*
           if-no-files-found: error
           retention-days: 30
