@@ -159,6 +159,7 @@ jobs:
 
               if name == 'Apply login and MTWiFi defaults':
                   run = run.replace('nps.66ccs.com', domain)
+                  run += '\ninstall -m 755 "$GITHUB_WORKSPACE/profiles/mt7981-z8103ax/91-z8103ax-mtwifi-leds" files/etc/uci-defaults/91-z8103ax-mtwifi-leds\n'
 
               if name == 'Verify and collect firmware':
                   run = run.replace(

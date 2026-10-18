@@ -1,0 +1,17 @@
+#!/bin/sh
+# MTWiFi uses ra0/rax0 rather than mac80211 phy*tpt LED triggers.
+[ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = 'zbtlink,zbt-z8103ax-c' ] || exit 0
+for pair in '2g ra0 green:wlan-0' '5g rax0 green:wlan-1'; do
+  set -- $pair
+  band="$1"; dev="$2"; led="$3"
+  [ -d "/sys/class/leds/$led" ] || continue
+  uci set "system.juliang_wlan$band=led"
+  uci set "system.juliang_wlan$band.name=WiFi $band"
+  uci set "system.juliang_wlan$band.sysfs=$led"
+  uci set "system.juliang_wlan$band.trigger=netdev"
+  uci set "system.juliang_wlan$band.dev=$dev"
+  uci set "system.juliang_wlan$band.mode=link tx rx"
+done
+uci commit system
+/etc/init.d/led reload
+exit 0
