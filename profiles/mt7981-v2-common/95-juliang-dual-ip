@@ -1,0 +1,5 @@
+#!/bin/sh
+# Install supplied dual-IP sidebar after firmware packages are present.
+set -e
+sh /usr/libexec/install-juliang-dual-ip.sh install
+exit 0

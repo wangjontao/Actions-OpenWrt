@@ -1,13 +1,13 @@
-name: MT7981 nps二进制V1 Z8103AX-C-D
+name: MT7981 nps二进制V2 Z8103AX-C-D
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - codex/mt7981-10-9v2-z8103ax-cd-dual-nps
+      - codex/mt7981-z8103ax-cd-binary-nps-v2
 
 concurrency:
-  group: mt7981-z8103ax-cd-dual-nps-${{ github.ref }}
+  group: mt7981-z8103ax-cd-binary-nps-v2-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -21,10 +21,10 @@ jobs:
         include:
           - nps_domain: nps.jontao.top
             release_slug: nps.jontao.top
-            release_name: nps二进制V1-nps.jontao.top版
+            release_name: nps二进制V2-nps.jontao.top版
           - nps_domain: nps.66ccs.com
             release_slug: nps.66ccs.com
-            release_name: nps二进制V1-nps.66ccs.com版
+            release_name: nps二进制V2-nps.66ccs.com版
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     env:
@@ -41,7 +41,7 @@ jobs:
         run: |
           python3 -m pip install --user --break-system-packages PyYAML
 
-      - name: Run verified 10.9V2 build as nps binary V1
+      - name: Run verified 10.9V2 build as nps binary V2
         shell: bash
         run: |
           cat > /tmp/run_109v2.py <<'PY'
@@ -157,8 +157,13 @@ jobs:
               if name == 'Configure all requested firmware images':
                   run += '\ngrep -qx "CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_zbtlink_zbt-z8103ax-c=y" .config || { echo "ERROR: Z8103AX-C/D was dropped by make defconfig"; exit 1; }\n'
 
+              if name == 'Configure all requested firmware images':
+                  run = run.replace('make defconfig', 'printf \'%s\\n\' CONFIG_PACKAGE_curl=y CONFIG_PACKAGE_ca-bundle=y CONFIG_PACKAGE_jsonfilter=y >> .config\nmake defconfig', 1)
+                  run += '\ngrep -qx CONFIG_PACKAGE_curl=y .config\ngrep -qx CONFIG_PACKAGE_ca-bundle=y .config\ngrep -qx CONFIG_PACKAGE_jsonfilter=y .config\n'
+
               if name == 'Apply login and MTWiFi defaults':
                   run = run.replace('nps.66ccs.com', domain)
+                  run += '\ninstall -m 755 "$GITHUB_WORKSPACE/profiles/mt7981-v2-common/install-dual-ipv3.sh" files/usr/libexec/install-juliang-dual-ip.sh\ninstall -m 755 "$GITHUB_WORKSPACE/profiles/mt7981-v2-common/95-juliang-dual-ip" files/etc/uci-defaults/95-juliang-dual-ip\n'
                   run += '\ninstall -m 755 "$GITHUB_WORKSPACE/profiles/mt7981-z8103ax/91-z8103ax-mtwifi-leds" files/etc/uci-defaults/91-z8103ax-mtwifi-leds\n'
 
               if name == 'Verify and collect firmware':
@@ -183,7 +188,7 @@ jobs:
           PY
           python3 /tmp/run_109v2.py
 
-      - name: Confirm nps binary V1 output
+      - name: Confirm nps binary V2 output
         working-directory: openwrt
         run: |
           find upload -maxdepth 1 -type f -printf '%f\n' | sort
@@ -198,11 +203,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           target_commitish: ${{ github.sha }}
-          tag_name: MT7981-nps-binary-V1-${{ matrix.release_slug }}-${{ env.BUILD_DATE }}
+          tag_name: MT7981-nps-binary-V2-${{ matrix.release_slug }}-${{ env.BUILD_DATE }}
           name: ${{ matrix.release_name }} ${{ env.BUILD_DATE }}
           files: openwrt/upload/*
           body: |
-            nps二进制V1，基于已验证的 MT7981 10.9V2 构建。
+            V2：修复 Z8103AX-C/D 双频无线指示灯，集成运营商公网 IP / 路由代理出口 IP 双卡片。
+            nps二进制V2，基于已验证的 MT7981 10.9V2 构建。
             NPS 客户端：原版 ehang-io npc 0.26.10 二进制；不安装 luci-app-nps 和 luci-i18n-nps-zh-cn。
             NPS：${{ matrix.nps_domain }}:8024；首次成功 WAN 启动读取物理 WAN MAC，去冒号并转大写作为 vkey，后续启动不覆盖。
             支持 Zbtlink ZBT-Z8103AX-C / ZBT-Z8103AX-D，共用官方 OpenWrt C/D DTS/profile。
@@ -212,7 +218,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: nps-binary-V1-${{ matrix.release_slug }}-${{ env.BUILD_DATE }}
+          name: nps-binary-V2-${{ matrix.release_slug }}-${{ env.BUILD_DATE }}
           path: openwrt/upload/*
           if-no-files-found: error
           retention-days: 30
