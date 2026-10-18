@@ -1,10 +1,18 @@
 #!/bin/sh
-# MTWiFi uses ra0/rax0 rather than mac80211 phy*tpt LED triggers.
-[ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = 'zbtlink,zbt-z8103ax-c' ] || exit 0
+# ZBT-Z8103AX-C/D MTWiFi dual-band LED repair. No network/WiFi restart.
+set -eu
+[ "$(id -u)" = 0 ] || { echo 'Please run as root.' >&2; exit 1; }
+board=$(cat /tmp/sysinfo/board_name 2>/dev/null || true)
+[ "$board" = 'zbtlink,zbt-z8103ax-c' ] || exit 0
+for led in green:wlan-0 green:wlan-1; do
+  [ -d "/sys/class/leds/$led" ] || { echo "Missing LED: $led; nothing changed." >&2; exit 1; }
+  grep -qw netdev "/sys/class/leds/$led/trigger" || { echo 'netdev LED trigger unavailable; nothing changed.' >&2; exit 1; }
+done
+backup=/etc/config/system.before-z8103ax-led-fix
+[ -e "$backup" ] || cp -p /etc/config/system "$backup"
 for pair in '2g ra0 green:wlan-0' '5g rax0 green:wlan-1'; do
   set -- $pair
   band="$1"; dev="$2"; led="$3"
-  [ -d "/sys/class/leds/$led" ] || continue
   uci set "system.juliang_wlan$band=led"
   uci set "system.juliang_wlan$band.name=WiFi $band"
   uci set "system.juliang_wlan$band.sysfs=$led"
@@ -14,4 +22,4 @@ for pair in '2g ra0 green:wlan-0' '5g rax0 green:wlan-1'; do
 done
 uci commit system
 /etc/init.d/led reload
-exit 0
+printf '%s\n' 'Wireless LEDs configured: 2.4GHz -> ra0, 5GHz -> rax0.' 'Saved permanently. Wireless/network services were not restarted.' "Original system config backup: $backup"
