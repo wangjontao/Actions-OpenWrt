@@ -1,0 +1,5 @@
+package main
+import("encoding/json";"fmt";"net";"os";"regexp";"syscall";"unsafe";"runtime")
+type stat struct{Mac [6]byte; Pad [2]byte; Tx,Rx,TxPackets,RxPackets uint64; Errors [6]uint32; Valid byte; Tail [7]byte}
+type request struct{Name [16]byte; Pointer uintptr; Length,Flags uint16; Pad [4]byte}
+func main(){out:=map[string]any{};fd,e:=syscall.Socket(syscall.AF_INET,syscall.SOCK_DGRAM,0);if e!=nil{panic(e)};defer syscall.Close(fd);for i:=1;i+1<len(os.Args);i+=2{dev,mac:=os.Args[i],os.Args[i+1];if !regexp.MustCompile(`^(ra|rax)[0-9]+$`).MatchString(dev){continue};hw,e:=net.ParseMAC(mac);if e!=nil||len(hw)!=6{continue};s:=stat{};copy(s.Mac[:],hw);r:=request{Pointer:uintptr(unsafe.Pointer(&s)),Length:uint16(unsafe.Sizeof(s)),Flags:0x1982};copy(r.Name[:],dev);_,_,err:=syscall.Syscall(syscall.SYS_IOCTL,uintptr(fd),0x8be1,uintptr(unsafe.Pointer(&r)));runtime.KeepAlive(&s);if err==0&&s.Valid!=0{out[dev+"/"+mac]=map[string]any{"rx_bytes":s.Rx,"tx_bytes":s.Tx}}else{out[dev+"/"+mac]=map[string]any{"error":fmt.Sprint(err),"valid":s.Valid}}};json.NewEncoder(os.Stdout).Encode(out)}
