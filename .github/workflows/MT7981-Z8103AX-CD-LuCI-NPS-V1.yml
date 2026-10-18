@@ -145,11 +145,15 @@ jobs:
 
               if name == 'Apply login and MTWiFi defaults':
                   run = run.replace('nps.66ccs.com', domain)
+                  run += '\ninstall -m 755 "$GITHUB_WORKSPACE/profiles/mt7981-v3-common/nps-autokey" files/etc/init.d/nps-autokey\ninstall -m 755 "$GITHUB_WORKSPACE/profiles/mt7981-v3-common/99-nps-autokey" files/etc/hotplug.d/iface/99-nps-autokey\nsed -i "s/NPS_DOMAIN/DOMAIN_VALUE/g" files/etc/init.d/nps-autokey\nprintf \'%s\\n\' "V3 services-and-wireless-fix $GITHUB_SHA" > files/etc/juliang-build-version\nsh -n files/etc/init.d/nps-autokey\nsh -n files/etc/hotplug.d/iface/99-nps-autokey\n'.replace("DOMAIN_VALUE", domain)
                   run += '\ninstall -m 755 "$GITHUB_WORKSPACE/profiles/mt7981-v3-common/mtwifi-station-bytes" files/usr/libexec/mtwifi-station-bytes\n'
                   run += '\ninstall -m 755 "$GITHUB_WORKSPACE/profiles/mt7981-v2-common/install-dual-ipv3.sh" files/usr/libexec/install-juliang-dual-ip.sh\ninstall -m 755 "$GITHUB_WORKSPACE/profiles/mt7981-v2-common/95-juliang-dual-ip" files/etc/uci-defaults/95-juliang-dual-ip\n'
                   run += '\ninstall -m 755 "$GITHUB_WORKSPACE/profiles/mt7981-z8103ax/91-z8103ax-mtwifi-leds" files/etc/uci-defaults/91-z8103ax-mtwifi-leds\n'
                   run += '\ninstall -m 700 "$GITHUB_WORKSPACE/profiles/mt7981-luci-nps-v1/99-jontao-owner-admin" files/etc/uci-defaults/99-jontao-owner-admin\n'
 
+
+              if name == 'Download and compile':
+                  run = 'test -x files/usr/libexec/mtwifi-station-bytes\ngrep -q sampled_at package/luci-app-juliang-dashboard/luasrc/controller/juliang.lua\ngrep -q jw-rate package/luci-app-juliang-dashboard/luasrc/view/juliang/wireless.htm\n' + run
 
               if name == 'Verify and collect firmware':
                   run = run.replace(

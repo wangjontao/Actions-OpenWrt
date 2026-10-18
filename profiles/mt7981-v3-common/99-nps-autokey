@@ -1,0 +1,5 @@
+#!/bin/sh
+[ "$ACTION" = ifup ] && [ "$INTERFACE" = wan ] || exit 0
+/etc/init.d/nps-autokey start || exit 1
+/etc/init.d/nps enabled && /etc/init.d/nps restart
+exit 0
