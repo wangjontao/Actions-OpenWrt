@@ -163,9 +163,6 @@ jobs:
                       'CONFIG_PACKAGE_npc'
                   )
                   run += r'''
-          for image in upload/*zbtlink_zbt-z8103ax-c-squashfs-sysupgrade.bin; do
-            python3 "$GITHUB_WORKSPACE/profiles/mt7981-v3-common/verify-z8103-image.py" "$image" "$NPS_DOMAIN" binary
-          done
           grep -qx 'CONFIG_PACKAGE_npc=y' .config
           ! grep -qx 'CONFIG_PACKAGE_luci-app-nps=y' .config
           ! grep -qx 'CONFIG_PACKAGE_luci-i18n-nps-zh-cn=y' .config
@@ -219,6 +216,13 @@ jobs:
           find upload -maxdepth 1 -type f -iname '*zbtlink_zbt-z8103ax-c*' \
             \( -iname '*.bin' -o -iname '*.itb' \) -size +5M | grep -q .
           grep -Fq "server='${NPS_DOMAIN}'" files/etc/init.d/nps-autokey
+          found=0
+          for image in upload/*zbtlink_zbt-z8103ax-c-squashfs-sysupgrade.bin; do
+            [ -s "$image" ] || continue
+            found=1
+            python3 "$GITHUB_WORKSPACE/profiles/mt7981-v3-common/verify-z8103-image.py" "$image" "$NPS_DOMAIN" binary
+          done
+          [ "$found" = 1 ] || { echo 'ERROR: no Z8103AX sysupgrade image to audit'; exit 1; }
           grep -qx 'CONFIG_PACKAGE_npc=y' .config
           ! grep -qx 'CONFIG_PACKAGE_luci-app-nps=y' .config
           ! grep -qx 'CONFIG_PACKAGE_luci-i18n-nps-zh-cn=y' .config
