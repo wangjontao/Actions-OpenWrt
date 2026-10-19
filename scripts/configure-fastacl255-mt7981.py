@@ -26,11 +26,18 @@ p.write_text(text)
 p=Path('target/linux/mediatek/files-6.6/drivers/net/ethernet/mediatek/mtk_hnat/hnat.c')
 t=p.read_text();start=t.index('int hnat_enable_hook(void)');end=t.index('int hnat_disable_hook(void)',start)
 t=t[:start]+'int hnat_enable_hook(void)\n{\n\t/* FastACL 2.5.5: CPU forwarding is required for dae policy enforcement. */\n\treturn 0;\n}\n\n'+t[end:];p.write_text(t)
-base=(root/'profiles/fastacl-v252/mt7981-common.config').read_text()
+# Start from the exact working MT7981 vendor defconfig used by run 39188165805.
+# Filtering to CONFIG_MTK_* omitted related wireless/EEPROM selections and
+# made MTWiFi 7.6.6.1 fail with undefined calibration constants.
+vendor=Path('defconfig/mt7981-ax3000.config').read_text()
+vendor_lines=[line for line in vendor.splitlines()
+ if not line.startswith('CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_')
+ and not line.startswith('CONFIG_TARGET_DEVICE_PACKAGES_mediatek_filogic_DEVICE_')]
+base='\n'.join(vendor_lines)+'\n'
+# Apply FastACL package choices on top, retaining the entire known-good WiFi base.
+fastacl=(root/'profiles/fastacl-v252/mt7981-common.config').read_text()
+base+=fastacl
 base+='CONFIG_TARGET_mediatek=y\nCONFIG_TARGET_mediatek_filogic=y\nCONFIG_TARGET_MULTI_PROFILE=y\nCONFIG_TARGET_PER_DEVICE_ROOTFS=y\n'
-# Preserve the fork's WiFi feature configuration without unrelated proxy apps.
-for line in Path('defconfig/mt7981-ax3000.config').read_text().splitlines():
- if line.startswith('CONFIG_MTK_') or line.startswith('CONFIG_WARP_'):base+=line+'\n'
 base+='CONFIG_PACKAGE_kmod-mt_wifi=y\nCONFIG_PACKAGE_mtwifi-cfg=y\nCONFIG_PACKAGE_luci-app-mtwifi-cfg=y\nCONFIG_PACKAGE_luci-i18n-mtwifi-cfg-zh-cn=y\nCONFIG_PACKAGE_iwinfo=y\nCONFIG_PACKAGE_ip-bridge=y\n'
 devices=os.environ['MT7981_DEVICES'].split();assert devices
 for dev in devices:
