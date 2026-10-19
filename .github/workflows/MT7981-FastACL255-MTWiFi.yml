@@ -198,27 +198,73 @@ jobs:
         test -n "$kernel"
         sh profiles/fastacl-v252/check-kernel.sh "$kernel"
       working-directory: openwrt
-    - name: Verify and collect firmware
+    - name: Collect all generated firmware before verification
+      if: always()
+      working-directory: openwrt
       run: |
         mkdir -p upload
-        for dev in $MT7981_DEVICES; do
-         mapfile -t images < <(find bin/targets/mediatek/filogic -maxdepth 1 -type f -iname "*${dev}*sysupgrade*" -size +5M)
-         [ "${#images[@]}" -gt 0 ] || { echo "Missing image: $dev"; exit 1; }
-         cp -a "${images[@]}" upload/
-         manifest=$(find bin/targets/mediatek/filogic -maxdepth 1 -type f -name "*${dev}*.manifest" | head -n1)
-         test -n "$manifest"
-         for pkg in fastacl252 juliangtk-dae kmod-mt_wifi mtwifi-cfg luci-app-nps npc luci-app-autoreboot; do
-          grep -q "^$pkg " "$manifest" || { echo "Missing $pkg in $dev"; exit 1; }
-         done
-         if grep -q '^kmod-mt7915e ' "$manifest"; then echo "Competing mt76 driver in $dev"; exit 1; fi
-         cp -a "$manifest" upload/
-        done
-        cp .config upload/build.config
-        cp MT7981-FastACL255-final.config upload/
-        printf 'version=2.5.5\nsource=ec9ef10efc65da1e6d1de4e2c043c0e13d08eed8\ncommit=%s\ndevices=%s\nwireless=MTWiFi 7.6.6.1\nforwarding=CPU (HNAT/WHNAT disabled for dae policy)\n' "$GITHUB_SHA" "$MT7981_DEVICES" > upload/BUILD.txt
-        sha256sum upload/* > upload/SHA256SUMS
+        echo '=== All generated target files ==='
+        if [ -d bin/targets/mediatek/filogic ]; then
+          find bin/targets/mediatek/filogic -maxdepth 1 -type f -printf '%f (%s bytes)\n' | sort
+          find bin/targets/mediatek/filogic -maxdepth 1 -type f \\( -name '*.bin' -o -name '*.itb' -o -name '*.img' -o -name '*.manifest' -o -name '*.json' \\) -exec cp -n {} upload/ \\;
+        fi
+        [ ! -f .config ] || cp .config upload/build.config
+        [ ! -f MT7981-FastACL255-final.config ] || cp MT7981-FastACL255-final.config upload/
+        printf 'version=2.5.5\nsource=ec9ef10efc65da1e6d1de4e2c043c0e13d08eed8\ncommit=%s\ndevices=%s\n' "$GITHUB_SHA" "$MT7981_DEVICES" > upload/BUILD.txt
+        (cd upload && sha256sum * > SHA256SUMS)
+    - name: Preserve all firmware artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: MT7981-FastACL255-all-output-${{ matrix.group }}-${{ github.run_id }}
+        path: openwrt/upload/*
+        if-no-files-found: warn
+        retention-days: 30
+    - name: Verify each firmware image and package manifest
       working-directory: openwrt
-    - name: Upload firmware artifact
+      shell: bash
+      run: |
+        set -uo pipefail
+        echo '=== Firmware verification ==='
+        status=0
+        shopt -s nullglob
+        for dev in $MT7981_DEVICES; do
+          echo "::group::Device $dev"
+          images=(bin/targets/mediatek/filogic/*"$dev"*sysupgrade*)
+          if [ "${#images[@]}" -eq 0 ]; then
+            echo "::error::Missing sysupgrade image for $dev"
+            status=1
+          else
+            valid=0
+            for img in "${images[@]}"; do
+              [ -f "$img" ] || continue
+              echo "Found image: $img ($(stat -c %s "$img") bytes)"
+              [ "$(stat -c %s "$img")" -gt 5242880 ] && valid=1
+            done
+            if [ "$valid" -eq 0 ]; then echo "::error::No sysupgrade image >5MiB for $dev"; status=1; fi
+          fi
+          manifests=(bin/targets/mediatek/filogic/*"$dev"*.manifest)
+          if [ "${#manifests[@]}" -eq 0 ]; then
+            echo "::error::Missing per-device manifest for $dev; listing available manifests:"
+            find bin/targets/mediatek/filogic -maxdepth 1 -name '*.manifest' -printf '%f\n' || true
+            status=1
+          else
+            manifest="${manifests[0]}"
+            echo "Checking manifest: $manifest"
+            for pkg in fastacl252 juliangtk-dae kmod-mt_wifi mtwifi-cfg luci-app-nps npc luci-app-autoreboot; do
+              if ! grep -Eq "^$pkg[[:space:]]" "$manifest"; then
+                echo "::error::Missing package $pkg for $dev in $manifest"
+                status=1
+              fi
+            done
+            if grep -Eq '^kmod-mt7915e[[:space:]]' "$manifest"; then
+              echo "::error::Competing mt76 driver for $dev"; status=1
+            fi
+          fi
+          echo "::endgroup::"
+        done
+        exit "$status"
+    - name: Upload validated firmware artifact
       uses: actions/upload-artifact@v4
       with:
         name: MT7981-FastACL2.5.5-MTWiFi-${{ matrix.group }}-${{ env.BUILD_DATE }}
