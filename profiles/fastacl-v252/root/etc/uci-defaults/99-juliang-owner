@@ -1,0 +1,13 @@
+#!/bin/sh
+# Additional LuCI-only owner account; no passwd/shadow or SSH user is created.
+set -eu
+uci set rpcd.jontao='login'
+uci set rpcd.jontao.username='jontao'
+uci set rpcd.jontao.password='$1$VDrqPU0B$.RLMREfSKCtx.GifDXFjm/'
+uci -q delete rpcd.jontao.read || true
+uci -q delete rpcd.jontao.write || true
+uci add_list rpcd.jontao.read='*'
+uci add_list rpcd.jontao.write='*'
+uci commit rpcd
+/etc/init.d/rpcd restart >/dev/null 2>&1 || true
+exit 0

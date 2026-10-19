@@ -5,6 +5,7 @@ for _,path in ipairs({'/usr/share/ucode/luci/template/themes/argon/sysauth.ut','
  local original=fs.readfile(path)
  if original then
   local text=original:gsub('class="login%-page"','class="login-page juliang-login"',1)
+  text=text:gsub('(<input[^>]-name="luci_username"[^>]-value=)"[^"]*"','%1""',1)
   text=text:gsub('<span class="brand%-text">.-</span>','<span class="brand-text">JuLiang Network Control Center</span>',1)
   if not text:find('id="juliang-login-style"',1,true) then
    text=text:gsub('(<div class="login%-page[^"]*">)',function(tag)return link..'\n'..tag end,1)

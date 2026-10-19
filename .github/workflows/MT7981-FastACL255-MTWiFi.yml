@@ -9,6 +9,9 @@ name: MT7981 MTWiFi FastACL 2.5.5 Testing
     - profiles/fastacl-v252/**
     - scripts/*fastacl*mt7981*
     - scripts/integrate-fastacl252-dependencies.sh
+    - scripts/firmware-artifacts-mt7981.py
+    - scripts/tests/test_firmware_artifacts_mt7981.py
+    - scripts/tests/test_mt7981_workflow_shell.py
 permissions:
   contents: write
 concurrency:
@@ -30,9 +33,9 @@ jobs:
     - name: Install validation tools
       run: |
         sudo apt-get update -qq
-        sudo apt-get install -y lua5.1 nftables iproute2 curl shfmt
+        sudo apt-get install -y lua5.1 nftables iproute2 curl shfmt squashfs-tools
         python3 -m venv .venv
-        .venv/bin/pip install lupa PyYAML playwright
+        .venv/bin/pip install lupa PyYAML playwright dissect.squashfs==1.12
         .venv/bin/playwright install --with-deps chromium
         curl -fL --retry 3 -o /tmp/dae-amd64.tar.xz \
           https://github.com/daeuniverse/dae/releases/download/v2.1.1/dae-linux-x86_64.tar.xz
@@ -42,6 +45,8 @@ jobs:
         install -m755 "$(find /tmp/dae-core -type f -name dae | head -n1)" /tmp/dae
     - name: Validate Lite hot path and syntax
       run: |
+        .venv/bin/python scripts/tests/test_mt7981_workflow_shell.py
+        .venv/bin/python scripts/tests/test_firmware_artifacts_mt7981.py
         .venv/bin/python profiles/fastacl-v252/tests/test_wireless.py
         python3 profiles/fastacl-v252/tests/test_lite_hotpath.py
         python3 profiles/fastacl-v252/tests/test_runtime.py
@@ -106,12 +111,15 @@ jobs:
       run: |
         sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/lib/android /opt/hostedtoolcache/CodeQL
         sudo apt-get update
-        sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache clang cmake cpio curl device-tree-compiler dwarves flex gawk gettext gcc-multilib g++-multilib git gnutls-dev gperf help2man intltool lib32gcc-s1 libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libpython3-dev libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm nano ninja-build p7zip-full patch pkgconf python3 python3-pip python3-ply python3-docutils python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo uglifyjs unzip wget xmlto xxd zlib1g-dev zstd
+        sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache clang cmake cpio curl device-tree-compiler dwarves flex gawk gettext gcc-multilib g++-multilib git gnutls-dev gperf help2man intltool lib32gcc-s1 libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libpython3-dev libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm nano ninja-build p7zip-full patch pkgconf python3 python3-pip python3-venv python3-ply python3-docutils python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo uglifyjs unzip wget xmlto xxd zlib1g-dev zstd
         sudo timedatectl set-timezone Asia/Shanghai
         echo "BUILD_DATE=$(date +'%Y.%m.%d-%H.%M.%S')" >> "$GITHUB_ENV"
         echo "WRT_HASH=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
         mkdir -p .ccache
         echo "CCACHE_DIR=$GITHUB_WORKSPACE/.ccache" >> "$GITHUB_ENV"
+
+        python3 -m venv "$GITHUB_WORKSPACE/.firmware-venv"
+        "$GITHUB_WORKSPACE/.firmware-venv/bin/pip" install dissect.squashfs==1.12
     - name: Clone pinned MTWiFi 6.6 source
       run: |
         git clone --depth=1 --branch openwrt-24.10-6.6 https://github.com/padavanonly/immortalwrt-mt798x-24.10.git openwrt
@@ -202,16 +210,7 @@ jobs:
       if: always()
       working-directory: openwrt
       run: |
-        mkdir -p upload
-        echo '=== All generated target files ==='
-        if [ -d bin/targets/mediatek/filogic ]; then
-          find bin/targets/mediatek/filogic -maxdepth 1 -type f -printf '%f (%s bytes)\n' | sort
-          find bin/targets/mediatek/filogic -maxdepth 1 -type f \\( -name '*.bin' -o -name '*.itb' -o -name '*.img' -o -name '*.manifest' -o -name '*.json' \\) -exec cp -n {} upload/ \\;
-        fi
-        [ ! -f .config ] || cp .config upload/build.config
-        [ ! -f MT7981-FastACL255-final.config ] || cp MT7981-FastACL255-final.config upload/
-        printf 'version=2.5.5\nsource=ec9ef10efc65da1e6d1de4e2c043c0e13d08eed8\ncommit=%s\ndevices=%s\n' "$GITHUB_SHA" "$MT7981_DEVICES" > upload/BUILD.txt
-        (cd upload && sha256sum * > SHA256SUMS)
+        python3 "$GITHUB_WORKSPACE/scripts/firmware-artifacts-mt7981.py" collect
     - name: Preserve all firmware artifacts
       if: always()
       uses: actions/upload-artifact@v4
@@ -224,46 +223,7 @@ jobs:
       working-directory: openwrt
       shell: bash
       run: |
-        set -uo pipefail
-        echo '=== Firmware verification ==='
-        status=0
-        shopt -s nullglob
-        for dev in $MT7981_DEVICES; do
-          echo "::group::Device $dev"
-          images=(bin/targets/mediatek/filogic/*"$dev"*sysupgrade*)
-          if [ "${#images[@]}" -eq 0 ]; then
-            echo "::error::Missing sysupgrade image for $dev"
-            status=1
-          else
-            valid=0
-            for img in "${images[@]}"; do
-              [ -f "$img" ] || continue
-              echo "Found image: $img ($(stat -c %s "$img") bytes)"
-              [ "$(stat -c %s "$img")" -gt 5242880 ] && valid=1
-            done
-            if [ "$valid" -eq 0 ]; then echo "::error::No sysupgrade image >5MiB for $dev"; status=1; fi
-          fi
-          manifests=(bin/targets/mediatek/filogic/*"$dev"*.manifest)
-          if [ "${#manifests[@]}" -eq 0 ]; then
-            echo "::error::Missing per-device manifest for $dev; listing available manifests:"
-            find bin/targets/mediatek/filogic -maxdepth 1 -name '*.manifest' -printf '%f\n' || true
-            status=1
-          else
-            manifest="${manifests[0]}"
-            echo "Checking manifest: $manifest"
-            for pkg in fastacl252 juliangtk-dae kmod-mt_wifi mtwifi-cfg luci-app-nps npc luci-app-autoreboot; do
-              if ! grep -Eq "^$pkg[[:space:]]" "$manifest"; then
-                echo "::error::Missing package $pkg for $dev in $manifest"
-                status=1
-              fi
-            done
-            if grep -Eq '^kmod-mt7915e[[:space:]]' "$manifest"; then
-              echo "::error::Competing mt76 driver for $dev"; status=1
-            fi
-          fi
-          echo "::endgroup::"
-        done
-        exit "$status"
+        "$GITHUB_WORKSPACE/.firmware-venv/bin/python" "$GITHUB_WORKSPACE/scripts/firmware-artifacts-mt7981.py" verify
     - name: Upload validated firmware artifact
       uses: actions/upload-artifact@v4
       with:
@@ -298,5 +258,6 @@ jobs:
           openwrt/logs/
           openwrt/.config
           openwrt/MT7981-FastACL255-final.config
+          openwrt/upload/verification.json
         if-no-files-found: ignore
         retention-days: 14
