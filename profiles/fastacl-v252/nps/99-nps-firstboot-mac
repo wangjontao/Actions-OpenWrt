@@ -1,0 +1,34 @@
+#!/bin/sh
+# Configure NPS only once per device, after network device creation.
+set -eu
+state=/etc/nps-wanmac-initialized
+[ -e "$state" ] && exit 0
+command -v uci >/dev/null 2>&1 || exit 1
+[ -f /etc/config/nps ] || exit 1
+
+# Discover the device bound to WAN, not the bridge MAC of a Wi-Fi SSID.
+dev="$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@.l3_device' 2>/dev/null || true)"
+[ -n "$dev" ] || dev="$(uci -q get network.wan.device || true)"
+[ -n "$dev" ] || dev="$(uci -q get network.wan.ifname || true)"
+[ -n "$dev" ] || exit 1
+dev="${dev%% *}"
+[ -r "/sys/class/net/$dev/address" ] || exit 1
+mac="$(cat "/sys/class/net/$dev/address" | tr 'A-F' 'a-f' | tr -d ':')"
+case "$mac" in
+  *[!0-9a-f]*|'') exit 1 ;;
+esac
+[ "${#mac}" -eq 12 ] || exit 1
+[ "$mac" != "000000000000" ] || exit 1
+# Do not overwrite a previously provisioned credential.
+current="$(uci -q get nps.@nps[0].vkey || true)"
+case "$current" in
+  ''|WANMAC|wanmac)
+    uci set "nps.@nps[0].vkey=$mac"
+    ;;
+esac
+uci set "nps.@nps[0].enabled=1"
+uci commit nps
+touch "$state"
+/etc/init.d/nps enable 2>/dev/null || true
+/etc/init.d/nps restart 2>/dev/null || true
+exit 0
