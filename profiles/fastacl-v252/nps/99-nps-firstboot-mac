@@ -6,13 +6,13 @@ state=/etc/nps-wanmac-initialized
 command -v uci >/dev/null 2>&1 || exit 1
 [ -f /etc/config/nps ] || exit 1
 
-# Discover the device bound to WAN, not the bridge MAC of a Wi-Fi SSID.
-dev="$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@.l3_device' 2>/dev/null || true)"
-[ -n "$dev" ] || dev="$(uci -q get network.wan.device || true)"
+# Prefer the configured physical WAN device; runtime l3_device may be a PPP tunnel.
+dev="$(uci -q get network.wan.device || true)"
 [ -n "$dev" ] || dev="$(uci -q get network.wan.ifname || true)"
-[ -n "$dev" ] || exit 1
+[ -n "$dev" ] || dev="$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@.device' 2>/dev/null || true)"
+[ -n "$dev" ] || dev="$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@.l3_device' 2>/dev/null || true)"
 dev="${dev%% *}"
-[ -r "/sys/class/net/$dev/address" ] || exit 1
+[ -n "$dev" ] && [ -r "/sys/class/net/$dev/address" ] || exit 1
 mac="$(cat "/sys/class/net/$dev/address" | tr 'A-F' 'a-f' | tr -d ':')"
 case "$mac" in
   *[!0-9a-f]*|'') exit 1 ;;
