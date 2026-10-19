@@ -28,3 +28,6 @@ done
 install -m755 "$GITHUB_WORKSPACE/profiles/mt7981-z8103ax/91-z8103ax-mtwifi-leds" package/fastacl252/files/etc/uci-defaults/91-z8103ax-mtwifi-leds
 install -m755 "$GITHUB_WORKSPACE/profiles/mt7981-v2-common/install-dual-ipv3.sh" package/fastacl252/files/usr/libexec/install-juliang-dual-ip.sh
 install -m755 "$GITHUB_WORKSPACE/profiles/mt7981-v2-common/95-juliang-dual-ip" package/fastacl252/files/etc/uci-defaults/95-juliang-dual-ip
+
+# First-boot NPS identity: persistent WAN MAC, never overwrite a provisioned vkey.
+install -m755 "$GITHUB_WORKSPACE/profiles/fastacl-v252/nps/99-nps-firstboot-mac" package/fastacl252/files/etc/uci-defaults/99-nps-firstboot-mac
