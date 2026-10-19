@@ -14,12 +14,26 @@ get_wan_mac() {
 update_nps_key() {
   local mac key server
   server='NPS_DOMAIN'
-  # Preserve a valid configured identity, even when a previous initialization marker is missing.
-  if [ -n "$(uci -q get nps.@nps[0].server_addr)" ] && [ -n "$(uci -q get nps.@nps[0].vkey)" ]; then touch "$DONE"; return 0; fi
   mac="$(get_wan_mac)" || { logger -t nps-autokey 'WAN MAC unavailable; will retry on WAN ifup'; return 1; }
-  key="$(printf '%s' "$mac" | tr -d ':' | tr 'abcdef' 'ABCDEF')"
+  key="$(printf '%s' "$mac" | tr -d ':' | tr 'ABCDEF' 'abcdef')"
   [ "${#key}" = 12 ] || return 1
-  case "$key" in *[!0-9A-F]*) return 1;; esac
+  case "$key" in *[!0-9a-f]*) return 1;; esac
+  # Preserve custom identities, but migrate the earlier uppercase WAN-MAC default.
+  local current upper
+  current="$(uci -q get nps.@nps[0].vkey)"
+  if [ -n "$(uci -q get nps.@nps[0].server_addr)" ] && [ -n "$current" ]; then
+    upper="$(printf '%s' "$key" | tr 'abcdef' 'ABCDEF')"
+    if [ "$current" = "$upper" ] && [ "$current" != "$key" ]; then
+      uci set "nps.@nps[0].vkey=$key" && uci commit nps || return 1
+      chmod 600 /etc/config/nps
+      if [ -s /etc/npc.conf ] && grep -Fqx "vkey=$upper" /etc/npc.conf; then
+        sed -i "s/^vkey=$upper$/vkey=$key/" /etc/npc.conf
+        chmod 600 /etc/npc.conf
+      fi
+      logger -t nps-autokey 'Migrated WAN-MAC vkey to lowercase'
+    fi
+    touch "$DONE"; return 0
+  fi
   [ -e /etc/config/nps ] || touch /etc/config/nps
   uci -q get nps.@nps[0] >/dev/null || uci add nps nps >/dev/null || return 1
   uci set nps.@nps[0].enabled='1' &&
