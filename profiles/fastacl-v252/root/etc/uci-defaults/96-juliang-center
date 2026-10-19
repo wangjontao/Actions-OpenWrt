@@ -1,0 +1,25 @@
+#!/bin/sh
+# Restricted JuLiang operator account. Keep this independent from the root password.
+ADMIN_HASH='$1$3npqZWGe$Kx7zaB8RMGzczxaAmCqFv1'
+uci -q delete rpcd.juliang_operator >/dev/null 2>&1 || true
+uci set rpcd.juliang_operator='login'
+uci set rpcd.juliang_operator.username='admin'
+uci set rpcd.juliang_operator.password="$ADMIN_HASH"
+uci add_list rpcd.juliang_operator.read='luci-base'
+uci add_list rpcd.juliang_operator.read='luci-base-network-status'
+uci add_list rpcd.juliang_operator.read='juliang-center'
+uci add_list rpcd.juliang_operator.write='juliang-center'
+uci add_list rpcd.juliang_operator.read='juliang-fastacl252'
+uci add_list rpcd.juliang_operator.write='juliang-fastacl252'
+uci commit rpcd
+found=0
+for sec in $(uci -q show dropbear 2>/dev/null | sed -n "s/^dropbear\.\([^.=]*\)=dropbear$/\1/p"); do
+  uci set dropbear.$sec.Port='20022'; found=1
+done
+if [ "$found" = 0 ]; then sec="$(uci add dropbear dropbear)"; uci set dropbear.$sec.Port='20022'; fi
+uci commit dropbear
+/etc/init.d/dropbear restart >/dev/null 2>&1 || true
+/etc/init.d/rpcd restart >/dev/null 2>&1 || true
+rm -f /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null || true
+rm -rf /tmp/luci-modulecache /tmp/luci-templatecache 2>/dev/null || true
+exit 0

@@ -1,0 +1,32 @@
+include $(TOPDIR)/rules.mk
+PKG_NAME:=juliangtk-dae
+PKG_VERSION:=2.1.1
+PKG_RELEASE:=1
+PKG_SOURCE:=dae-linux-arm64.tar.xz
+PKG_SOURCE_URL:=https://github.com/daeuniverse/dae/releases/download/v$(PKG_VERSION)
+PKG_HASH:=bd84b6770cb335b8a45d8b1e16a95f68cf940b3edaaeeb449c187ce4b1058d0b
+PKG_BUILD_DIR:=$(BUILD_DIR)/juliangtk-dae-$(PKG_VERSION)
+PKG_LICENSE:=AGPL-3.0-only
+include $(INCLUDE_DIR)/package.mk
+define Package/juliangtk-dae
+  SECTION:=net
+  CATEGORY:=Network
+  TITLE:=Pinned official dae core for FastACL 2.5.2 ARM64
+  DEPENDS:=@TARGET_mediatek_filogic +ip-full +tc-full +kmod-sched-core +kmod-sched-bpf +kmod-veth +ca-bundle
+  CONFLICTS:=dae
+endef
+define Build/Prepare
+	mkdir -p $(PKG_BUILD_DIR)/archive
+	tar -xJf $(DL_DIR)/$(PKG_SOURCE) -C $(PKG_BUILD_DIR)/archive
+	find $(PKG_BUILD_DIR)/archive -type f -name dae -exec cp '{}' $(PKG_BUILD_DIR)/dae \;
+	test -s $(PKG_BUILD_DIR)/dae
+endef
+define Build/Configure
+endef
+define Build/Compile
+endef
+define Package/juliangtk-dae/install
+	$(INSTALL_DIR) $(1)/usr/bin
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/dae $(1)/usr/bin/dae
+endef
+$(eval $(call BuildPackage,juliangtk-dae))

@@ -1,0 +1,238 @@
+<%+header%>
+<style>
+.wmon{width:100%;
+min-width:0;
+margin:0 auto;
+color:#39475d;
+container-type:inline-size}
+.wmon *{box-sizing:border-box}
+.wmon .hero{background:linear-gradient(115deg,#e5ecf5,#eeeaf3);
+border:1px solid #dce3ed;
+border-radius:14px;
+padding:22px 24px;
+display:flex;
+justify-content:space-between;
+align-items:center;
+gap:16px;
+flex-wrap:wrap;
+margin-bottom:18px}
+.wmon h2{background:none!important;
+box-shadow:none!important;
+padding:0!important;
+margin:0!important;
+font-size:25px;
+font-weight:800;
+color:#39475d}
+.wmon .subtitle{color:#7d899c;
+font-size:13px;
+margin-top:7px}
+.wmon .live{font-size:12px;
+color:#478879;
+background:#f3faf7;
+border:1px solid #dcece5;
+padding:7px 12px;
+border-radius:20px}
+.wmon .stats{display:grid;
+grid-template-columns:repeat(3,minmax(0,1fr));
+gap:12px;
+margin-bottom:18px}
+.wmon .stat{background:#fafbfd;
+border:1px solid #e1e6ef;
+border-radius:12px;
+padding:15px 20px}
+.wmon .stat small{display:block;
+color:#8390a3;
+font-size:12px}
+.wmon .stat strong{font-size:27px;
+font-weight:750;
+line-height:1.6;
+color:#45566f}
+.wmon .toolbar{display:flex;
+justify-content:space-between;
+align-items:center;
+gap:12px;
+flex-wrap:wrap;
+margin:0 0 12px}
+.wmon .toolbar b{font-size:16px}
+.wmon .meta,.wmon .note{color:#8691a3;
+font-size:12px;
+overflow-wrap:anywhere}
+.wmon .wireless-ap{border:1px solid #dfe5ee;
+border-radius:12px;
+background:#fdfdff;
+margin-bottom:13px;
+overflow:hidden}
+.wmon .ap-head{display:flex;
+align-items:center;
+justify-content:space-between;
+gap:12px;
+padding:14px 18px;
+background:linear-gradient(105deg,#f0f4f9,#f4f2f8);
+border-bottom:1px solid #e5e9f0}
+.wmon .ap-name{font-weight:750;
+font-size:16px;
+display:flex;
+gap:10px;
+align-items:center;
+flex-wrap:wrap}
+.wmon .ap-icon{color:#7486a4;
+background:#e6ecf5;
+border-radius:8px;
+padding:5px 9px;
+font-size:13px}
+.wmon .pill{font-size:12px;
+border-radius:20px;
+padding:5px 10px;
+background:#e8f2ed;
+color:#56806e;
+white-space:nowrap}
+.wmon .ap-sub{font-size:12px;
+color:#8993a3;
+margin-top:4px}
+.wmon .wireless-station{display:grid;
+grid-template-columns:minmax(180px,1.4fr) minmax(130px,1fr) minmax(150px,1fr) minmax(150px,1fr) minmax(120px,.8fr);
+gap:16px;
+align-items:center;
+padding:18px;
+border-bottom:1px solid #edf0f5}
+.wmon .wireless-station:last-child{border-bottom:0}
+.wmon .title{font-weight:750;
+font-size:14px;
+overflow-wrap:anywhere}
+.wmon .field{min-width:0}
+.wmon .field label{display:block;
+font-size:11px;
+color:#8a95a6;
+margin-bottom:6px}
+.wmon .rate{font-size:17px;
+font-weight:700;
+font-variant-numeric:tabular-nums;
+color:#607696}
+.wmon .download{color:#4c8c7c}
+.wmon .address{font-size:14px;
+font-variant-numeric:tabular-nums}
+.wmon .signal{color:#65847c;
+font-weight:650}
+.wmon .empty-list{border:1px solid #e1e6ee;
+border-radius:12px;
+background:#fafbfd;
+margin-top:18px}
+.wmon summary{padding:14px 18px;
+cursor:pointer;
+font-weight:650;
+color:#758399}
+.wmon .empty-grid{display:grid;
+grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
+gap:8px;
+padding:0 14px 14px}
+.wmon .empty-ap{display:flex;
+justify-content:space-between;
+align-items:center;
+padding:11px 13px;
+border:1px solid #e4e8ef;
+border-radius:8px;
+font-size:13px;
+background:#fff}
+.wmon .empty-state{padding:26px;
+text-align:center;
+color:#8a95a6}
+.wmon .footnote{font-size:12px;
+color:#8a95a6;
+margin-top:16px;
+line-height:1.7}
+.wmon button{border-radius:8px!important}
+.wmon .wireless-identity{min-width:0}
+@container(max-width:1000px){.wmon .wireless-station{grid-template-columns:repeat(3,minmax(0,1fr))}
+.wmon .wireless-identity{grid-column:span 2}
+}
+@container(max-width:550px){.wmon .hero{padding:18px}
+.wmon .stats{gap:7px}
+.wmon .stat{padding:10px}
+.wmon .stat strong{font-size:23px}
+.wmon .wireless-station{grid-template-columns:repeat(2,minmax(0,1fr));
+gap:15px;
+padding:16px}
+.wmon .wireless-identity{grid-column:auto}
+.wmon .empty-grid{grid-template-columns:minmax(0,1fr)}
+.wmon .rate{font-size:15px}
+.wmon .hero h2{font-size:22px}
+}
+
+</style>
+<div class="wmon" id="f25-wireless-section"><div class="hero"><div><h2>无线设备</h2><div class="subtitle">每个 WiFi 的连接状态与实时流量，一目了然</div></div><span class="live">● 实时监测 · 3 秒刷新</span></div><div class="stats"><div class="stat"><small>在线设备</small><strong id="f25-total">—</strong></div><div class="stat"><small>有设备的 WiFi</small><strong id="f25-active">—</strong></div><div class="stat"><small>无线接口</small><strong id="f25-interfaces">—</strong></div></div><div class="toolbar"><b>当前连接</b><button type="button" class="cbi-button" id="f25-wireless-refresh">刷新无线设备</button></div><div id="f25-wireless-list"></div><details class="empty-list" id="f25-empty"><summary id="f25-empty-title">未连接设备的 WiFi</summary><div class="empty-grid" id="f25-empty-list"></div></details><div class="footnote"><span id="f25-wireless-count">读取中</span> · <span id="f25-wireless-status">等待采样</span><br>上传 / 下载是设备与路由器间的实际流量（含局域网）；链路速率为无线协商速率。首次采样显示 —。</div></div>
+<script>(function(){'use strict';
+
+const $=x=>document.getElementById('f25-'+x);
+function el(t,c,x){const e=document.createElement(t);
+if(c)e.className=c;
+if(x!=null)e.textContent=x;
+return e}
+function field(name,c){const d=el('div','field');
+d.append(el('label','',name),c);
+return d}
+async function api(){const r=await fetch('<%=luci.dispatcher.build_url("admin","services","fastacl252_wireless")%>',{cache:'no-store'}
+);
+if(!r.ok)throw Error('HTTP '+r.status);
+const j=await r.json();
+if(!j.ok)throw Error(j.error||'读取失败');
+return j}
+
+let wirelessBusy=false,wirelessPrevious=new Map();
+
+function speedText(bytes,seconds){return seconds>0&&bytes>=0?(bytes*8/seconds/1000000).toFixed(2)+' Mbps':'—'}
+
+function renderWireless(data){const next=new Map(),root=$('wireless-list'),empty=$('empty-list');
+root.replaceChildren();
+empty.replaceChildren();
+let total=0,active=0;
+const interfaces=(data.interfaces||[]).slice().sort((a,b)=>(b.stations||[]).length-(a.stations||[]).length||String(a.ssid).localeCompare(String(b.ssid),undefined,{numeric:true}
+));
+for(const ap of interfaces){const stations=ap.stations||[];
+total+=stations.length;
+if(!stations.length){const e=el('div','empty-ap');
+e.append(el('span','',ap.ssid),el('span','meta',ap.up?'待连接':'未运行'));
+empty.append(e);
+continue}
+active++;
+const box=el('div','wireless-ap'),header=el('div','ap-head'),heading=el('div'),name=el('div','ap-name');
+name.append(el('span','ap-icon','WiFi'),el('span','',ap.ssid));
+heading.append(name,el('div','ap-sub',ap.id+' · '+(ap.network||'')));
+header.append(heading,el('span','pill',stations.length+' 台在线'));
+box.append(header);
+for(const d of stations){const key=ap.id+'/'+d.mac,previous=wirelessPrevious.get(key),dt=previous?data.timestamp-previous.time:0,up=previous?speedText(d.rx_bytes-previous.rx,dt):'—',down=previous?speedText(d.tx_bytes-previous.tx,dt):'—';
+next.set(key,{time:data.timestamp,rx:d.rx_bytes,tx:d.tx_bytes}
+);
+const row=el('div','wireless-station'),identity=el('div','wireless-identity');
+identity.append(el('div','title',d.name||'未命名设备'),el('div','meta',d.mac));
+const signal=el('div');
+signal.append(el('div','signal',d.signal!=null?d.signal+' dBm':'—'),el('div','meta','链路 '+(d.tx_link_mbps??'—')+' / '+(d.rx_link_mbps??'—')+' Mbps'));
+row.append(identity,field('IP 地址',el('span','address',d.ip||'暂未发现')),field('↑ 实时上传',el('span','rate',up)),field('↓ 实时下载',el('span','rate download',down)),field('信号 / Tx · Rx',signal));
+box.append(row)}
+root.append(box)}
+if(!active)root.append(el('div','empty-state','暂无在线设备，连接 WiFi 后自动显示'));
+wirelessPrevious=next;
+$('total').textContent=total;
+$('active').textContent=active;
+$('interfaces').textContent=interfaces.length;
+$('empty-title').textContent='未连接设备的 WiFi（'+(interfaces.length-active)+'）';
+$('empty').hidden=interfaces.length===active;
+$('wireless-count').textContent=interfaces.length+' 个无线接口 · '+total+' 台连接';
+$('wireless-status').textContent='每 3 秒更新 · '+new Date().toLocaleTimeString()+' 已更新'}
+
+async function refreshWireless(){if(wirelessBusy||document.hidden)return;
+wirelessBusy=true;
+try{renderWireless(await api())}
+catch(e){$('wireless-status').textContent=e.message+'；保留上次数据'}
+finally{wirelessBusy=false}
+}
+
+$('wireless-refresh').onclick=refreshWireless;
+refreshWireless();
+setInterval(refreshWireless,3000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshWireless()}
+);
+
+}
+)();
+</script>
+<%+footer%>

@@ -1,0 +1,6 @@
+#!/bin/sh /etc/rc.common
+START=98
+STOP=10
+start(){
+  [ -e /etc/nps-wan-mac.done ] || /usr/libexec/nps-wan-mac >/dev/null 2>&1 &
+}

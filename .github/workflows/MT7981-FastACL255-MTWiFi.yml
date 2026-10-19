@@ -1,0 +1,256 @@
+name: MT7981 MTWiFi FastACL 2.5.5 Testing
+'on':
+  workflow_dispatch: {}
+  push:
+    branches:
+    - codex/mt7981-fastacl255
+    paths:
+    - .github/workflows/MT7981-FastACL255-MTWiFi.yml
+    - profiles/fastacl-v252/**
+    - scripts/*fastacl*mt7981*
+    - scripts/integrate-fastacl252-dependencies.sh
+permissions:
+  contents: write
+concurrency:
+  group: mt7981-fastacl255
+  cancel-in-progress: true
+jobs:
+  preflight:
+    name: MTWiFi, DNS and UI gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+    - uses: actions/setup-go@v5
+      with:
+        go-version: 1.26.0
+        cache: false
+    - name: Install validation tools
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y lua5.1 nftables iproute2 curl shfmt
+        python3 -m venv .venv
+        .venv/bin/pip install lupa PyYAML playwright
+        .venv/bin/playwright install --with-deps chromium
+        curl -fL --retry 3 -o /tmp/dae-amd64.tar.xz \
+          https://github.com/daeuniverse/dae/releases/download/v2.1.1/dae-linux-x86_64.tar.xz
+        echo 'c550af580dc97cc90986260da78c4bf72917f3213c2b5d8b79c45199d9c3dc90  /tmp/dae-amd64.tar.xz' | sha256sum -c -
+        mkdir /tmp/dae-core
+        tar -xJf /tmp/dae-amd64.tar.xz -C /tmp/dae-core
+        install -m755 "$(find /tmp/dae-core -type f -name dae | head -n1)" /tmp/dae
+    - name: Validate Lite hot path and syntax
+      run: |
+        .venv/bin/python profiles/fastacl-v252/tests/test_wireless.py
+        python3 profiles/fastacl-v252/tests/test_lite_hotpath.py
+        python3 profiles/fastacl-v252/tests/test_runtime.py
+        find profiles/fastacl-v252/root -name '*.lua' -print0 | xargs -0 -n1 luac5.1 -p
+        find profiles/fastacl-v252/root -type f | while read -r file; do
+          if head -n1 "$file" | grep -q '^#!/bin/sh'; then sh -n "$file"; shfmt -ln posix "$file" >/dev/null; fi
+        done
+        .venv/bin/python profiles/fastacl-v252/tests/test_import.py
+        .venv/bin/python profiles/fastacl-v252/tests/test_subscription.py
+        .venv/bin/python profiles/fastacl-v252/tests/test_menu_cleanup.py
+        .venv/bin/python profiles/fastacl-v252/tests/test_reboot.py
+        .venv/bin/python profiles/fastacl-v252/tests/test_login_theme.py
+    - name: Validate DNS relay and native nodes
+      run: |
+        (cd profiles/fastacl-v252/dns && go mod tidy && go test -race -timeout 2m ./... && go build -trimpath -o /tmp/fastacl252-dns .)
+        .venv/bin/python profiles/fastacl-v252/tests/test_mihomo.py --core /tmp/dae --helper /tmp/fastacl252-dns
+        for config in profiles/fastacl-v252/test-results/import-*.dae; do /tmp/dae validate -c "$config"; done
+    - name: Validate quick-switch console in Chromium
+      run: |
+        cd profiles/fastacl-v252/tests
+        ../../../.venv/bin/python test_browser.py
+    - name: Validate MTWiFi adapter and vendor ABI
+      run: |
+        .venv/bin/python profiles/fastacl-v252/tests/test_mtwifi.py
+        go test ./profiles/fastacl-v252/mtwifi/mtwifi-station-bytes.go ./profiles/fastacl-v252/mtwifi/mtwifi-station-bytes_test.go
+        CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /tmp/mtwifi-station-bytes ./profiles/fastacl-v252/mtwifi/mtwifi-station-bytes.go
+        readelf -h /tmp/mtwifi-station-bytes | grep -q AArch64
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: FastACL255-preflight-evidence
+        path: profiles/fastacl-v252/test-results/*
+        if-no-files-found: warn
+        retention-days: 14
+  build:
+    name: MT7981 ${{ matrix.group }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - group: hy-rax-360
+          devices: philips_hy3000 cmcc_rax3000m-nand-mtk cmcc_rax3000m-emmc-mtk qihoo_360t7 aigo_ags21
+        - group: a10-newland
+          devices: cmcc_a10-ubootmod konka_komi-a31 newland_nl-wr8103 newland_nl-wr9103 abt_asr3000
+        - group: q30-ax3000t
+          devices: jcg_q30-pro xiaomi_mi-router-ax3000t xiaomi_mi-router-ax3000t-mtkuboot xiaomi_mi-router-ax3000t-ubootmod
+        - group: wr30u-z8103
+          devices: xiaomi_mi-router-wr30u-stock xiaomi_mi-router-wr30u-ubootmod nokia_ea0326gmp sl_3000-emmc zbtlink_zbt-z8103ax-c
+    env:
+      MT7981_DEVICES: ${{ matrix.devices }}
+      DEVICE_GROUP: ${{ matrix.group }}
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+    - name: Initialize build environment
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/lib/android /opt/hostedtoolcache/CodeQL
+        sudo apt-get update
+        sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache clang cmake cpio curl device-tree-compiler dwarves flex gawk gettext gcc-multilib g++-multilib git gnutls-dev gperf help2man intltool lib32gcc-s1 libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libpython3-dev libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm nano ninja-build p7zip-full patch pkgconf python3 python3-pip python3-ply python3-docutils python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo uglifyjs unzip wget xmlto xxd zlib1g-dev zstd
+        sudo timedatectl set-timezone Asia/Shanghai
+        echo "BUILD_DATE=$(date +'%Y.%m.%d-%H.%M.%S')" >> "$GITHUB_ENV"
+        echo "WRT_HASH=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+        mkdir -p .ccache
+        echo "CCACHE_DIR=$GITHUB_WORKSPACE/.ccache" >> "$GITHUB_ENV"
+    - name: Clone pinned MTWiFi 6.6 source
+      run: |
+        git clone --depth=1 --branch openwrt-24.10-6.6 https://github.com/padavanonly/immortalwrt-mt798x-24.10.git openwrt
+        git -C openwrt fetch --depth=1 origin ec9ef10efc65da1e6d1de4e2c043c0e13d08eed8
+        git -C openwrt checkout --detach ec9ef10efc65da1e6d1de4e2c043c0e13d08eed8
+    - uses: actions/setup-go@v5
+      with:
+        go-version: 1.26.0
+        cache: false
+    - name: Restore source and compiler cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          openwrt/dl
+          .ccache
+        key: mt7981-fastacl255-${{ matrix.group }}-${{ hashFiles('profiles/fastacl-v252/*Makefile', 'profiles/fastacl-v252/mt7981-common.config')
+          }}
+        restore-keys: mt7981-fastacl255-${{ matrix.group }}-
+    - name: Update feeds
+      run: |
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+        ./scripts/feeds install -f -p packages nps npc
+        ./scripts/feeds install -f -p luci luci-app-nps luci-i18n-nps-zh-cn luci-app-autoreboot
+      working-directory: openwrt
+    - name: Pin original ehang NPS client 0.26.10 and enable domain server
+      working-directory: openwrt
+      run: |
+        NPS_MAKEFILE=feeds/packages/net/nps/Makefile
+        sed -i 's/^PKG_VERSION:=.*/PKG_VERSION:=0.26.10/' "$NPS_MAKEFILE"
+        sed -i 's#^PKG_SOURCE_URL:=.*#PKG_SOURCE_URL:=https://codeload.github.com/ehang-io/nps/tar.gz/v$(PKG_VERSION)?#' "$NPS_MAKEFILE"
+        sed -i 's/^PKG_HASH:=.*/PKG_HASH:=1b2fe9d251f55105d65027a1cee464f65d2f6ab3bd4a20e4655e5135db68aee7/' "$NPS_MAKEFILE"
+        grep -q '^PKG_VERSION:=0.26.10$' "$NPS_MAKEFILE"
+        grep -q 'github.com/ehang-io/nps' "$NPS_MAKEFILE"
+        for nps_lua in feeds/luci/applications/luci-app-nps/luasrc/model/cbi/nps.lua package/feeds/luci/luci-app-nps/luasrc/model/cbi/nps.lua; do
+          [ -f "$nps_lua" ] || continue
+          sed -i -E 's/server\.datatype[[:space:]]*=[[:space:]]*"ipaddr"/server.datatype="host"/' "$nps_lua"
+          sed -i 's/Must an IPv4 address/IPv4 address or domain name/' "$nps_lua"
+        done
+        grep -q 'server.datatype="host"' feeds/luci/applications/luci-app-nps/luasrc/model/cbi/nps.lua
+        echo 'Pinned original ehang-io NPC 0.26.10 for server compatibility.'
+    - name: Add Argon and NPS defaults
+      run: |
+        rm -rf package/luci-theme-argon package/luci-app-argon-config
+        git clone --depth=1 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
+        git clone --depth=1 https://github.com/jerrykuku/luci-app-argon-config.git package/luci-app-argon-config
+        NPS_CONFIG_FILE="$(find feeds/luci package/feeds/luci -path '*/luci-app-nps/root/etc/config/nps' -type f 2>/dev/null | head -n1)"
+        if [ -n "$NPS_CONFIG_FILE" ]; then
+          cat > "$NPS_CONFIG_FILE" <<'NPS_CONFIG'
+        config nps
+          option enabled '1'
+          option server_addr 'nps.jontao.top'
+          option server_port '8024'
+          option protocol 'tcp'
+          option compress '1'
+          option crypt '1'
+          option vkey 'WANMAC'
+          option log_level '4'
+        NPS_CONFIG
+        fi
+      working-directory: openwrt
+    - name: Integrate FastACL Lite
+      run: |
+        sh "$GITHUB_WORKSPACE/scripts/integrate-fastacl255-mt7981.sh"
+        grep -q "PKG_VERSION:=2.5.5" package/fastacl252/Makefile
+      working-directory: openwrt
+    - name: Download sources
+      run: |
+        make download -j"$(nproc)"
+        find dl -type f -size -1024c -print -delete
+      working-directory: openwrt
+    - name: Compile device firmware
+      run: |
+        rm -rf dl/go-mod-cache
+        mkdir -p dl/go-mod-cache
+        make tools/install -j"$(nproc)" || make tools/install -j1 V=s
+        make toolchain/install -j"$(nproc)" || make toolchain/install -j1 V=s
+        make target/linux/compile -j"$(nproc)" V=s
+        kernel=$(find build_dir/target-* -path '*/linux-mediatek_filogic/linux-6.6*/.config' | head -n1)
+        test -n "$kernel"
+        sh profiles/fastacl-v252/check-kernel.sh "$kernel"
+        make -j"$(nproc)" || make -j1 V=s
+        kernel=$(find build_dir/target-* -path '*/linux-mediatek_filogic/linux-6.6*/.config' | head -n1)
+        test -n "$kernel"
+        sh profiles/fastacl-v252/check-kernel.sh "$kernel"
+      working-directory: openwrt
+    - name: Verify and collect firmware
+      run: |
+        mkdir -p upload
+        for dev in $MT7981_DEVICES; do
+         mapfile -t images < <(find bin/targets/mediatek/filogic -maxdepth 1 -type f -iname "*${dev}*sysupgrade*" -size +5M)
+         [ "${#images[@]}" -gt 0 ] || { echo "Missing image: $dev"; exit 1; }
+         cp -a "${images[@]}" upload/
+         manifest=$(find bin/targets/mediatek/filogic -maxdepth 1 -type f -name "*${dev}*.manifest" | head -n1)
+         test -n "$manifest"
+         for pkg in fastacl252 juliangtk-dae kmod-mt_wifi mtwifi-cfg luci-app-nps npc luci-app-autoreboot; do
+          grep -q "^$pkg " "$manifest" || { echo "Missing $pkg in $dev"; exit 1; }
+         done
+         if grep -q '^kmod-mt7915e ' "$manifest"; then echo "Competing mt76 driver in $dev"; exit 1; fi
+         cp -a "$manifest" upload/
+        done
+        cp .config upload/build.config
+        cp MT7981-FastACL255-final.config upload/
+        printf 'version=2.5.5\nsource=ec9ef10efc65da1e6d1de4e2c043c0e13d08eed8\ncommit=%s\ndevices=%s\nwireless=MTWiFi 7.6.6.1\nforwarding=CPU (HNAT/WHNAT disabled for dae policy)\n' "$GITHUB_SHA" "$MT7981_DEVICES" > upload/BUILD.txt
+        sha256sum upload/* > upload/SHA256SUMS
+      working-directory: openwrt
+    - name: Upload firmware artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: MT7981-FastACL2.5.5-MTWiFi-${{ matrix.group }}-${{ env.BUILD_DATE }}
+        path: openwrt/upload/*
+        if-no-files-found: error
+        retention-days: 30
+    - name: Publish firmware release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: MT7981-FastACL2.5.5-MTWiFi-${{ matrix.group }}-${{ env.BUILD_DATE }}
+        name: MT7981 FastACL 2.5.5 MTWiFi ${{ matrix.group }} ${{ env.BUILD_DATE }}
+        body: |
+          FastACL 2.5.5 MTWiFi testing build.
+          Devices: ${{ matrix.devices }}
+
+          MTWiFi 7.6.6.1 retained; HNAT/WHNAT acceleration is disabled for dae policy enforcement.
+          Matched 6.6 hardware trees and existing Z8103AX LED / dual-IP payloads retained.
+          Per-device counters use the vendor ioctl; unavailable counters are shown as unavailable.
+          Hardware testing is still required before deployment.
+          NPS uses nps.jontao.top:8024, with lowercase WAN MAC vkey (colons removed).
+        files: openwrt/upload/*
+        fail_on_unmatched_files: true
+        prerelease: true
+        make_latest: false
+    - name: Upload build failure diagnostics
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: MT7981-FastACL255-failure-${{ matrix.group }}-${{ github.run_id }}
+        path: |
+          openwrt/logs/
+          openwrt/.config
+          openwrt/MT7981-FastACL255-final.config
+        if-no-files-found: ignore
+        retention-days: 14

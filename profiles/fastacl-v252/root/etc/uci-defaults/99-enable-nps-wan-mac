@@ -1,0 +1,4 @@
+#!/bin/sh
+/etc/init.d/nps-wan-mac enable
+/etc/init.d/nps-wan-mac start
+exit 0

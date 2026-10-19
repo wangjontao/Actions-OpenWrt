@@ -1,0 +1,9 @@
+{
+  "version": "2.5.5",
+  "upstream_repository": "wangjontao/immortalwrt-24.10",
+  "upstream_commit": "63fe021f3c52d1bf97c2ff4f729e6475819e4f1f",
+  "wireless_source": "padavanonly/immortalwrt-mt798x-24.10",
+  "wireless_commit": "ec9ef10efc65da1e6d1de4e2c043c0e13d08eed8",
+  "driver": "MTWiFi 7.6.6.1",
+  "hardware_validation": "pending"
+}

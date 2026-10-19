@@ -1,0 +1,4 @@
+#!/bin/sh
+lua /usr/libexec/juliang-menu-cleanup.lua
+lua /usr/libexec/juliang-login-theme.lua
+exit 0

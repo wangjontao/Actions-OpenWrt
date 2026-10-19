@@ -1,0 +1,74 @@
+{
+  "juliang-center": {
+    "description": "JuLiangTK control center status",
+    "read": {
+      "uci": [
+        "network",
+        "wireless",
+        "system",
+        "fastacl252"
+      ],
+      "ubus": {
+        "session": [
+          "access",
+          "get"
+        ],
+        "network.interface": [
+          "dump"
+        ],
+        "network.wireless": [
+          "status"
+        ],
+        "luci": [
+          "getFeatures"
+        ]
+      }
+    },
+    "write": {
+      "ubus": {
+        "system": [
+          "reboot"
+        ]
+      }
+    }
+  },
+  "juliang-fastacl252": {
+    "description": "JuLiangTK FastACL 2.5.2 dae operator access",
+    "read": {
+      "uci": [
+        "fastacl252",
+        "dhcp",
+        "network",
+        "wireless",
+        "firewall"
+      ],
+      "ubus": {
+        "session": [
+          "access",
+          "get"
+        ],
+        "network.interface": [
+          "dump"
+        ],
+        "network.wireless": [
+          "status"
+        ],
+        "iwinfo": [
+          "assoclist"
+        ],
+        "luci": [
+          "getFeatures"
+        ]
+      }
+    },
+    "write": {
+      "uci": [
+        "fastacl252",
+        "dhcp",
+        "network",
+        "wireless",
+        "firewall"
+      ]
+    }
+  }
+}

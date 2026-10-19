@@ -1,0 +1,51 @@
+#!/bin/sh
+set -u
+DONE=/etc/nps-wan-mac.done
+[ -e "$DONE" ] && exit 0
+[ -f /etc/config/nps ] && [ -x /etc/init.d/nps ] || exit 1
+
+valid_mac(){
+  case "$1" in
+    ''|00:00:00:00:00:00|ff:ff:ff:ff:ff:ff) return 1;;
+    ??:??:??:??:??:??) return 0;;
+    *) return 1;;
+  esac
+}
+
+get_wan_mac(){
+  WAN_DEV="$(uci -q get network.wan.device 2>/dev/null || true)"
+  WAN_DEV="${WAN_DEV#@}"
+  [ -n "$WAN_DEV" ] || WAN_DEV="$(ip route 2>/dev/null | awk '/default/ {print $5; exit}')"
+  case "$WAN_DEV" in pppoe-*) WAN_DEV="${WAN_DEV#pppoe-}";; esac
+  WAN_MAC=''
+  [ -n "$WAN_DEV" ] && [ -r "/sys/class/net/$WAN_DEV/address" ] && WAN_MAC="$(cat "/sys/class/net/$WAN_DEV/address")"
+  valid_mac "$WAN_MAC" && return 0
+  for LOWER in /sys/class/net/"$WAN_DEV"/lower_*; do
+    [ -r "$LOWER/address" ] || continue
+    WAN_MAC="$(cat "$LOWER/address")"
+    valid_mac "$WAN_MAC" && return 0
+  done
+  return 1
+}
+
+tries=0
+while [ "$tries" -lt 60 ]; do
+  get_wan_mac && break
+  tries=$((tries+1))
+  sleep 2
+done
+valid_mac "$WAN_MAC" || { logger -t nps-wan-mac 'ERROR: physical WAN MAC not found'; exit 1; }
+
+NPS_KEY="$(printf '%s' "$WAN_MAC" | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+uci -q set nps.@nps[0].enabled='1'
+uci -q set nps.@nps[0].server_addr='nps.jontao.top'
+uci -q set nps.@nps[0].server_port='8024'
+uci -q set nps.@nps[0].protocol='tcp'
+uci -q set nps.@nps[0].compress='1'
+uci -q set nps.@nps[0].crypt='1'
+uci -q set nps.@nps[0].vkey="$NPS_KEY"
+uci -q commit nps
+/etc/init.d/nps enable
+/etc/init.d/nps restart
+touch "$DONE"
+logger -t nps-wan-mac "NPS configured from physical WAN MAC $WAN_DEV"

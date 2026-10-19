@@ -1,0 +1,25 @@
+/* JuLiang centered login; scoped so authenticated LuCI pages are untouched. */
+html:has(.juliang-login),body:has(.juliang-login){min-height:100%;height:auto;overflow:auto}
+.login-page.juliang-login{position:relative;display:flex!important;align-items:center;justify-content:center;min-height:100vh;min-height:100dvh;height:auto!important;width:100%;padding:36px 20px;box-sizing:border-box}
+.login-page.juliang-login .main-bg,.login-page.juliang-login .video{position:fixed;inset:0;width:100%;height:100%;z-index:0}
+.login-page.juliang-login:before{content:'';position:fixed;inset:0;background:linear-gradient(120deg,rgba(22,43,65,.22),rgba(26,37,54,.08));pointer-events:none;z-index:1}
+.login-page.juliang-login .login-container{position:relative!important;inset:auto!important;z-index:2;margin:0!important;width:min(460px,100%)!important;max-width:100%;height:auto!important;min-height:0;display:flex;align-items:stretch;background:none!important;box-shadow:none!important;backdrop-filter:none!important;transform:none!important}
+.login-page.juliang-login .login-container .login-form{position:relative!important;inset:auto!important;transform:none!important;width:100%!important;max-width:none!important;height:auto!important;min-height:0;display:block;box-sizing:border-box;padding:32px 34px 30px;border:1px solid rgba(255,255,255,.78);border-radius:22px;background:rgba(248,251,255,.91);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:0 20px 65px rgba(20,35,54,.23)}
+.login-page.juliang-login .login-container .login-form .brand{display:block!important;text-align:center;margin:0 0 26px!important;padding:0;color:#254969!important}
+.login-page.juliang-login .login-container .login-form .brand .icon{display:none!important}
+.login-page.juliang-login .login-container .login-form .brand .brand-text{display:block;margin:0!important;font-family:system-ui,-apple-system,'Segoe UI',sans-serif!important;font-size:27px!important;font-weight:800;line-height:1.25;letter-spacing:-.5px;word-break:normal;overflow-wrap:normal;text-wrap:balance;color:#254969!important}
+.login-page.juliang-login .login-container .login-form .form-login{padding:0!important;width:100%!important}
+.login-page.juliang-login .login-container .login-form .input-group{margin:0 0 16px!important;background:#fff;border:1px solid #c9d8e8;border-radius:10px;box-shadow:0 2px 5px rgba(46,77,112,.03);overflow:hidden}
+.login-page.juliang-login .login-container .login-form .input-group:focus-within{border-color:#648db9;box-shadow:0 0 0 3px rgba(82,126,181,.13)}
+.login-page.juliang-login .login-container .login-form .input-group input{height:48px!important;min-height:48px;width:100%!important;box-sizing:border-box;margin:0!important;padding:10px 14px 10px 44px!important;background:transparent!important;color:#294765!important;border:none!important;border-radius:10px;font-size:15px!important;box-shadow:none!important}
+.login-page.juliang-login .login-container .login-form .input-group:before{color:#6a8bad!important;left:14px!important;top:50%!important;transform:translateY(-50%);line-height:1!important;z-index:1}
+.login-page.juliang-login .login-container .login-form .input-group .border{display:none!important}
+.login-page.juliang-login .login-container .login-form .cbi-button-apply{margin:8px 0 0!important;min-height:47px;border-radius:10px;background:linear-gradient(105deg,#527eb5,#638fae)!important;color:#fff!important;letter-spacing:5px;font-size:15px;box-shadow:0 5px 13px rgba(59,100,148,.17)}
+.login-page.juliang-login .login-container .login-form .errorbox{padding:0 0 15px!important;color:#b73c47;font-size:13px}
+.login-page.juliang-login .login-container footer{position:absolute!important;inset:auto!important;top:100%!important;left:0!important;width:100%;padding:17px 0 0!important;margin:0!important;color:#edf4fb!important;line-height:1.6;box-sizing:border-box;font-size:10px}
+.login-page.juliang-login .login-container footer a{color:#edf4fb!important;text-shadow:0 1px 3px rgba(0,0,0,.5)}
+.login-page.juliang-login .login-container footer .ftc{position:static!important;width:auto}
+@media(max-width:520px){.login-page.juliang-login{padding:24px 16px}.login-page.juliang-login .login-container .login-form{padding:27px 24px;border-radius:18px}.login-page.juliang-login .login-container .login-form .brand .brand-text{font-size:24px!important}.login-page.juliang-login .login-container footer{font-size:9px}}
+@media(max-height:570px){.login-page.juliang-login{justify-content:flex-start;padding-top:22px;padding-bottom:22px}.login-page.juliang-login .login-container .login-form{padding-top:23px;padding-bottom:23px}.login-page.juliang-login .login-container .login-form .brand{margin-bottom:18px!important}}
+
+.login-page.juliang-login .login-container footer{display:none!important}
