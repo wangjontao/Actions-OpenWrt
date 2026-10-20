@@ -1,4 +1,5 @@
 name: MT7981 MTWiFi FastACL 2.5.5 Testing
+run-name: 'FastACL 2.5.5 MT7981 CPU optimization · ${{ github.ref_name }}'
 'on':
   workflow_dispatch: {}
   push:
