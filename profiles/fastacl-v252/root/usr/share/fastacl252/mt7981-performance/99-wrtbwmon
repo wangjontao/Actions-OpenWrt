@@ -1,0 +1,4 @@
+#!/bin/sh
+[ "$ACTION" = ifup -o "$ACTION" = ifupdate ] || exit 0
+# Each sample rediscovers interfaces and firewall chains. Do not restart per AP.
+/etc/init.d/wrtbwmon running >/dev/null 2>&1 || /etc/init.d/wrtbwmon start

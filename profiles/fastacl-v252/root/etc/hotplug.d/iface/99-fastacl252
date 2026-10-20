@@ -1,3 +1,15 @@
 #!/bin/sh
 [ "$(uci -q get fastacl252.main.enabled)" = 1 ] || exit 0
-case "$ACTION" in ifup|ifupdate) /usr/bin/fastacl252 apply >/tmp/fastacl252/hotplug.log 2>&1 &;; esac
+case "$ACTION" in ifup|ifupdate) ;; *) exit 0;; esac
+# Managed topology changes are applied once by the console; boot is guarded.
+case "$INTERFACE" in jfa25w*) exit 0;; esac
+[ ! -d /tmp/fastacl252-edit.lock ] || exit 0
+[ "$ACTION" != ifupdate ] || [ -n "$IFUPDATE_ADDRESSES$IFUPDATE_DATA" ] || exit 0
+mkdir /tmp/fastacl252-hotplug.lock 2>/dev/null || exit 0
+(
+ trap 'rmdir /tmp/fastacl252-hotplug.lock 2>/dev/null || true' EXIT
+ sleep 3
+ [ ! -d /tmp/fastacl252-edit.lock ] || exit 0
+ [ ! -d /tmp/fastacl252-apply.lock ] || exit 0
+ /usr/bin/fastacl252 hot-apply >/tmp/fastacl252/hotplug.log 2>&1
+) </dev/null >/dev/null 2>&1 &

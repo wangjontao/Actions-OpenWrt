@@ -1,0 +1,15 @@
+#!/bin/sh
+# procd owns this foreground worker; the vendor command runs once per sample.
+child=''
+finish(){ trap - TERM INT HUP; [ -z "$child" ] || kill "$child" 2>/dev/null || true; [ -z "$child" ] || wait "$child" 2>/dev/null || true; exit 0; }
+trap finish TERM INT HUP
+rm -f /var/run/wrtbwmon.pid /var/lock/wrtbwmon.lock
+while :; do
+ /usr/sbin/wrtbwmon "$@" &
+ child=$!
+ wait "$child" || true
+ sleep 60 &
+ child=$!
+ wait "$child" || true
+ child=''
+done

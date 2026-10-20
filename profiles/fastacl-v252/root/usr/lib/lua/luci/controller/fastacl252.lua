@@ -232,9 +232,9 @@ function wifi_action()
       local pending=u:changes('wireless'); assert(not pending or not next(pending),'请先保存或撤销无线配置')
       if req.action=='hide_one' then result=manager.hide_one(u,req.id,req.hidden) else result={count=manager.hide_all(u,req.hidden)} end
       assert(u:commit('wireless'),'保存无线隐藏状态失败')
-      assert(sys.call('wifi reload >/dev/null 2>&1')==0,'WiFi reload 失败')
+      result.apply=require('fastacl252_visibility').apply(u,req.action=='hide_one' and req.id or 'all')
     end)
-    if not ok then u:revert('wireless'); if original then fs.writefile('/etc/config/wireless',original) end end
+    if not ok then u:revert('wireless'); if original then fs.writefile('/etc/config/wireless',original);pcall(function() require('fastacl252_visibility').apply(require('uci').cursor(),req.action=='hide_one' and req.id or 'all') end) end end
     release_lock(fs)
     reply(ok and {ok=true,result=result,message='SSID 显示状态已更新；未重载 network / firewall / dae。'} or {ok=false,error=tostring(err)})
     return
@@ -254,19 +254,18 @@ function wifi_action()
     committed=true
     for _,n in ipairs(names) do assert(u:commit(n),'保存 '..n..' 配置失败') end
     assert(sys.call('/etc/init.d/network reload >/dev/null 2>&1')==0,'network reload 失败')
-    sys.call('wifi reload >/dev/null 2>&1')
     sys.call('/etc/init.d/dnsmasq restart >/dev/null 2>&1')
     sys.call('/etc/init.d/firewall restart >/dev/null 2>&1')
     if u:get('fastacl252','main','enabled')=='1' then
-      local aok,d=apply_now('cold-apply'); detail=d; assert(aok,'拓扑应用失败：'..(d~='' and d or '未知错误'))
+      local aok,d=apply_now('hot-apply'); detail=d; assert(aok,'拓扑应用失败：'..(d~='' and d or '未知错误'))
     end
   end)
   if not ok then
     for _,n in ipairs(names) do u:revert(n) end
     if committed then
       restore_files(fs,backup,names)
-      sys.call('/etc/init.d/network reload >/dev/null 2>&1'); sys.call('wifi reload >/dev/null 2>&1'); sys.call('/etc/init.d/dnsmasq restart >/dev/null 2>&1'); sys.call('/etc/init.d/firewall restart >/dev/null 2>&1')
-      if u:get('fastacl252','main','enabled')=='1' then apply_now('cold-apply') end
+      sys.call('/etc/init.d/network reload >/dev/null 2>&1'); sys.call('/etc/init.d/dnsmasq restart >/dev/null 2>&1'); sys.call('/etc/init.d/firewall restart >/dev/null 2>&1')
+      if u:get('fastacl252','main','enabled')=='1' then apply_now('hot-apply') end
     end
   end
   release_lock(fs)
@@ -392,7 +391,3 @@ function wireless_status()
  local ok,result=pcall(require('fastacl252_wireless').read)
  reply(ok and result or {ok=false,error='读取无线设备信息失败'})
 end
-
-
-
-

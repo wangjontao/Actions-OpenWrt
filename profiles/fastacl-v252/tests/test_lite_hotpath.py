@@ -20,7 +20,7 @@ assert "PKG_VERSION:=2.5.5" in pkg
 assert "fastacl252.main.version=2.5.5" in defaults
 
 # Managed WiFi node/preproxy/DNS updates are pure application-layer switches.
-wifi_update = between(controller, "if req.action=='update' then", "if req.action=='hide_all' then")
+wifi_update = between(controller, "if req.action=='update' then", "if req.action=='hide_all'")
 assert "apply_now('hot-apply')" in wifi_update
 for forbidden in (
     "/etc/init.d/network reload",
@@ -43,9 +43,10 @@ for forbidden in (
 ):
     assert forbidden not in main_save, f"main hot save must not run {forbidden}"
 
-# Topology create/remove intentionally stays on the cold path.
+# Topology changes reload netifd once, then hot-apply the dae configuration.
 wifi_all = between(controller, "function wifi_action()", "function subscription()")
-assert "apply_now('cold-apply')" in wifi_all
+assert "apply_now('hot-apply')" in wifi_all
+assert "apply_now('cold-apply')" not in wifi_all
 assert "/etc/init.d/network reload" in wifi_all
 assert "/etc/init.d/firewall restart" in wifi_all
 
@@ -80,3 +81,4 @@ assert 'dns_stop' not in healthy_reload
 assert 'start_dns_next' not in healthy_reload
 assert not (ROOT / 'root/etc/uci-defaults/95-fastacl252-hotfix6-fast-switch').exists()
 assert '+libuci-lua' in pkg
+

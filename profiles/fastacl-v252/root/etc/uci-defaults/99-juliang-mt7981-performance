@@ -1,0 +1,2 @@
+#!/bin/sh
+exec lua /usr/libexec/juliang-mt7981-performance-install.lua

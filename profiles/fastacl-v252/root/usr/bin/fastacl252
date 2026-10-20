@@ -230,6 +230,11 @@ hot_apply(){
   acquire_lock
   generate_guards
   generate_next
+  # Interface notifications often leave the compiled policy unchanged.
+  if cmp -s "$R/router.next.dae" "$R/router.dae" && cmp -s "$R/dns.next.json" "$R/dns.json" && cmp -s "$R/nft.next.rules" "$R/nft.loaded.rules" && dae_ready && dns_ready && nft list table inet fastacl252 >/dev/null 2>&1; then
+    echo 'hot' > "$R/last-request-mode"
+    return 0
+  fi
   validate_next
   firewall_apply
   reload_dns_next
@@ -280,8 +285,10 @@ case "${1:-status}" in
     echo 'Core stopped; protection rules retained';;
   guard)
     while [ "$(uci -q get fastacl252.main.enabled 2>/dev/null || echo 0)" = 1 ]; do
-      if ! dae_ready || ! dns_ready || ! nft list table inet fastacl252 >/dev/null 2>&1; then
-        /usr/bin/fastacl252 ensure >"$R/guard.log" 2>&1 || true
+      if [ ! -d /tmp/fastacl252-edit.lock ] && [ ! -d "$LOCK" ]; then
+        if ! dae_ready || ! dns_ready || ! nft list table inet fastacl252 >/dev/null 2>&1; then
+          /usr/bin/fastacl252 ensure >"$R/guard.log" 2>&1 || true
+        fi
       fi
       if [ ! -d /tmp/fastacl252-subscribe.lock ]; then
         lua /usr/libexec/fastacl252-subscribe.lua due >"$R/subscribe.log" 2>&1 &
