@@ -21,10 +21,15 @@ edit_busy(){
   return 1
 }
 
+phase_stamp(){
+  read phase_uptime phase_idle < /proc/uptime
+  printf '%s %s\n' "$phase_uptime" "$1" >> "$R/switch-timing.log"
+}
+
 pause_fast(){
   sleep 0.1 2>/dev/null && return 0
   command -v usleep >/dev/null 2>&1 && { usleep 100000; return 0; }
-  sleep 1
+  lua -e 'require("nixio").nanosleep(0,100000000)'
 }
 
 release_lock(){
@@ -156,8 +161,7 @@ validate_next(){
     : >"$R/dns-check.log"
     return 0
   fi
-  dae validate -c "$R/router.next.dae" >"$R/check.log" 2>&1 || { cat "$R/check.log"; return 1; }
-  fastacl252-dns -check -config "$R/dns.next.json" >"$R/dns-check.log" 2>&1 || { cat "$R/dns-check.log"; return 1; }
+  "${FASTACL_CHECK_HELPER:-/usr/libexec/fastacl252-check}" "$R/router.next.dae" "$R/dns.next.json" "$R/check.log" "$R/dns-check.log" || return 1
   if [ -n "$validation_digest" ]; then
     mkdir -p "$R/validated"
     # Bound tmpfs use; markers contain hashes only, never configuration secrets.
@@ -269,18 +273,34 @@ reload_dae_next(){
 }
 
 hot_apply(){
+  : > "$R/switch-timing.log"
+  phase_stamp lock_start
   acquire_lock
+  phase_stamp lock_done
+  phase_stamp guards_start
   generate_guards
+  phase_stamp guards_done
+  phase_stamp generate_start
   generate_next
+  phase_stamp generate_done
   # Interface notifications often leave the compiled policy unchanged.
   if cmp -s "$R/router.next.dae" "$R/router.dae" && cmp -s "$R/dns.next.json" "$R/dns.json" && cmp -s "$R/nft.next.rules" "$R/nft.loaded.rules" && dae_ready && dns_ready && nft list table inet fastacl252 >/dev/null 2>&1; then
     echo 'hot' > "$R/last-request-mode"
+    phase_stamp unchanged_done
     return 0
   fi
+  phase_stamp validate_start
   validate_next
+  phase_stamp validate_done
+  phase_stamp firewall_start
   firewall_apply
+  phase_stamp firewall_done
+  phase_stamp dns_reload_start
   reload_dns_next
+  phase_stamp dns_reload_done
+  phase_stamp dae_reload_start
   reload_dae_next
+  phase_stamp dae_reload_done
   echo 'hot' > "$R/last-request-mode"
 }
 

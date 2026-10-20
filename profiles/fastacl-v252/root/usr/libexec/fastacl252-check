@@ -1,0 +1,24 @@
+#!/bin/sh
+# Validate both generated policies concurrently; publish nothing on failure.
+set -u
+umask 077
+dae_config=$1; dns_config=$2; dae_log=$3; dns_log=$4
+dae_pid=''; dns_pid=''
+cleanup(){
+  [ -z "$dae_pid" ] || kill "$dae_pid" 2>/dev/null || true
+  [ -z "$dns_pid" ] || kill "$dns_pid" 2>/dev/null || true
+  wait 2>/dev/null || true
+}
+trap 'cleanup; exit 143' HUP INT TERM
+dae validate -c "$dae_config" >"$dae_log" 2>&1 &
+dae_pid=$!
+fastacl252-dns -check -config "$dns_config" >"$dns_log" 2>&1 &
+dns_pid=$!
+dae_rc=0; dns_rc=0
+wait "$dae_pid" || dae_rc=$?
+dae_pid=''
+wait "$dns_pid" || dns_rc=$?
+dns_pid=''
+if [ "$dae_rc" -ne 0 ]; then cat "$dae_log"; fi
+if [ "$dns_rc" -ne 0 ]; then cat "$dns_log"; fi
+[ "$dae_rc" -eq 0 ] && [ "$dns_rc" -eq 0 ]

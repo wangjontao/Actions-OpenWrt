@@ -24,6 +24,11 @@ state=json.loads((r/'scenario.json').read_text())
 if name=='uci':
  print('12525' if args[-1].endswith('.port') else '1')
 elif name=='lua':
+ if args[0]=='-e':
+  path=os.environ.get('FASTACL_VALIDATE_EXE')
+  if path:
+   st=os.stat(path);print(st.st_ino,st.st_size,int(st.st_mtime),int(st.st_ctime))
+  sys.exit(0)
  (r/'nft.next.rules').write_text('table inet fastacl252 {}\n')
  if args[-1]!='guard':
   (r/'router.next.dae').write_text(state.get('core','first'))
@@ -54,7 +59,8 @@ class RuntimeTests(unittest.TestCase):
         bindir = self.root / 'bin'
         bindir.mkdir()
         self.env = dict(os.environ, FASTACL_RUNTIME_DIR=str(self.root),
-                        PATH=str(bindir) + os.pathsep + os.environ['PATH'])
+                        PATH=str(bindir) + os.pathsep + os.environ['PATH'],
+                        FASTACL_CHECK_HELPER=str(ROOT / 'root/usr/libexec/fastacl252-check'))
         for name in ['uci', 'lua', 'nft', 'ss', 'netstat', 'ip', 'dae', 'fastacl252-dns']:
             path = bindir / name
             path.write_text(STUB, encoding='utf-8')
