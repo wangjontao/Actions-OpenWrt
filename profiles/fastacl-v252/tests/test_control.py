@@ -33,5 +33,8 @@ assert case('2\nOK',['1','2\nOK'],0).globals().polls==2
 assert case('2\nOK',['3\nInvalid config'],2).globals().signals==1
 assert case('1',[],2).globals().signals==0
 assert case('2',[],1,False).globals().progress=='2'
-assert case('2',[],124).globals().polls==80
+# A slow but successful reload must not be killed at the obsolete 8s limit.
+assert case('2',['1']*119+['2\nOK'],0).globals().polls==120
+# 600 polls at 100ms preserve the explicit 60s safety deadline.
+assert case('2',[],124).globals().polls==600
 print('PASS: success waits for ack; rejection/busy never report success; signal failure restores status; timeout bounded')
