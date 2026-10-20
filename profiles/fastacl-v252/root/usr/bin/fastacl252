@@ -121,9 +121,36 @@ generate_next(){
   lua /usr/libexec/fastacl252-generate.lua nft
 }
 
+validation_key(){
+  # /tmp cache: exact generated policies and executable replacement identity.
+  command -v sha256sum >/dev/null 2>&1 || return 1
+  for executable in dae fastacl252-dns; do
+    executable_path=$(command -v "$executable") || return 1
+    FASTACL_VALIDATE_EXE="$executable_path" lua -e 'local s=assert(require("nixio.fs").stat(os.getenv("FASTACL_VALIDATE_EXE"))); print(s.ino,s.size,s.mtime,s.ctime)' || return 1
+  done
+  sha256sum "$R/router.next.dae" "$R/dns.next.json" || return 1
+}
+
 validate_next(){
+  validation_digest=''
+  if validation_identity=$(validation_key); then
+    validation_digest=$(printf '%s' "$validation_identity" | sha256sum | cut -d ' ' -f 1)
+  fi
+  if [ -n "$validation_digest" ] && [ -f "$R/validated/$validation_digest" ]; then
+    : >"$R/check.log"
+    : >"$R/dns-check.log"
+    return 0
+  fi
   dae validate -c "$R/router.next.dae" >"$R/check.log" 2>&1 || { cat "$R/check.log"; return 1; }
   fastacl252-dns -check -config "$R/dns.next.json" >"$R/dns-check.log" 2>&1 || { cat "$R/dns-check.log"; return 1; }
+  if [ -n "$validation_digest" ]; then
+    mkdir -p "$R/validated"
+    # Bound tmpfs use; markers contain hashes only, never configuration secrets.
+    if [ "$(find "$R/validated" -type f | wc -l)" -ge 64 ]; then
+      rm -f "$R/validated/"*
+    fi
+    : >"$R/validated/$validation_digest"
+  fi
 }
 
 firewall_apply(){
@@ -304,3 +331,4 @@ case "${1:-status}" in
     echo 'Usage: fastacl252 hot-apply|cold-apply|ensure|status|stop|guard|cleanup' >&2
     exit 2;;
 esac
+
