@@ -198,6 +198,14 @@ start_dae_next(){
   wait_dae || { cat "$R/router.log" 2>/dev/null || true; return 1; }
 }
 
+dns_reload_control(){
+  if [ -f /usr/libexec/fastacl252-control.lua ]; then
+    lua /usr/libexec/fastacl252-control.lua dns "$R/dns.json"
+  else
+    fastacl252-dns -reload -config "$R/dns.json"
+  fi
+}
+
 reload_dns_next(){
   if dns_ready && cmp -s "$R/dns.next.json" "$R/dns.json"; then return 0; fi
   if ! dns_ready; then
@@ -208,7 +216,7 @@ reload_dns_next(){
   cp "$R/dns.json" "$R/dns.prev.json"
   cp "$R/dns.next.json" "$R/dns.json.pending"
   mv "$R/dns.json.pending" "$R/dns.json"
-  if fastacl252-dns -reload -config "$R/dns.json" >"$R/dns-reload.log" 2>&1; then return 0; fi
+  if dns_reload_control >"$R/dns-reload.log" 2>&1; then return 0; fi
   echo '[FastACL] DNS reload rejected; keeping the running policy and listener' >&2
   cat "$R/dns-reload.log" >&2
   cp "$R/dns.prev.json" "$R/dns.json.pending"
@@ -221,6 +229,10 @@ reload_dns_next(){
 # the in-process reload does not finish, the caller falls back to dae-only
 # restart; system network/wifi/firewall are still untouched.
 dae_reload_fast(){
+  if [ -f /usr/libexec/fastacl252-control.lua ]; then
+    lua /usr/libexec/fastacl252-control.lua dae "$1" >"$R/reload.log" 2>&1
+    return $?
+  fi
   local pid="$1" cli i=0
   : > "$R/reload.log"
   dae reload "$pid" >"$R/reload.log" 2>&1 &
@@ -250,9 +262,18 @@ reload_dae_next(){
   cp "$R/router.dae" "$R/router.prev.dae"
   cp "$R/router.next.dae" "$R/router.dae"
   local pid; pid=$(cat "$R/router.pid")
-  if dae_reload_fast "$pid" && wait_dae; then
+  local reload_rc=0
+  dae_reload_fast "$pid" || reload_rc=$?
+  if [ "$reload_rc" -eq 0 ] && wait_dae; then
     echo 'hot' > "$R/last-apply-mode"
     return 0
+  fi
+
+  if [ "$reload_rc" -eq 2 ] && dae_ready; then
+    cp "$R/router.prev.dae" "$R/router.dae"
+    echo '[FastACL] dae rejected replacement; retaining running policy' >&2
+    cat "$R/reload.log" >&2
+    return 1
   fi
 
   echo '[FastACL] dae hot reload failed/timeout; falling back to dae-only restart' >&2
@@ -290,7 +311,14 @@ hot_apply(){
     return 0
   fi
   phase_stamp validate_start
-  validate_next
+  if dae_ready && dns_ready && [ -f /usr/libexec/fastacl252-control.lua ]; then
+    # Generated policy is checked again by each live service before publication.
+    # Avoid loading two additional Go processes just to repeat those checks.
+    echo 'Validation performed by live reload endpoints' > "$R/check.log"
+    : > "$R/dns-check.log"
+  else
+    validate_next
+  fi
   phase_stamp validate_done
   phase_stamp firewall_start
   firewall_apply

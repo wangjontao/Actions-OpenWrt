@@ -76,7 +76,9 @@ print("FastACL 2.5.5 hot-path architecture: OK")
 # DNS hot updates must acknowledge a live in-process reload, never stop listeners.
 dns_hot = between(runtime, "reload_dns_next(){", "# dae's own reload")
 healthy_reload = dns_hot[dns_hot.index('cp "$R/dns.json"'):]
-assert 'fastacl252-dns -reload' in healthy_reload
+assert 'dns_reload_control >' in healthy_reload
+assert 'fastacl252-dns -reload' in runtime
+assert 'fastacl252-control.lua dns' in runtime
 assert 'dns_stop' not in healthy_reload
 assert 'start_dns_next' not in healthy_reload
 assert not (ROOT / 'root/etc/uci-defaults/95-fastacl252-hotfix6-fast-switch').exists()
