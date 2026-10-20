@@ -1,5 +1,5 @@
 name: MT7981 MTWiFi FastACL 2.5.6 Testing
-run-name: 'FastACL 2.5.6 MT7981 CPU optimization · ${{ github.ref_name }}'
+run-name: 'FastACL 2.5.6 MT7981 fixed exit mappings · ${{ github.ref_name }}'
 'on':
   workflow_dispatch: {}
   push:
@@ -204,7 +204,10 @@ jobs:
         kernel=$(find build_dir/target-* -path '*/linux-mediatek_filogic/linux-6.6*/.config' | head -n1)
         test -n "$kernel"
         sh profiles/fastacl-v252/check-kernel.sh "$kernel"
-        make -j"$(nproc)" || make -j1 V=s
+        # Compile packages in parallel; serialize final rootfs/FIT packaging.
+        # Per-device mkits jobs share ROOTFS.pagesync and can truncate it.
+        make package/compile -j"$(nproc)" || make package/compile -j1 V=s
+        make -j1 V=s
         kernel=$(find build_dir/target-* -path '*/linux-mediatek_filogic/linux-6.6*/.config' | head -n1)
         test -n "$kernel"
         sh profiles/fastacl-v252/check-kernel.sh "$kernel"
@@ -218,7 +221,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: MT7981-FastACL255-all-output-${{ matrix.group }}-${{ github.run_id }}
+        name: MT7981-FastACL256-all-output-${{ matrix.group }}-${{ github.run_id }}
         path: openwrt/upload/*
         if-no-files-found: warn
         retention-days: 30
