@@ -227,10 +227,10 @@ function wifi_action()
     return
   end
 
-  if req.action=='hide_all' then
+  if req.action=='hide_all' or req.action=='hide_one' then
     local original=fs.readfile('/etc/config/wireless'); local ok,err=pcall(function()
       local pending=u:changes('wireless'); assert(not pending or not next(pending),'请先保存或撤销无线配置')
-      result={count=manager.hide_all(u,req.hidden)}
+      if req.action=='hide_one' then result=manager.hide_one(u,req.id,req.hidden) else result={count=manager.hide_all(u,req.hidden)} end
       assert(u:commit('wireless'),'保存无线隐藏状态失败')
       assert(sys.call('wifi reload >/dev/null 2>&1')==0,'WiFi reload 失败')
     end)
@@ -392,5 +392,7 @@ function wireless_status()
  local ok,result=pcall(require('fastacl252_wireless').read)
  reply(ok and result or {ok=false,error='读取无线设备信息失败'})
 end
+
+
 
 
