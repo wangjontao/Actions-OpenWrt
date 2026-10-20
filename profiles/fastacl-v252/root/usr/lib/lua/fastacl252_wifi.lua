@@ -106,7 +106,7 @@ function M.status(u)
     if owned(s) then rows[#rows+1]={id=s['.name'],network=s.network or '',ssid=s.ssid or '',band=s.band or '',subnet=s.subnet or '',mode=s.mode or 'direct',node=s.node or '',preproxy=s.preproxy or '',dns=s.dns or 'inherit',dns_type=s.dns_type or '',dns_ip=s.dns_ip or '',dns_name=s.dns_name or ''} end
   end)
   table.sort(rows,function(a,b) return a.id<b.id end)
-  return {radios=map,managed=rows,counts=c,max5=tonumber(main.max_wifi_5g or 14),max2=tonumber(main.max_wifi_2g or 8)}
+  return {radios=map,managed=rows,counts=c,max5=math.max(0,math.min(9,math.floor(tonumber(main.max_wifi_5g) or 9))),max2=math.max(0,math.min(3,math.floor(tonumber(main.max_wifi_2g) or 3)))}
 end
 
 function M.create(u,req)
