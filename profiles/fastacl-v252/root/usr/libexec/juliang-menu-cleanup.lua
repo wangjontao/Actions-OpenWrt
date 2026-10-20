@@ -33,6 +33,8 @@ for _,path in ipairs({'/usr/share/ucode/luci/template/themes/argon/header.ut','/
  local text=fs.readfile(path)
  if text then
   text=text:gsub('JuLtiang','JuLiang')
+  local brand='<span style="display:block;white-space:nowrap;line-height:1.2;text-align:center">JuLiang</span><span style="display:block;white-space:nowrap;line-height:1.4;text-align:center">控制中心</span>'
+  text=text:gsub('(<a%s+class="brand"[^>]*>).-</a>',function(open) return open..brand..'</a>' end)
   -- Keep the brand on two deliberate lines at every sidebar width.
   text=text:gsub('>JuLiang%s*控制中心</a>', '><span style="display:block;white-space:nowrap;line-height:1.2;text-align:center">JuLiang</span><span style="display:block;white-space:nowrap;line-height:1.4;text-align:center">控制中心</span></a>')
   text=text:gsub('<script id="juliang%-menu%-revision">.-</script>','')
@@ -41,3 +43,4 @@ for _,path in ipairs({'/usr/share/ucode/luci/template/themes/argon/header.ut','/
  end
 end
 for path in fs.glob('/tmp/luci-indexcache*') do fs.remove(path) end
+

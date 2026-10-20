@@ -1,5 +1,5 @@
 #!/bin/sh
-# JuLiang dual public-IP widget for OpenWrt LuCI Argon
+# JuLiang ISP public-IP widget for OpenWrt LuCI Argon
 # Usage: sh install-dual-ip.sh [install|uninstall]
 set -eu
 ACTION="${1:-install}"
@@ -48,18 +48,15 @@ cat > "$STAGE/exit-ip.js" <<'JL_ASSET_END'
 'use strict';
 function mount(){
 var menu=document.querySelector('.main-left');if(!menu||document.getElementById('jl-exit-card'))return;
-var card=document.createElement('button');card.type='button';card.id='jl-exit-card';card.className='jl-exit-card';card.title='运营商与路由器代理出口 · 点击刷新';
+var card=document.createElement('button');card.type='button';card.id='jl-exit-card';card.className='jl-exit-card';card.title='运营商公网 IP · 点击刷新';
 function row(id,title){return '<section class="jl-ip-row" data-exit="'+id+'"><span class="jl-exit-title"><span>'+title+'</span><span class="jl-exit-refresh">↻</span></span><span class="jl-exit-ip">查询中…</span><span class="jl-exit-place"><img hidden alt=""><span>正在获取国家与地区</span></span></section>';}
-card.innerHTML=row('isp','运营商公网 IP')+row('proxy','路由代理出口 IP');
+card.innerHTML=row('isp','运营商公网 IP');
 var header=menu.querySelector('.sidenav-header');if(header)header.after(card);else menu.prepend(card);
 var busy=false;
 async function query(url){var ctl=new AbortController();var timer=setTimeout(function(){ctl.abort();},14000);try{var r=await fetch(url,{cache:'no-store',credentials:'omit',signal:ctl.signal});if(!r.ok)throw Error('HTTP '+r.status);var d=await r.json();if(d.success===false||d.error||!d.ip)throw Error(d.message||'lookup');return d;}finally{clearTimeout(timer);}}
-function render(id,d){if(id==='proxy'&&d.proxy_plugin)card.querySelector('[data-exit="proxy"] .jl-exit-title span').textContent=d.proxy_plugin+' 出口 IP';var row=card.querySelector('[data-exit="'+id+'"]');row.querySelector('.jl-exit-ip').textContent=d.ip;var country=d.country_name||d.country;var region=[country,d.region,d.city].filter(function(v,i,a){return v&&a.indexOf(v)===i;});row.querySelector('.jl-exit-place span').textContent=region.join(' · ');var img=row.querySelector('img');img.hidden=true;if(/^[A-Z]{2}$/.test(d.country_code)){img.src='/luci-static/argon/flags/'+d.country_code.toLowerCase()+'.svg';img.alt=country+'国旗';img.hidden=false;img.onerror=function(){this.onerror=function(){this.hidden=true;};this.src='https://cdn.ipwhois.io/flags/'+d.country_code.toLowerCase()+'.svg';};}row.title=region.join(' · ');row.dataset.ip=d.ip;}
-function fail(id,error){var row=card.querySelector('[data-exit="'+id+'"]');row.querySelector('.jl-exit-ip').textContent='查询失败';row.querySelector('.jl-exit-place span').textContent=id==='proxy'?(error&&error.message||'检查路由代理，点击重试'):'点击卡片重试';row.querySelector('img').hidden=true;delete row.dataset.ip;}
-async function refresh(){if(busy||document.hidden)return;busy=true;card.setAttribute('aria-busy','true');await Promise.all([
-query('/cgi-bin/juliang-exit-ip?isp').then(function(d){render('isp',d);}).catch(function(){fail('isp');}),
-query('/cgi-bin/juliang-exit-ip?proxy').then(function(d){render('proxy',d);}).catch(function(e){fail('proxy',e);})
-]);var a=card.querySelector('[data-exit="isp"]'),b=card.querySelector('[data-exit="proxy"]');if(a.dataset.ip&&b.dataset.ip&&a.dataset.ip===b.dataset.ip)b.querySelector('.jl-exit-place span').textContent+=' · 与运营商相同';card.title='运营商：路由器本机查询；代理出口：路由器当前代理插件查询。'+new Date().toLocaleTimeString()+' 更新，点击刷新';busy=false;card.setAttribute('aria-busy','false');}
+function render(id,d){var row=card.querySelector('[data-exit="'+id+'"]');row.querySelector('.jl-exit-ip').textContent=d.ip;var country=d.country_name||d.country;var region=[country,d.region,d.city].filter(function(v,i,a){return v&&a.indexOf(v)===i;});row.querySelector('.jl-exit-place span').textContent=region.join(' · ');var img=row.querySelector('img');img.hidden=true;if(/^[A-Z]{2}$/.test(d.country_code)){img.src='/luci-static/argon/flags/'+d.country_code.toLowerCase()+'.svg';img.alt=country+'国旗';img.hidden=false;img.onerror=function(){this.onerror=function(){this.hidden=true;};this.src='https://cdn.ipwhois.io/flags/'+d.country_code.toLowerCase()+'.svg';};}row.title=region.join(' · ');row.dataset.ip=d.ip;}
+function fail(id,error){var row=card.querySelector('[data-exit="'+id+'"]');row.querySelector('.jl-exit-ip').textContent='查询失败';row.querySelector('.jl-exit-place span').textContent='点击卡片重试';row.querySelector('img').hidden=true;delete row.dataset.ip;}
+async function refresh(){if(busy||document.hidden)return;busy=true;card.setAttribute('aria-busy','true');try{render('isp',await query('/cgi-bin/juliang-exit-ip?isp'));card.title='运营商公网 IP · '+new Date().toLocaleTimeString()+' 更新，点击刷新';}catch(e){fail('isp',e);}finally{busy=false;card.setAttribute('aria-busy','false');}}
 card.addEventListener('click',refresh);refresh();setInterval(refresh,60000);document.addEventListener('visibilitychange',function(){if(!document.hidden)refresh();});
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else mount();
@@ -283,12 +280,12 @@ sh -n "$STAGE/juliang-exit-ip"
 clean_header "$HEADER" | awk '
     /<\/head>/ {
         print "<!-- JuLiang exit IP card -->"
-        print "<link rel=\"stylesheet\" href=\"/luci-static/argon/exit-ip.css?v=router5\">"
-        print "<script defer src=\"/luci-static/argon/exit-ip.js?v=router5\"></script>"
+        print "<link rel=\"stylesheet\" href=\"/luci-static/argon/exit-ip.css?v=isp-only-255\">"
+        print "<script defer src=\"/luci-static/argon/exit-ip.js?v=isp-only-255\"></script>"
     }
     { print }
 ' > "$STAGE/header.ut"
-grep -q 'exit-ip.js?v=router5' "$STAGE/header.ut" || { echo 'No head closing tag; aborting.' >&2; exit 1; }
+grep -q 'exit-ip.js?v=isp-only-255' "$STAGE/header.ut" || { echo 'No head closing tag; aborting.' >&2; exit 1; }
 mkdir -p "$SAVE/assets/flags" "$BASE/flags"
 if [ ! -f "$SAVE/header.ut.original" ]; then
     cp -p "$HEADER" "$SAVE/header.ut.original"
@@ -306,6 +303,7 @@ chmod 755 "$CGI"
 cp "$STAGE/header.ut" "$HEADER.jl-new"
 chmod 644 "$HEADER.jl-new"
 mv "$HEADER.jl-new" "$HEADER"
-echo 'Installed: ISP public IP + router proxy exit IP.'
+echo 'Installed: ISP public IP only.'
 echo 'Refresh LuCI with Ctrl+F5. Click the card to refresh; automatic refresh every 60 seconds.'
 echo 'Uninstall: sh install-dual-ip.sh uninstall'
+
