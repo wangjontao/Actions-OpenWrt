@@ -1,0 +1,15 @@
+name: Stop MT7981 build
+on:
+  push:
+    branches: [codex/mt7981-fastacl255]
+    paths: [.github/workflows/stop-mt7981-build.yml]
+concurrency:
+  group: mt7981-fastacl255
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  stop:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo 'Firmware build stopped for WiFi connectivity investigation.'
