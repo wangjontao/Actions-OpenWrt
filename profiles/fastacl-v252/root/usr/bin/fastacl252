@@ -95,7 +95,7 @@ dns_ready(){ dns_alive && listener 12553; }
 wait_dae(){
   local i=0
   while ! dae_ready; do
-    i=$((i+1)); [ "$i" -lt 40 ] || return 1
+    i=$((i+1)); [ "$i" -lt 400 ] || return 1
     pause_fast
   done
 }

@@ -14,7 +14,7 @@ local function dae(pid)
   if previous then fs.writefile(path,previous) else fs.remove(path) end
   fail('Cannot signal dae')
  end
- for _=1,80 do
+ for _=1,600 do
   nx.nanosleep(0,100000000)
   local progress=fs.readfile(path) or ''
   local code=progress:sub(1,1)
@@ -22,7 +22,7 @@ local function dae(pid)
   if code=='3' or code=='4' then fail('dae rejected reload: '..progress:sub(3),2) end
   if not nx.kill(pid,0) then fail('dae stopped during reload') end
  end
- fail('dae reload exceeded 8s budget',124)
+ fail('dae reload exceeded 60s safety deadline',124)
 end
 local function dns(file)
  if not file or file:sub(1,1)~='/' then fail('Invalid DNS configuration path') end
