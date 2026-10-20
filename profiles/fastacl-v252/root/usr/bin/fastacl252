@@ -6,6 +6,21 @@ R=${FASTACL_RUNTIME_DIR:-/tmp/fastacl252}
 LOCK="${R}-apply.lock"
 mkdir -p "$R"
 
+edit_busy(){
+  local edit=/tmp/fastacl252-edit.lock owner age
+  [ -d "$edit" ] || return 1
+  owner=$(cat "$edit/pid" 2>/dev/null || true)
+  case "$owner" in
+    ''|*[!0-9]*)
+      age=$(lua -e 'local s=require("nixio.fs").stat("/tmp/fastacl252-edit.lock"); print(s and os.time()-s.mtime or 0)' 2>/dev/null || echo 0)
+      [ "$age" -gt 120 ] || return 0;;
+    *) kill -0 "$owner" 2>/dev/null && return 0;;
+  esac
+  rm -f "$edit/pid"
+  rmdir "$edit" 2>/dev/null || true
+  return 1
+}
+
 pause_fast(){
   sleep 0.1 2>/dev/null && return 0
   command -v usleep >/dev/null 2>&1 && { usleep 100000; return 0; }
@@ -312,7 +327,7 @@ case "${1:-status}" in
     echo 'Core stopped; protection rules retained';;
   guard)
     while [ "$(uci -q get fastacl252.main.enabled 2>/dev/null || echo 0)" = 1 ]; do
-      if [ ! -d /tmp/fastacl252-edit.lock ] && [ ! -d "$LOCK" ]; then
+      if ! edit_busy && [ ! -d "$LOCK" ]; then
         if ! dae_ready || ! dns_ready || ! nft list table inet fastacl252 >/dev/null 2>&1; then
           /usr/bin/fastacl252 ensure >"$R/guard.log" 2>&1 || true
         fi
@@ -331,4 +346,3 @@ case "${1:-status}" in
     echo 'Usage: fastacl252 hot-apply|cold-apply|ensure|status|stop|guard|cleanup' >&2
     exit 2;;
 esac
-

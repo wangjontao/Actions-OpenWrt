@@ -7,12 +7,25 @@ local function reply(data)
   h.prepare_content('application/json')
   h.write(require('luci.jsonc').stringify(data))
 end
+local edit_handle
 local function acquire_lock(fs)
-  if fs.mkdir('/tmp/fastacl252-edit.lock') then return true end
-  reply({ok=false,error='配置正在保存，请稍后重试'})
-  return false
+  local nx=require'nixio'
+  local handle=nx.open('/tmp/fastacl252-edit.guard','w','600')
+  if not handle or not handle:lock('tlock') then
+    if handle then handle:close() end
+    reply({ok=false,error='配置正在保存，请稍后重试'});return false
+  end
+  fs.mkdir('/tmp/fastacl252-edit.lock')
+  if not fs.writefile('/tmp/fastacl252-edit.lock/pid',tostring(nx.getpid())) then
+    handle:close();reply({ok=false,error='无法建立配置锁'});return false
+  end
+  edit_handle=handle
+  return true
 end
-local function release_lock(fs) fs.rmdir('/tmp/fastacl252-edit.lock') end
+local function release_lock(fs)
+  fs.remove('/tmp/fastacl252-edit.lock/pid');fs.rmdir('/tmp/fastacl252-edit.lock')
+  if edit_handle then edit_handle:close();edit_handle=nil end
+end
 local function tail(s,n)
   s=tostring(s or ''); n=n or 4000
   return #s>n and s:sub(-n) or s
