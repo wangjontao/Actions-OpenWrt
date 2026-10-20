@@ -1,10 +1,10 @@
-name: MT7981 MTWiFi FastACL 2.5.5 Testing
-run-name: 'FastACL 2.5.5 MT7981 CPU optimization · ${{ github.ref_name }}'
+name: MT7981 MTWiFi FastACL 2.5.6 Testing
+run-name: 'FastACL 2.5.6 MT7981 CPU optimization · ${{ github.ref_name }}'
 'on':
   workflow_dispatch: {}
   push:
     branches:
-    - codex/mt7981-fastacl255
+    - codex/mt7981-fastacl256
     paths:
     - .github/workflows/MT7981-FastACL255-MTWiFi.yml
     - profiles/fastacl-v252/**
@@ -16,7 +16,7 @@ run-name: 'FastACL 2.5.5 MT7981 CPU optimization · ${{ github.ref_name }}'
 permissions:
   contents: write
 concurrency:
-  group: mt7981-fastacl255
+  group: mt7981-fastacl256
   cancel-in-progress: true
 jobs:
   preflight:
@@ -49,6 +49,7 @@ jobs:
         .venv/bin/python scripts/tests/test_mt7981_workflow_shell.py
         .venv/bin/python scripts/tests/test_firmware_artifacts_mt7981.py
         .venv/bin/python profiles/fastacl-v252/tests/test_wireless.py
+        .venv/bin/python profiles/fastacl-v252/tests/test_fixed_exit.py
         python3 profiles/fastacl-v252/tests/test_lite_hotpath.py
         .venv/bin/python profiles/fastacl-v252/tests/test_control.py
         python3 profiles/fastacl-v252/tests/test_runtime.py
@@ -63,7 +64,7 @@ jobs:
         .venv/bin/python profiles/fastacl-v252/tests/test_login_theme.py
     - name: Validate DNS relay and native nodes
       run: |
-        (cd profiles/fastacl-v252/dns && go mod tidy && go test -race -timeout 2m ./... && go build -trimpath -o /tmp/fastacl252-dns .)
+        (cd profiles/fastacl-v252/dns && go mod tidy && go mod vendor && python3 ../patch_outbound.py . && go test -mod=vendor -race -timeout 2m ./... && go build -mod=vendor -trimpath -o /tmp/fastacl252-dns .)
         .venv/bin/python profiles/fastacl-v252/tests/test_mihomo.py --core /tmp/dae --helper /tmp/fastacl252-dns
         for config in profiles/fastacl-v252/test-results/import-*.dae; do /tmp/dae validate -c "$config"; done
     - name: Validate quick-switch console in Chromium
@@ -137,9 +138,9 @@ jobs:
         path: |
           openwrt/dl
           .ccache
-        key: mt7981-fastacl255-${{ matrix.group }}-${{ hashFiles('profiles/fastacl-v252/*Makefile', 'profiles/fastacl-v252/mt7981-common.config')
+        key: mt7981-fastacl256-${{ matrix.group }}-${{ hashFiles('profiles/fastacl-v252/*Makefile', 'profiles/fastacl-v252/mt7981-common.config')
           }}
-        restore-keys: mt7981-fastacl255-${{ matrix.group }}-
+        restore-keys: mt7981-fastacl256-${{ matrix.group }}-
     - name: Update feeds
       run: |
         ./scripts/feeds update -a
@@ -186,7 +187,7 @@ jobs:
     - name: Integrate FastACL Lite
       run: |
         sh "$GITHUB_WORKSPACE/scripts/integrate-fastacl255-mt7981.sh"
-        grep -q "PKG_VERSION:=2.5.5" package/fastacl252/Makefile
+        grep -q "PKG_VERSION:=2.5.6" package/fastacl252/Makefile
       working-directory: openwrt
     - name: Download sources
       run: |
@@ -229,17 +230,17 @@ jobs:
     - name: Upload validated firmware artifact
       uses: actions/upload-artifact@v4
       with:
-        name: MT7981-FastACL2.5.5-MTWiFi-${{ matrix.group }}-${{ env.BUILD_DATE }}
+        name: MT7981-FastACL2.5.6-MTWiFi-${{ matrix.group }}-${{ env.BUILD_DATE }}
         path: openwrt/upload/*
         if-no-files-found: error
         retention-days: 30
     - name: Publish firmware release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: MT7981-FastACL2.5.5-MTWiFi-${{ matrix.group }}-${{ env.BUILD_DATE }}
-        name: MT7981 FastACL 2.5.5 MTWiFi ${{ matrix.group }} ${{ env.BUILD_DATE }}
+        tag_name: MT7981-FastACL2.5.6-MTWiFi-${{ matrix.group }}-${{ env.BUILD_DATE }}
+        name: MT7981 FastACL 2.5.6 MTWiFi ${{ matrix.group }} ${{ env.BUILD_DATE }}
         body: |
-          FastACL 2.5.5 MTWiFi testing build.
+          FastACL 2.5.6 MTWiFi testing build.
           Devices: ${{ matrix.devices }}
 
           MTWiFi 7.6.6.1 retained; HNAT/WHNAT acceleration is disabled for dae policy enforcement.

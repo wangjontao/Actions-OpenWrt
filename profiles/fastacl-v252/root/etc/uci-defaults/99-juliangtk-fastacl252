@@ -22,7 +22,8 @@ uci set 'firewall.@defaults[0].flow_offloading=0'
 uci set 'firewall.@defaults[0].flow_offloading_hw=0'
 uci commit firewall
 uci set 'dropbear.@dropbear[0].Port=20022'; uci commit dropbear
-uci set 'fastacl252.main.version=2.5.5'; uci commit fastacl252
+uci set 'fastacl252.main.fixed_exit=1'
+uci set 'fastacl252.main.version=2.5.6'; uci commit fastacl252
 /usr/libexec/fastacl252-enable.sh --config-only
 /etc/init.d/fastacl252 enable
 exit 0

@@ -1,4 +1,4 @@
-"""Local demo backend for the FastACL 2.5.5 LuCI UI; no router access."""
+"""Local demo backend for the FastACL 2.5.6 LuCI UI; no router access."""
 import json, pathlib, re, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
@@ -17,7 +17,7 @@ CATALOG=[
  {'id':'opendns','label':'Cisco OpenDNS','scope':'proxy','kind':'doh','ip':'208.67.222.222','name':'doh.opendns.com'},
  {'id':'quad9','label':'Quad9','scope':'proxy','kind':'doh','ip':'9.9.9.9','name':'dns.quad9.net'},
 ]
-state={'ok':True,'version':'2.5.5 · 本地演示','enabled':True,'direct_dns':'alidns','proxy_dns':'cloudflare','dns_catalog':CATALOG,
+state={'ok':True,'version':'2.5.6 · 本地演示','enabled':True,'direct_dns':'alidns','proxy_dns':'cloudflare','dns_catalog':CATALOG,
  'network':'lan','router_ip':'192.168.7.1','runtime':{'engine':'running','firewall':True,'backend':'nft','switch':'hot','request':'hot'},'job':'0','apply_log':'','subscription_running':False,
  'nodes':[{'id':'us','name':'美国出口 A','protocol':'socks'},{'id':'jp','name':'日本出口 B','protocol':'http'},{'id':'front','name':'前置节点','protocol':'vless'}],
  'subscriptions':[],

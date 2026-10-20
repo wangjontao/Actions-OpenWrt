@@ -103,7 +103,7 @@ func fetchProbe(ctx context.Context, client *http.Client, s probeSource) probeAn
 		a.failure = "请求配置错误"
 		return a
 	}
-	req.Header.Set("User-Agent", "FastACL/2.5.5 ExitProbe")
+	req.Header.Set("User-Agent", "FastACL/2.5.6 ExitProbe")
 	r, e := client.Do(req)
 	if e != nil {
 		a.failure = "连接失败或超时"

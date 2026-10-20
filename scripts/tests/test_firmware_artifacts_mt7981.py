@@ -16,7 +16,7 @@ spec.loader.exec_module(m)
 
 
 def status(extra=''):
-    return ''.join(f'Package: {p}\nVersion: 2.5.5-r1\nStatus: install ok installed\n\n'
+    return ''.join(f'Package: {p}\nVersion: 2.5.6-r1\nStatus: install ok installed\n\n'
                    for p in sorted(m.REQUIRED)) + extra
 
 

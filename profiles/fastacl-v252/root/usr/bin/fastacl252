@@ -307,6 +307,7 @@ hot_apply(){
   # Interface notifications often leave the compiled policy unchanged.
   if cmp -s "$R/router.next.dae" "$R/router.dae" && cmp -s "$R/dns.next.json" "$R/dns.json" && cmp -s "$R/nft.next.rules" "$R/nft.loaded.rules" && dae_ready && dns_ready && nft list table inet fastacl252 >/dev/null 2>&1; then
     echo 'hot' > "$R/last-request-mode"
+    if [ "$(uci -q get fastacl252.main.fixed_exit)" = 1 ]; then echo 'binding-update' > "$R/last-apply-mode"; fi
     phase_stamp unchanged_done
     return 0
   fi
@@ -326,9 +327,12 @@ hot_apply(){
   phase_stamp dns_reload_start
   reload_dns_next
   phase_stamp dns_reload_done
+  local binding_only=0
+  if [ "$(uci -q get fastacl252.main.fixed_exit)" = 1 ] && dae_ready && cmp -s "$R/router.next.dae" "$R/router.dae"; then binding_only=1; fi
   phase_stamp dae_reload_start
   reload_dae_next
   phase_stamp dae_reload_done
+  if [ "$binding_only" = 1 ]; then echo binding-update > "$R/last-apply-mode"; fi
   echo 'hot' > "$R/last-request-mode"
 }
 

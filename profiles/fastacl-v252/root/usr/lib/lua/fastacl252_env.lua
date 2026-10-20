@@ -17,6 +17,10 @@ function M.read(u,guards_only)
   local net=main.network or 'lan'; assert(policy.id(net),'Invalid network')
   local iface,addr,mask=status_for(net,u)
   local c={network=net,interface=iface,interfaces={},router_ip=addr,netmask=mask,port=tonumber(main.port or 12525),enabled=main.enabled=='1',default_mode=main.default_mode or 'direct',dns_policy=main.dns_policy or 'private',dns_server=main.dns_server or '223.5.5.5',dns_name=main.dns_name or 'dns.alidns.com',private_dns_server=main.private_dns_server or '1.1.1.1',private_dns_name=main.private_dns_name or 'cloudflare-dns.com',direct_dns=main.direct_dns or 'alidns',proxy_dns=main.proxy_dns or 'cloudflare',devices={},wifis={},nodes={}}
+  c.fixed_exit=main.fixed_exit=='1'
+  if c.fixed_exit and not guards_only then
+    c.fixed_secret=require('fastacl252_slots').key()
+  end
   if iface and iface~='' then c.interfaces[#c.interfaces+1]=iface end
   u:foreach('fastacl252','node',function(n)
     n.outbound=json.parse(n.outbound or '')

@@ -8,7 +8,7 @@ cp -a "$bundle/." profiles/fastacl-v252/
 cp "$bundle/package-Makefile" package/fastacl252/Makefile
 cp "$bundle/core-Makefile" package/juliangtk-dae/Makefile
 cp -a "$bundle/root" package/fastacl252/files
-(cd profiles/fastacl-v252/dns && go mod tidy && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o ../../../package/fastacl252/files/usr/bin/fastacl252-dns .)
+(cd profiles/fastacl-v252/dns && go mod tidy && go mod vendor && python3 ../patch_outbound.py . && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -mod=vendor -trimpath -ldflags='-s -w' -o ../../../package/fastacl252/files/usr/bin/fastacl252-dns .)
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o package/fastacl252/files/usr/libexec/mtwifi-station-bytes "$bundle/mtwifi/mtwifi-station-bytes.go"
 chmod 755 package/fastacl252/files/usr/libexec/mtwifi-station-bytes
 # Retain this fork's matched hardware DT and MTWiFi. Remove competing mt76 defaults.

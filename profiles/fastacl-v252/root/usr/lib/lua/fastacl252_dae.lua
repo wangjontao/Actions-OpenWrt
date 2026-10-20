@@ -1,4 +1,4 @@
--- Native dae configuration compiler for FastACL 2.5.5.
+-- Native dae configuration compiler for FastACL 2.5.6.
 -- Supports the primary LAN plus independently routed managed WiFi subnets.
 local M={}
 local function quote(s)
@@ -25,6 +25,10 @@ function M.compile(c)
   local nodes,groups,rules,used={},{},{},{}
   local resolvers={}
   local relay={listen='0.0.0.0:12553',direct_ip=c.dns_server,direct_name=c.dns_name,private_ip=c.private_dns_server,private_name=c.private_dns_name,devices={},exits={},resolvers=resolvers,device_policies={},network_policies={}}
+  if c.fixed_exit then
+    assert(type(c.fixed_secret)=='string' and #c.fixed_secret==64 and not c.fixed_secret:find('[^0-9a-f]'),'Invalid fixed exit secret')
+    relay.data_listen='127.0.0.1:15443';relay.data_secret=c.fixed_secret;relay.data_slots={}
+  end
   local routes={}; local nextid=12600
   local function ensure_exit(x)
     local name='exit_'..id(x.node); local uri=M.link(assert(c.nodes[x.node],'Missing exit node'))
@@ -35,11 +39,21 @@ function M.compile(c)
       name=name..'_via_'..id(x.preproxy)
     end
     if not used[name] then
+      if not c.fixed_exit then
       nodes[#nodes+1]=name..': '..quote(uri)
       groups[#groups+1]=name..' { filter: name('..quote(name)..')\n policy: fixed(0)\n}'
+      end
       used[name]=true; routes[name]=nextid; relay.exits[tostring(nextid)]=uri; nextid=nextid+1
     end
     return name,routes[name]
+  end
+  local function fixed_target(key,port)
+    local name='slot_'..id(key)
+    relay.data_slots[key]=port
+    local uri='socks5://'..key..':'..c.fixed_secret..'@127.0.0.1:15443'
+    nodes[#nodes+1]=name..': '..quote(uri)
+    groups[#groups+1]=name..' { filter: name('..quote(name)..')\n policy: fixed(0)\n}'
+    return name
   end
   local default_resolver=dns.resolve({},'direct',c,resolvers,'default')
   relay.default_policy={resolver=default_resolver,exit=0}
@@ -51,8 +65,9 @@ function M.compile(c)
   rules[#rules+1]='dport(53) -> must_direct'
   for _,d in ipairs(c.devices) do
     local port=0; local name
-    if d.mode=='proxy' then
-      name,port=ensure_exit(d)
+    if d.mode=='proxy' or c.fixed_exit then
+      if d.mode=='proxy' then name,port=ensure_exit(d) end
+      if c.fixed_exit then name=fixed_target('device_'..d.mac:gsub(':',''),port) end
       local mac='mac('..quote(d.mac)..')'; local ip='sip('..d.ip..'/32)'
       rules[#rules+1]=mac..' && !'..ip..' -> block'
       rules[#rules+1]=ip..' && !'..mac..' -> block'
@@ -68,7 +83,10 @@ function M.compile(c)
   end
   for _,w in ipairs(c.wifis or {}) do
     local port=0
-    if w.mode=='proxy' then local name; name,port=ensure_exit(w); rules[#rules+1]='sip('..w.subnet..') -> must_'..name end
+    if c.fixed_exit then
+      if w.mode=='proxy' then local unused;unused,port=ensure_exit(w) end
+      local name=fixed_target('wifi_'..id(w.id),port);rules[#rules+1]='sip('..w.subnet..') -> must_'..name
+    elseif w.mode=='proxy' then local name;name,port=ensure_exit(w);rules[#rules+1]='sip('..w.subnet..') -> must_'..name end
     local resolver=dns.resolve(w,w.mode,c,resolvers,'wifi_'..w.id)
     relay.network_policies[w.subnet]={resolver=resolver,exit=port}
   end
@@ -80,7 +98,7 @@ end
 -- Go relay map fields must be JSON objects, including when empty.
 function M.encode_relay(relay)
   local json=require 'luci.jsonc'
-  local maps={devices=true,exits=true,resolvers=true,device_policies=true,network_policies=true}
+  local maps={devices=true,exits=true,resolvers=true,device_policies=true,network_policies=true,data_slots=true}
   local function object(t)
     local keys,fields={},{}
     for k in pairs(t) do keys[#keys+1]=k end

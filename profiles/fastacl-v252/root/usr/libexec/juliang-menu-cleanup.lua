@@ -28,7 +28,7 @@ fs.remove('/tmp/luci-indexcache')
 -- LuCI caches menus per login in sessionStorage, independently of server caches.
 -- Invalidate only that menu once when this UI revision is first loaded.
 local marker='juliang-menu-revision'
-local script=[=[<script id="juliang-menu-revision">(function(){try{var k='luci-session-store',d=JSON.parse(sessionStorage.getItem(k)||'{}'),r='255-device-subscription-list-1';for(var s in d){if(d[s]&&typeof d[s]==='object'&&d[s].juliangMenuRevision!==r){delete d[s].menu;d[s].juliangMenuRevision=r}}sessionStorage.setItem(k,JSON.stringify(d))}catch(e){}})();</script>]=]
+local script=[=[<style id="juliang-hide-footer">footer .footer-content{display:none!important}</style><script id="juliang-menu-revision">(function(){try{var k='luci-session-store',d=JSON.parse(sessionStorage.getItem(k)||'{}'),r='255-device-subscription-list-1';for(var s in d){if(d[s]&&typeof d[s]==='object'&&d[s].juliangMenuRevision!==r){delete d[s].menu;d[s].juliangMenuRevision=r}}sessionStorage.setItem(k,JSON.stringify(d))}catch(e){}})();</script>]=]
 for _,path in ipairs({'/usr/share/ucode/luci/template/themes/argon/header.ut','/usr/lib/lua/luci/view/themes/argon/header.htm'}) do
  local text=fs.readfile(path)
  if text then
@@ -37,6 +37,7 @@ for _,path in ipairs({'/usr/share/ucode/luci/template/themes/argon/header.ut','/
   text=text:gsub('(<a%s+class="brand"[^>]*>).-</a>',function(open) return open..brand..'</a>' end)
   -- Keep the brand on two deliberate lines at every sidebar width.
   text=text:gsub('>JuLiang%s*控制中心</a>', '><span style="display:block;white-space:nowrap;line-height:1.2;text-align:center">JuLiang</span><span style="display:block;white-space:nowrap;line-height:1.4;text-align:center">控制中心</span></a>')
+  text=text:gsub('<style id="juliang%-hide%-footer">.-</style>','')
   text=text:gsub('<script id="juliang%-menu%-revision">.-</script>','')
   local updated,n=text:gsub('<head>',function() return '<head>\n'..script end,1)
   if n>0 then assert(fs.writefile(path,updated));fs.chmod(path,'644') end

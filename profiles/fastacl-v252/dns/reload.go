@@ -12,6 +12,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,6 +22,7 @@ import (
 // Each query uses one immutable policy snapshot. Reload validates a replacement
 // before publishing it; neither DNS listener nor existing TCP sessions restart.
 type relayManager struct {
+	data    slotTracker
 	current atomic.Pointer[relay]
 	mu      sync.Mutex
 	file    string
@@ -81,6 +84,19 @@ func loadRelay(file string) (*relay, string, error) {
 			return nil, "", err
 		}
 	}
+	if cfg.DataListen != "" {
+		host, _, err := net.SplitHostPort(cfg.DataListen)
+		if err != nil || host != "127.0.0.1" || len(cfg.DataSecret) < 32 || len(cfg.DataSecret) > 128 {
+			return nil, "", errors.New("invalid fixed exit listener")
+		}
+	} else if len(cfg.DataSlots) > 0 {
+		return nil, "", errors.New("fixed exit listener missing")
+	}
+	for key, id := range cfg.DataSlots {
+		if key == "" || len(key) > 128 || strings.ContainsAny(key, "\x00\r\n") || id < 0 || (id > 0 && cfg.Exits[strconv.Itoa(id)] == "") {
+			return nil, "", errors.New("invalid fixed exit slot")
+		}
+	}
 	exits, err := makeExits(cfg)
 	if err != nil {
 		return nil, "", err
@@ -109,10 +125,10 @@ func (m *relayManager) reload() reloadResult {
 		return reloadResult{Error: err.Error()}
 	}
 	old := m.current.Load()
-	if old != nil && next.config.Listen != old.config.Listen {
+	if old != nil && (next.config.Listen != old.config.Listen || next.config.DataListen != old.config.DataListen || next.config.DataSecret != old.config.DataSecret) {
 		return reloadResult{Error: "DNS listen address change requires cold apply"}
 	}
-	m.current.Store(next)
+	m.publish(next)
 	if old != nil {
 		old.closeIdle()
 	}

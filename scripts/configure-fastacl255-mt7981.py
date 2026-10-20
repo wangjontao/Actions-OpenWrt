@@ -25,7 +25,7 @@ p.write_text(text)
 # WHNAT cannot be enabled behind the control plane through the debugfs toggle.
 p=Path('target/linux/mediatek/files-6.6/drivers/net/ethernet/mediatek/mtk_hnat/hnat.c')
 t=p.read_text();start=t.index('int hnat_enable_hook(void)');end=t.index('int hnat_disable_hook(void)',start)
-t=t[:start]+'int hnat_enable_hook(void)\n{\n\t/* FastACL 2.5.5: CPU forwarding is required for dae policy enforcement. */\n\treturn 0;\n}\n\n'+t[end:];p.write_text(t)
+t=t[:start]+'int hnat_enable_hook(void)\n{\n\t/* FastACL 2.5.6: CPU forwarding is required for dae policy enforcement. */\n\treturn 0;\n}\n\n'+t[end:];p.write_text(t)
 # Start from the exact working MT7981 vendor defconfig used by run 39188165805.
 # Filtering to CONFIG_MTK_* omitted related wireless/EEPROM selections and
 # made MTWiFi 7.6.6.1 fail with undefined calibration constants.

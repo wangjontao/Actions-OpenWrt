@@ -1,4 +1,4 @@
-"""Exercise the compact FastACL 2.5.5 UI against an isolated demo backend."""
+"""Exercise the compact FastACL 2.5.6 UI against an isolated demo backend."""
 import pathlib, re, threading, traceback
 from http.server import ThreadingHTTPServer
 from playwright.sync_api import sync_playwright, expect
@@ -16,7 +16,7 @@ try:
         page.on('pageerror',lambda e:errors.append(str(e)))
 
         stage='initial load';page.goto(url)
-        expect(page.get_by_text('FastACL 2.5.5',exact=False)).to_be_visible()
+        expect(page.get_by_text('FastACL 2.5.6',exact=False)).to_be_visible()
         expect(page.locator('#f25-devices .item')).to_have_count(3)
         expect(page.get_by_role('heading',name='多 WiFi 分配模式',exact=True)).to_be_visible()
         expect(page.locator('#f25-direct-dns')).to_have_value('alidns')
@@ -119,7 +119,7 @@ try:
         expect(page.get_by_text('全局 DNS',exact=True)).to_be_visible()
         page.screenshot(path=str(OUT/'ui-mobile-lite.png'),full_page=True)
         assert not errors,errors
-        browser.close();print('FastACL 2.5.5 quick-switch, batch-delete and responsive UI passed')
+        browser.close();print('FastACL 2.5.6 quick-switch, batch-delete and responsive UI passed')
 except Exception:
     detail='stage: '+stage+'\n\n'+traceback.format_exc()+'\npage errors:\n'+'\n'.join(errors)
     (OUT/'ui-browser-error.txt').write_text(detail,encoding='utf-8')

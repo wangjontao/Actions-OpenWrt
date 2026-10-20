@@ -1,4 +1,4 @@
--- FastACL 2.5.5 policy compiler: main-LAN device policies + managed WiFi subnet policies.
+-- FastACL 2.5.6 policy compiler: main-LAN device policies + managed WiFi subnet policies.
 local M={}
 -- libuci's native cursor has set/add but no LuCI-specific section() helper.
 function M.section(u,config,kind,name,values)
@@ -104,11 +104,11 @@ local function nft_set(name,kind,values)
 end
 function M.firewall(c,backend)
   M.validate(c,true); assert(backend=='nft','Invalid firewall backend')
-  local proxy={}; for _,d in ipairs(c.devices) do if d.mode=='proxy' then proxy[#proxy+1]=d end end
+  local proxy={}; for _,d in ipairs(c.devices) do if d.mode=='proxy' or c.fixed_exit then proxy[#proxy+1]=d end end
   local macs,ips,pairs={},{},{}; for _,d in ipairs(proxy) do macs[#macs+1]=d.mac;ips[#ips+1]=d.ip;pairs[#pairs+1]=d.mac..' . '..d.ip end
   local ifaces,proxy_wifi={},{}; local seen={}
   for _,v in ipairs(c.interfaces or {c.interface}) do if not seen[v] then ifaces[#ifaces+1]=quote_iface(v);seen[v]=true end end
-  for _,w in ipairs(c.wifis or {}) do if w.mode=='proxy' then proxy_wifi[#proxy_wifi+1]=quote_iface(w.interface) end end
+  for _,w in ipairs(c.wifis or {}) do if w.mode=='proxy' or c.fixed_exit then proxy_wifi[#proxy_wifi+1]=quote_iface(w.interface) end end
   local wifi_set,wifi_drop='',''
   if #proxy_wifi>0 then
     wifi_set=nft_set('proxy_wifi_ifaces','ifname',proxy_wifi)

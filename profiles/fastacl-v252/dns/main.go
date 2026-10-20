@@ -31,6 +31,9 @@ type PolicyConfig struct {
 	Exit     int    `json:"exit"`
 }
 type Config struct {
+	DataListen      string                    `json:"data_listen"`
+	DataSecret      string                    `json:"data_secret"`
+	DataSlots       map[string]int            `json:"data_slots"`
 	Listen          string                    `json:"listen"`
 	DirectIP        string                    `json:"direct_ip"`
 	DirectName      string                    `json:"direct_name"`
@@ -450,7 +453,10 @@ func main() {
 	check := flag.Bool("check", false, "validate native nodes without listening")
 	reload := flag.Bool("reload", false, "reload the running relay without restarting listeners")
 	flag.Parse()
-	if *probe != "" { runProbe(*probe); return }
+	if *probe != "" {
+		runProbe(*probe)
+		return
+	}
 	if *reload {
 		if e := requestReload(*file); e != nil {
 			log.Fatal(e)
@@ -465,7 +471,7 @@ func main() {
 		return
 	}
 	manager := &relayManager{file: *file}
-	manager.current.Store(r)
+	manager.publish(r)
 	ua, e := net.ResolveUDPAddr("udp4", r.config.Listen)
 	if e != nil {
 		log.Fatal(e)
@@ -485,6 +491,13 @@ func main() {
 		log.Fatal(e)
 	}
 	defer control.Close()
+	dataListener, e := manager.serveSlots()
+	if e != nil {
+		log.Fatal(e)
+	}
+	if dataListener != nil {
+		defer dataListener.Close()
+	}
 	connections := make(chan struct{}, 128)
 	go func() {
 		for {
@@ -500,7 +513,7 @@ func main() {
 			}
 		}
 	}()
-	fmt.Println("FastACL 2.5.5 DNS ready")
+	fmt.Println("FastACL 2.5.6 DNS ready")
 	for {
 		b := make([]byte, 65535)
 		n, a, e := u.ReadFromUDP(b)

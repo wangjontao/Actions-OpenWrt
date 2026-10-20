@@ -1,6 +1,6 @@
-# FastACL 2.5.5/Fast
+# FastACL 2.5.6/Fast
 
-This independent `codex/fastacl255` branch combines the 2.4.4 application-switching model with the official dae v2.1.1/eBPF dataplane for JuLiangTK S20L / ImmortalWrt 24.10. The package is `2.5.5-r1`.
+This independent `codex/mt7981-fastacl256` branch combines the 2.4.4 application-switching model with the official dae v2.1.1/eBPF dataplane for JuLiangTK S20L / ImmortalWrt 24.10. The package is `2.5.6-r1`.
 
 Node, preproxy and DNS changes use `fastacl252 hot-apply`. The normal hot path keeps both daemon PIDs, reloads dae in process, swaps DNS policy snapshots through a root-only Unix control socket, and atomically updates only FastACL's private nft table when its rules change. It never reloads network, WiFi or the system firewall. A fixed-IP binding change alone can reload dnsmasq. Established dae connections may retain their previous exit; new connections use the updated policy.
 
@@ -18,4 +18,5 @@ The firmware excludes iStore, QuickStart, PassWall, PassWall2, HomeProxy and Ope
 
 Official dae source: https://github.com/daeuniverse/dae/tree/v2.1.1 (AGPL-3.0).
 
-See [FastACL 2.5.5 release notes](README-2.5.5.md) for the current on-device baseline and validation limits.
+See [FastACL 2.5.6 release notes](README-2.5.6.md) for the current on-device baseline and validation limits.
+
