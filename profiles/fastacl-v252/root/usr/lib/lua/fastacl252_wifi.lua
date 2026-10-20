@@ -168,5 +168,24 @@ function M.remove(u,id)
   end
 end
 
+-- Validate the complete batch before staging any UCI deletion.
+function M.remove_many(u,ids)
+ assert(type(ids)=='table' and #ids>0 and #ids<=128,'请选择 1 至 128 个附加 WiFi')
+ local seen={};local main=u:get('fastacl252','main','network') or 'lan'
+ for _,id in ipairs(ids) do
+  assert(type(id)=='string' and id:match('^jfa25w%d+$') and not seen[id],'附加 WiFi 编号无效或重复');seen[id]=true
+  local s=u:get_all('fastacl252',id)
+  assert(s and s['.type']=='wifi' and owned(s) and s.network==id and id~=main and id~='lan','只能删除 FastACL 建立的附加 WiFi')
+ end
+ for _,id in ipairs(ids) do M.remove(u,id) end
+ return {ids=ids,count=#ids}
+end
+function M.remove_all(u,expected)
+ local ids={};u:foreach('fastacl252','wifi',function(s) if owned(s) then ids[#ids+1]=s['.name'] end end)
+ assert(type(expected)=='table' and #expected==#ids,'WiFi 列表已变化，请刷新后重试');local seen={};for _,id in ipairs(expected) do assert(type(id)=='string' and not seen[id],'清除列表无效');seen[id]=true end;for _,id in ipairs(ids) do assert(seen[id],'WiFi 列表已变化，请刷新后重试') end
+ table.sort(ids);return M.remove_many(u,ids)
+end
 M.owner=OWNER
 return M
+
+

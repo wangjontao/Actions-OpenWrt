@@ -247,6 +247,8 @@ function wifi_action()
     for _,n in ipairs(names) do local c=u:changes(n); assert(not c or not next(c),'请先保存或撤销 LuCI 中未提交的配置') end
     if req.action=='create' then result=manager.create(u,req)
     elseif req.action=='remove' then manager.remove(u,req.id); result={id=req.id}
+    elseif req.action=='remove_many' then result=manager.remove_many(u,req.ids)
+    elseif req.action=='remove_all' then result=manager.remove_all(u,req.ids)
     else error('不支持的 WiFi 操作') end
     require('fastacl252_env').read(u)
     committed=true
@@ -390,3 +392,5 @@ function wireless_status()
  local ok,result=pcall(require('fastacl252_wireless').read)
  reply(ok and result or {ok=false,error='读取无线设备信息失败'})
 end
+
+
