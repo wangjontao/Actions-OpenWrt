@@ -50,6 +50,7 @@ jobs:
         .venv/bin/python scripts/tests/test_firmware_artifacts_mt7981.py
         .venv/bin/python profiles/fastacl-v252/tests/test_wireless.py
         python3 profiles/fastacl-v252/tests/test_lite_hotpath.py
+        .venv/bin/python profiles/fastacl-v252/tests/test_control.py
         python3 profiles/fastacl-v252/tests/test_runtime.py
         find profiles/fastacl-v252/root -name '*.lua' -print0 | xargs -0 -n1 luac5.1 -p
         find profiles/fastacl-v252/root -type f | while read -r file; do
