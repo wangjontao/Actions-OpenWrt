@@ -26,5 +26,17 @@ class WorkflowShellTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
 
 
+class BuildOrderTests(unittest.TestCase):
+    def test_metadata_exists_before_standalone_package_compile(self):
+        path = Path(__file__).resolve().parents[2] / '.github/workflows/MT7981-FastACL255-MTWiFi.yml'
+        workflow = yaml.safe_load(path.read_text(encoding='utf-8'))
+        command = next(step['run'] for step in workflow['jobs']['build']['steps']
+                       if step.get('name') == 'Compile device firmware')
+        self.assertLess(command.index('make buildinfo'), command.index('make package/compile'))
+        self.assertLess(command.index('make package/compile'), command.index('make -j1 V=s'))
+        self.assertIn('for metadata in config feeds version; do', command)
+        self.assertIn('test -s "bin/targets/mediatek/filogic/${metadata}.buildinfo"', command)
+
+
 if __name__ == '__main__':
     unittest.main()
