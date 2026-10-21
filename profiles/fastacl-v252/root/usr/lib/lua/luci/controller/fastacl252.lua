@@ -88,7 +88,7 @@ function status()
   end)
   table.sort(subscriptions,function(a,b) return a.name<b.name end)
   local dns_stats=json.parse(require('luci.sys').exec('/usr/bin/fastacl252-dns -stats -config /tmp/fastacl252/dns.json 2>/dev/null') or '') or {}
-  reply({dns_stats=dns_stats,ok=true,version='2.5.7',enabled=c.enabled,devices=env.inventory(c,u),nodes=nodes,subscriptions=subscriptions,dns_catalog=dns.catalog(),direct_dns=c.direct_dns,proxy_dns=c.proxy_dns,wifi=wifi.status(u),network=c.network,router_ip=c.router_ip,runtime=runtime,job=fs.readfile('/tmp/fastacl252/apply.result'),apply_log=tail(fs.readfile('/tmp/fastacl252/apply.log') or '',3000),subscription_history=json.parse(fs.readfile('/tmp/fastacl252/subscription-history.json') or '') or {},subscription_running=fs.access('/tmp/fastacl252-subscribe.lock') or false})
+  reply({dns_stats=dns_stats,ok=true,version='2.5.8',enabled=c.enabled,devices=env.inventory(c,u),nodes=nodes,subscriptions=subscriptions,dns_catalog=dns.catalog(),direct_dns=c.direct_dns,proxy_dns=c.proxy_dns,wifi=wifi.status(u),network=c.network,router_ip=c.router_ip,runtime=runtime,job=fs.readfile('/tmp/fastacl252/apply.result'),apply_log=tail(fs.readfile('/tmp/fastacl252/apply.log') or '',3000),subscription_history=json.parse(fs.readfile('/tmp/fastacl252/subscription-history.json') or '') or {},subscription_running=fs.access('/tmp/fastacl252-subscribe.lock') or false})
 end
 
 -- Main-LAN device changes are application-layer hot changes. dnsmasq is reloaded

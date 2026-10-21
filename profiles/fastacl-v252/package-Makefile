@@ -1,13 +1,13 @@
 include $(TOPDIR)/rules.mk
 PKG_NAME:=fastacl252
-PKG_VERSION:=2.5.7
+PKG_VERSION:=2.5.8
 PKG_RELEASE:=1
 PKG_LICENSE:=AGPL-3.0-only
 include $(INCLUDE_DIR)/package.mk
 define Package/fastacl252
   SECTION:=net
   CATEGORY:=Network
-  TITLE:=JuLiangTK FastACL 2.5.7 dae/eBPF control center
+  TITLE:=JuLiangTK FastACL 2.5.8 dae/eBPF control center
   CONFLICTS:=fastacl25 fastacl251
   DEPENDS:=+juliangtk-dae +libuci-lua +luci-compat +luci-lib-nixio +luci-lib-jsonc +lyaml +curl +ca-bundle +ip-full +iw +iwinfo +ip-bridge +firewall4 +sqm-scripts +kmod-sched-cake +kmod-ifb
 endef

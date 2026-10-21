@@ -21,10 +21,11 @@ files={
 lua.globals().read=lambda p:files.get(p)
 lua.globals().write=lambda p,s:files.__setitem__(p,s) or True
 lua.globals().exists=lambda p:p in files
+lua.globals().rename=lambda a,b:files.__setitem__(b,files.pop(a)) or True
 lua.globals().decode=lambda s:table(json.loads(s))
 lua.globals().encode=lambda t:json.dumps(native(t),ensure_ascii=False)
 lua.execute("""
-package.loaded['nixio.fs']={readfile=read,writefile=write,access=exists,chmod=function()end,remove=function()end,
+package.loaded['nixio.fs']={readfile=read,writefile=write,access=exists,rename=rename,chmod=function()end,remove=function()end,
  dir=function()local i=0;local a={'base.json','apps.json'};return function()i=i+1;return a[i]end end,
  glob=function()return function()return nil end end}
 package.loaded['luci.jsonc']={parse=decode,stringify=encode}

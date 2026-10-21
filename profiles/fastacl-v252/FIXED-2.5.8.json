@@ -1,0 +1,11 @@
+{
+  "version": "2.5.8",
+  "mechanism": "authenticated-stable-entry",
+  "fixed_exit": true,
+  "base_version": "2.5.7",
+  "tested_switch_seconds": [
+    1.484,
+    1.422
+  ],
+  "phone_cross_wifi_test": "passed"
+}

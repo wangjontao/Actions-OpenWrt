@@ -34,6 +34,7 @@ function M.read(u,guards_only)
   end)
   table.sort(c.devices,function(a,b) return tostring(a.mac)<tostring(b.mac) end)
   table.sort(c.wifis,function(a,b) return a.id<b.id end)
+  c.fixed_exit=main.fixed_exit=='1'
   if not guards_only then c.platform_secret=require('fastacl252_slots').key() end
   return policy.validate(c,guards_only)
 end

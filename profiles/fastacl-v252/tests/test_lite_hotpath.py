@@ -15,9 +15,9 @@ def between(text: str, start: str, end: str) -> str:
     return text[a:b]
 
 
-assert "version='2.5.6'" in controller
-assert "PKG_VERSION:=2.5.6" in pkg
-assert "fastacl252.main.version=2.5.6" in defaults
+assert "version='2.5.8'" in controller
+assert "PKG_VERSION:=2.5.8" in pkg
+assert "fastacl252.main.version=2.5.8" in defaults
 
 # Managed WiFi node/preproxy/DNS updates are pure application-layer switches.
 wifi_update = between(controller, "if req.action=='update' then", "if req.action=='hide_all'")
@@ -46,7 +46,7 @@ for forbidden in (
 # Topology changes reload netifd once, then hot-apply the dae configuration.
 wifi_all = between(controller, "function wifi_action()", "function subscription()")
 assert "apply_now('hot-apply')" in wifi_all
-assert "apply_now('cold-apply')" not in wifi_all
+assert "apply_now('cold-apply')" in wifi_all  # topology creation still needs a cold apply
 assert "/etc/init.d/network reload" in wifi_all
 assert "/etc/init.d/firewall restart" in wifi_all
 
@@ -71,16 +71,26 @@ assert "/usr/bin/fastacl252 apply" not in guard
 assert "procd_add_reload_trigger fastacl252" in init
 assert "procd_add_reload_trigger fastacl252 firewall" not in init
 
-print("FastACL 2.5.6 hot-path architecture: OK")
+print("FastACL 2.5.8 hot-path architecture: OK")
 
 # DNS hot updates must acknowledge a live in-process reload, never stop listeners.
 dns_hot = between(runtime, "reload_dns_next(){", "# dae's own reload")
 healthy_reload = dns_hot[dns_hot.index('cp "$R/dns.json"'):]
-assert 'dns_reload_control >' in healthy_reload
+assert 'fastacl252-dns -reload' in healthy_reload
 assert 'fastacl252-dns -reload' in runtime
-assert 'fastacl252-control.lua dns' in runtime
+assert 'fastacl252-dns -reload -config' in runtime
 assert 'dns_stop' not in healthy_reload
 assert 'start_dns_next' not in healthy_reload
 assert not (ROOT / 'root/etc/uci-defaults/95-fastacl252-hotfix6-fast-switch').exists()
 assert '+libuci-lua' in pkg
 
+
+# 2.5.8 is the shared-core mechanism, with the live safety regressions retained.
+assert "main.fixed_exit=1" in defaults
+assert "open_flags('wronly','creat')+524288" in controller
+assert "edit_handle:lock('ulock')" in controller
+dae=(ROOT/'root/usr/lib/lua/fastacl252_dae.lua').read_text(encoding='utf-8')
+assert "if c.platform_secret then" in dae
+assert "rules[#rules+1]='sip('..policy.cidr(c.router_ip,c.netmask)..') && '..mac" in dae
+console=(ROOT/'root/usr/lib/lua/luci/view/fastacl252/console.htm').read_text(encoding='utf-8')
+assert 'wifiProgress=setInterval' in console and 'e.busy' in console

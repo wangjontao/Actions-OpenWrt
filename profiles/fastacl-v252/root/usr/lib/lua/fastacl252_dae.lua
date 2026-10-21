@@ -42,8 +42,10 @@ function M.compile(c)
       name=name..'_via_'..id(x.preproxy)
     end
     if not used[name] then
+      if not c.fixed_exit then
       nodes[#nodes+1]=name..': '..quote(uri)
       groups[#groups+1]=name..' { filter: name('..quote(name)..')\n policy: fixed(0)\n}'
+      end
       used[name]=true; routes[name]=nextid; relay.exits[tostring(nextid)]=uri; nextid=nextid+1
     end
     return name,routes[name]
@@ -58,6 +60,15 @@ function M.compile(c)
     groups[#groups+1]=name..' { filter: name('..quote(name)..')\n policy: fixed(0)\n}'
     rules[#rules+1]=scope..' && dip(198.19.0.0/16) -> must_'..name
   end
+  local function fixed_target(key,port)
+    assert(relay.data_listen and c.platform_secret,'Fixed entry listener is not configured')
+    local name='slot_'..id(key)
+    relay.data_slots[key]=port
+    local uri='socks5://'..key..':'..c.platform_secret..'@127.0.0.1:15443'
+    nodes[#nodes+1]=name..': '..quote(uri)
+    groups[#groups+1]=name..' { filter: name('..quote(name)..')\n policy: fixed(0)\n}'
+    return name
+  end
   local default_resolver=dns.resolve({},'direct',c,resolvers,'default')
   relay.default_policy={resolver=default_resolver,exit=0}
   -- DNS is intercepted by nft and delivered to the local encrypted relay.
@@ -69,13 +80,14 @@ function M.compile(c)
   for _,d in ipairs(c.devices) do
     d.platform_scope="device_"..d.mac:gsub(":","")
     local port=0; local name
-    if d.mode=='proxy' then
-      name,port=ensure_exit(d)
+    if d.mode=='proxy' or c.fixed_exit then
+      if d.mode=='proxy' then name,port=ensure_exit(d) end
+      if c.fixed_exit then name=fixed_target('device_'..d.mac:gsub(':',''),port) end
       local mac='mac('..quote(d.mac)..')'; local ip='sip('..d.ip..'/32)'
       rules[#rules+1]='sip('..policy.cidr(c.router_ip,c.netmask)..') && '..mac..' && !'..ip..' -> block'
       rules[#rules+1]=ip..' && !'..mac..' -> block'
       platform_target(d,mac..' && '..ip,port)
-      require('fastacl252_split').dae(d,mac..' && '..ip,name,rules)
+      if d.mode=='proxy' then require('fastacl252_split').dae(d,mac..' && '..ip,name,rules) end
       rules[#rules+1]=mac..' && '..ip..' -> must_'..name
       -- Legacy private-DNS mode consumed this map.  Dev.2 uses the explicit
       -- device_policies map for normal/per-device DNS so keep the old map
@@ -89,7 +101,12 @@ function M.compile(c)
   for _,w in ipairs(c.wifis or {}) do
     w.platform_scope="wifi_"..id(w.id)
     local port=0
-    if w.mode=='proxy' then local name; name,port=ensure_exit(w); platform_target(w,'sip('..w.subnet..')',port); require('fastacl252_split').dae(w,'sip('..w.subnet..')',name,rules); rules[#rules+1]='sip('..w.subnet..') -> must_'..name end
+    if c.fixed_exit then
+      if w.mode=='proxy' then local unused;unused,port=ensure_exit(w) end
+      local name=fixed_target('wifi_'..id(w.id),port)
+      if w.mode=='proxy' then platform_target(w,'sip('..w.subnet..')',port);require('fastacl252_split').dae(w,'sip('..w.subnet..')',name,rules) end
+      rules[#rules+1]='sip('..w.subnet..') -> must_'..name
+    elseif w.mode=='proxy' then local name;name,port=ensure_exit(w);platform_target(w,'sip('..w.subnet..')',port);require('fastacl252_split').dae(w,'sip('..w.subnet..')',name,rules);rules[#rules+1]='sip('..w.subnet..') -> must_'..name end
     local resolver=dns.resolve(w,w.mode,c,resolvers,'wifi_'..w.id)
     relay.network_policies[w.subnet]=require('fastacl252_split').dns(w,{resolver=resolver,exit=port},c,resolvers)
   end
