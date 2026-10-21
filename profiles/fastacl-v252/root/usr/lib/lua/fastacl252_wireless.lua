@@ -39,7 +39,9 @@ function M.read_mtwifi(dev,sys,json)
  local fdb=json.parse(sys.exec('bridge -j fdb show dev '..dev..' 2>/dev/null')) or {}
  local owned={}
  for _,e in ipairs(fdb) do
-  if e.dev==dev and type(e.mac)=='string' then owned[e.mac:upper()]=true end
+  -- bridge fdb show dev already scopes rows; some iproute2 builds omit owner.
+  local owner=e.dev or e.ifname
+  if (owner==nil or owner==dev) and type(e.mac)=='string' then owned[e.mac:upper()]=true end
  end
  local rows,args={},{}
  for _,entry in ipairs(M.parse_mtwifi(sys.exec('iwinfo '..dev..' assoclist 2>/dev/null'))) do

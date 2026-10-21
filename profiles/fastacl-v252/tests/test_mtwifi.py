@@ -22,3 +22,21 @@ assert a[1]['rx_bytes']==123 and a[1]['tx_bytes']==456 and a[1]['rx_link_mbps']=
 assert b[1]['rx_bytes'] is None and b[1]['tx_bytes'] is None
 assert len(m.read_mtwifi('ra0;reboot',sys,js))==0
 print('PASS MTWiFi per-BSS identity, link units, vendor counters, unavailable counters and interface validation')
+
+# Scoped FDB JSON uses dev, ifname, or omits the redundant interface name.
+for field in ('dev','ifname',None):
+ def scoped(cmd):
+  if cmd.startswith('bridge -j fdb show dev ra0 '):
+   row={'mac':'AA:BB:CC:DD:EE:01'}
+   if field: row[field]='ra0'
+   return json.dumps([row])
+  return execute(cmd)
+ result=m.read_mtwifi('ra0',lua.table_from({'exec':scoped}),js)
+ assert len(result)==1 and result[1]['mac']=='AA:BB:CC:DD:EE:01',field
+# An explicit mismatched owner must still be rejected.
+def wrong_owner(cmd):
+ if cmd.startswith('bridge -j fdb show dev ra0 '):
+  return json.dumps([{'mac':'AA:BB:CC:DD:EE:01','ifname':'rax0'}])
+ return execute(cmd)
+assert len(m.read_mtwifi('ra0',lua.table_from({'exec':wrong_owner}),js))==0
+print('PASS scoped FDB dev/ifname/omitted-owner variants and cross-SSID rejection')
