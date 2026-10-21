@@ -1,5 +1,5 @@
 name: MT7981 MTWiFi FastACL 2.5.6 Testing
-run-name: 'FastACL 2.5.6 MT7981 fixed exit mappings · ${{ github.ref_name }}'
+run-name: 'FastACL 2.5.6-r2 wireless detection fix · ${{ github.ref_name }}'
 'on':
   workflow_dispatch: {}
   push:

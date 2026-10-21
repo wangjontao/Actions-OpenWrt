@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 PKG_NAME:=fastacl252
 PKG_VERSION:=2.5.6
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_LICENSE:=AGPL-3.0-only
 include $(INCLUDE_DIR)/package.mk
 define Package/fastacl252
@@ -22,3 +22,4 @@ define Package/fastacl252/install
 	chmod 600 $(1)/etc/config/fastacl252
 endef
 $(eval $(call BuildPackage,fastacl252))
+
