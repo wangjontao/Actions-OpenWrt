@@ -27,10 +27,17 @@ type ResolverConfig struct {
 	Port int    `json:"port"`
 }
 type PolicyConfig struct {
+ DomesticResolver string `json:"domestic_resolver,omitempty"`
+ BlockDomains []string `json:"block_domains,omitempty"`
+ Platforms []string `json:"platforms,omitempty"`
+ PlatformSlot string `json:"platform_slot,omitempty"`
 	Resolver string `json:"resolver"`
 	Exit     int    `json:"exit"`
 }
 type Config struct {
+ DomesticDomainsFile string `json:"domestic_domains_file,omitempty"`
+ PlatformRulesFile string `json:"platform_rules_file,omitempty"`
+ PlatformStateFile string `json:"platform_state_file,omitempty"`
 	DataListen      string                    `json:"data_listen"`
 	DataSecret      string                    `json:"data_secret"`
 	DataSlots       map[string]int            `json:"data_slots"`
@@ -53,6 +60,11 @@ type entry struct {
 	offsets []int
 }
 type relay struct {
+ domestic map[string]struct{}
+ stats dnsCounters
+ platforms map[string][]platformRule
+ platformMap *platformStore
+ priorityExits map[int]netproxy.Dialer
 	config       Config
 	exits        map[int]netproxy.Dialer
 	mu           sync.Mutex
@@ -222,15 +234,7 @@ func (r *relay) policyFor(ip string) (string, int) {
 	if p, ok := r.config.DevicePolicies[ip]; ok {
 		return p.Resolver, p.Exit
 	}
-	addr := net.ParseIP(ip)
-	if addr != nil {
-		for cidr, p := range r.config.NetworkPolicies {
-			_, n, e := net.ParseCIDR(cidr)
-			if e == nil && n.Contains(addr) {
-				return p.Resolver, p.Exit
-			}
-		}
-	}
+	if p,ok:=r.networkPolicy(ip);ok{return p.Resolver,p.Exit}
 	if port, ok := r.config.Devices[ip]; ok {
 		return "__legacy_private", port
 	}
@@ -311,7 +315,8 @@ func udpResolve(q []byte, s ResolverConfig) []byte {
 	}
 	return b
 }
-func (r *relay) resolve(q []byte, ip string) []byte {
+func (r *relay) resolve(q []byte, ip string) (result []byte) {
+ defer func(){if len(result)>=4 && result[3]&15==2 {r.stats.Errors.Add(1)}}()
 	if _, e := questionEnd(q); e != nil || q[2]&128 != 0 {
 		return nil
 	}
@@ -321,12 +326,15 @@ func (r *relay) resolve(q []byte, ip string) []byte {
 	default:
 		return fail(q)
 	}
-	resolverID, exit := r.policyFor(ip)
+	resolverID, exit, blocked := r.domainPolicy(ip,q)
+ r.stats.Queries.Add(1)
+ if blocked {r.stats.Blocked.Add(1);b:=fail(q);b[3]=(b[3]&240)|5;return b}
+ if exit==0 {r.stats.Direct.Add(1)} else {r.stats.Proxy.Add(1)}
 	spec, e := r.resolver(resolverID, exit)
 	if e != nil {
 		return fail(q)
 	}
-	key := resolverID + "@" + strconv.Itoa(exit) + ":" + string(q[2:])
+	key := r.scopedPolicy(ip).PlatformSlot + ":" + resolverID + "@" + strconv.Itoa(exit) + ":" + string(q[2:])
 	r.mu.Lock()
 	v, ok := r.cache[key]
 	if ok && uint32(time.Since(v.created)/time.Second) < v.ttl {
@@ -398,6 +406,8 @@ func (r *relay) resolve(q []byte, ip string) []byte {
 	if b == nil {
 		return fail(q)
 	}
+	b = r.platformRewrite(q,b,ip)
+	if b==nil{return fail(q)}
 	ttl, offsets := ttlInfo(b)
 	if ttl > 0 && len(b) <= 8192 {
 		r.mu.Lock()
@@ -448,11 +458,15 @@ func validPolicy(cfg Config, p PolicyConfig) error {
 	return nil
 }
 func main() {
+ explain:=flag.String("explain-dns","","explain DNS route")
+ clientIP:=flag.String("client-ip","127.0.0.1","DNS source IP")
+ stats:=flag.Bool("stats",false,"read DNS counters")
 	probe := flag.String("probe-file", "", "query exit IP using a temporary saved-node specification")
 	file := flag.String("config", "", "configuration JSON")
 	check := flag.Bool("check", false, "validate native nodes without listening")
 	reload := flag.Bool("reload", false, "reload the running relay without restarting listeners")
 	flag.Parse()
+ if *stats{if e:=requestStats(*file);e!=nil{log.Fatal(e)};return}
 	if *probe != "" {
 		runProbe(*probe)
 		return
@@ -467,6 +481,7 @@ func main() {
 	if e != nil {
 		log.Fatal(e)
 	}
+	if *explain!="" {r.explain(*clientIP,*explain);return}
 	if *check {
 		return
 	}
@@ -513,7 +528,7 @@ func main() {
 			}
 		}
 	}()
-	fmt.Println("FastACL 2.5.6 DNS ready")
+	fmt.Println("FastACL 2.5.7 DNS ready")
 	for {
 		b := make([]byte, 65535)
 		n, a, e := u.ReadFromUDP(b)

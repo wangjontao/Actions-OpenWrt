@@ -2,13 +2,18 @@
 local M={}
 function M.apply(u,id,options)
  options=options or {};local targets={};local native=false
- if id~='all' then assert(type(id)=='string' and id:match('^jfa25w%d+$'),'无效附加 WiFi') end
+ local wanted
+ if type(id)=='table' then wanted={};assert(#id>0 and #id<=128,'无效批量 WiFi');for _,name in ipairs(id)do assert(type(name)=='string' and name:match('^jfa25w%d+$') and not wanted[name],'无效附加 WiFi');wanted[name]=true end
+ elseif id~='all' then assert(type(id)=='string' and id:match('^jfa25w%d+$'),'无效附加 WiFi') end
+ local found={}
  u:foreach('wireless','wifi-iface',function(w)
-  if (id=='all' or w['.name']==id) and (not w.mode or w.mode=='ap') then
+  if (id=='all' or (wanted and wanted[w['.name']]) or w['.name']==id) and (not w.mode or w.mode=='ap') then
+   found[w['.name']]=true
    local driver=u:get('wireless',w.device,'type')
    if driver~='mtwifi' then native=true else targets[#targets+1]={section=w['.name'],device=w.device,hidden=w.hidden=='1' and 1 or 0} end
   end
  end)
+ if wanted then for name in pairs(wanted)do assert(found[name],'无线接口不存在')end end
  assert(id=='all' or #targets>0 or native,'无线接口不存在')
  local call=options.call or require('luci.sys').call
  if native then assert(call('wifi reload >/dev/null 2>&1')==0,'WiFi reload 失败');return {path='wireless-reload'} end

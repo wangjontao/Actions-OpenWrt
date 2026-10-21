@@ -97,11 +97,17 @@ func loadRelay(file string) (*relay, string, error) {
 			return nil, "", errors.New("invalid fixed exit slot")
 		}
 	}
+	domestic, err := loadDomainConfig(cfg)
+ if err!=nil{return nil,"",err}
+ platformRules, store, err := loadPlatforms(cfg)
+ if err!=nil{return nil,"",err}
 	exits, err := makeExits(cfg)
 	if err != nil {
 		return nil, "", err
 	}
-	r := &relay{config: cfg, exits: exits, clients: map[int]*http.Client{}, namedClients: map[string]*http.Client{}, cache: map[string]entry{}, slots: make(chan struct{}, 64)}
+	r := &relay{domestic:domestic,platforms:platformRules,platformMap:store,config: cfg, exits: exits, clients: map[int]*http.Client{}, namedClients: map[string]*http.Client{}, cache: map[string]entry{}, slots: make(chan struct{}, 64)}
+	r.priorityExits,err=makeExitsBase(cfg,priorityBase{})
+ if err!=nil{return nil,"",err}
 	sum := sha256.Sum256(b)
 	return r, hex.EncodeToString(sum[:]), nil
 }
@@ -184,6 +190,7 @@ func (m *relayManager) serveControl() (net.Listener, error) {
 				defer c.Close()
 				c.SetDeadline(time.Now().Add(5 * time.Second))
 				command, err := bufio.NewReader(io.LimitReader(c, 32)).ReadString('\n')
+				if err==nil && command=="stats\n" {json.NewEncoder(c).Encode(m.current.Load().stats.snapshot());return}
 				if err != nil || command != "reload\n" {
 					json.NewEncoder(c).Encode(reloadResult{Error: "invalid control command"})
 					return

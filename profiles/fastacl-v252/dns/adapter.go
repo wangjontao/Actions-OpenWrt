@@ -28,6 +28,9 @@ import (
 type encryptedBase struct{}
 
 func (encryptedBase) DialContext(ctx context.Context, network, address string) (netproxy.Conn, error) {
+	return dialBase(ctx, network, address, false)
+}
+func dialBase(ctx context.Context, network, address string, priority bool) (netproxy.Conn, error) {
 	mn, err := netproxy.ParseMagicNetwork(network)
 	if err != nil {
 		return nil, err
@@ -41,6 +44,9 @@ func (encryptedBase) DialContext(ctx context.Context, network, address string) (
 		return d.DialContext(ctx, network, "127.0.0.1:12553")
 	}}
 	d := net.Dialer{Timeout: 5 * time.Second, Resolver: resolver}
+	if priority {
+		d.Control = priorityControl
+	}
 	c, e := d.DialContext(ctx, network, address)
 	if e != nil {
 		return nil, e
@@ -51,13 +57,16 @@ func (encryptedBase) DialContext(ctx context.Context, network, address string) (
 	return c, nil
 }
 func makeExits(cfg Config) (map[int]netproxy.Dialer, error) {
+	return makeExitsBase(cfg, encryptedBase{})
+}
+func makeExitsBase(cfg Config, base netproxy.Dialer) (map[int]netproxy.Dialer, error) {
 	result := map[int]netproxy.Dialer{}
 	for key, link := range cfg.Exits {
 		id, e := strconv.Atoi(key)
 		if e != nil || id < 12600 || id >= 14000 || strings.ContainsAny(link, "\r\n\x00") {
 			return nil, fmt.Errorf("invalid exit configuration")
 		}
-		d, _, e := dialer.NewNetproxyDialerFromLink(encryptedBase{}, &dialer.ExtraOption{AllowInsecure: false}, link)
+		d, _, e := dialer.NewNetproxyDialerFromLink(base, &dialer.ExtraOption{AllowInsecure: false}, link)
 		if e != nil {
 			return nil, fmt.Errorf("exit %d: unsupported or invalid node: %w", id, e)
 		}

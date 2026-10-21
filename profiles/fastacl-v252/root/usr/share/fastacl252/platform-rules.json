@@ -1,0 +1,2844 @@
+{
+  "repository": "v2fly/domain-list-community",
+  "commit": "e8f6d1e5c4a01cda943c0784ffa834340eeab5ae",
+  "platforms": {
+    "tiktok": [
+      {
+        "kind": "domain",
+        "value": "bytedapm.com"
+      },
+      {
+        "kind": "domain",
+        "value": "muscdn.com"
+      },
+      {
+        "kind": "domain",
+        "value": "musical.ly"
+      },
+      {
+        "kind": "domain",
+        "value": "tik-tokapi.com"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktok-minis.com"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktok-row.net"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktok.com"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktokcdn-eu.com"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktokcdn-us.com"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktokcdn.com"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktokd.net"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktokd.org"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktokeu-cdn.com"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktokglobalshopv.com"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktokminis.us"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktokrow-cdn.com"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktokv.com"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktokv.eu"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktokv.us"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktokw.eu"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktokw.us"
+      },
+      {
+        "kind": "domain",
+        "value": "ttcdn-us.com"
+      },
+      {
+        "kind": "domain",
+        "value": "ttlivecdn.com"
+      },
+      {
+        "kind": "domain",
+        "value": "ttoverseaus.net"
+      },
+      {
+        "kind": "domain",
+        "value": "ttwstatic.com"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktokcdn-us.com.edgesuite.net"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktokcdn.com.akamaized.net"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktokcdn.com.edgesuite.net"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktokv.com.edgekey.net"
+      },
+      {
+        "kind": "domain",
+        "value": "tiktokv.com.edgesuite.net"
+      },
+      {
+        "kind": "full",
+        "value": "p16-tiktokcdn-com.akamaized.net"
+      },
+      {
+        "kind": "full",
+        "value": "p16-tiktok-dm-sticker-sign-sg.ibyteimg.com"
+      },
+      {
+        "kind": "full",
+        "value": "roovza-launches.appsflyersdk.com"
+      },
+      {
+        "kind": "full",
+        "value": "roovza.inapps.appsflyersdk.com"
+      },
+      {
+        "kind": "full",
+        "value": "roovza.launches.appsflyersdk.com"
+      },
+      {
+        "kind": "full",
+        "value": "roovza.skadsdk.appsflyersdk.com"
+      },
+      {
+        "kind": "domain",
+        "value": "analytics.tiktok.com"
+      }
+    ],
+    "facebook": [
+      {
+        "kind": "domain",
+        "value": "aboutfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "accessfacebookfromschool.com"
+      },
+      {
+        "kind": "domain",
+        "value": "acebooik.com"
+      },
+      {
+        "kind": "domain",
+        "value": "acebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "advancediddetection.com"
+      },
+      {
+        "kind": "domain",
+        "value": "askfacebook.net"
+      },
+      {
+        "kind": "domain",
+        "value": "askfacebook.org"
+      },
+      {
+        "kind": "domain",
+        "value": "atdmt2.com"
+      },
+      {
+        "kind": "domain",
+        "value": "atlasdmt.com"
+      },
+      {
+        "kind": "domain",
+        "value": "atlasonepoint.com"
+      },
+      {
+        "kind": "domain",
+        "value": "buyingfacebooklikes.com"
+      },
+      {
+        "kind": "domain",
+        "value": "careersatfb.com"
+      },
+      {
+        "kind": "domain",
+        "value": "celebgramme.com"
+      },
+      {
+        "kind": "domain",
+        "value": "china-facebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "click-url.com"
+      },
+      {
+        "kind": "domain",
+        "value": "como-hackearfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "crowdtangle.com"
+      },
+      {
+        "kind": "domain",
+        "value": "dacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "dlfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "dotfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "dotfacebook.net"
+      },
+      {
+        "kind": "domain",
+        "value": "expresswifi.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faacebok.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faasbook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facbebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facbeok.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facboo.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facbook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facbool.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facboox.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faccebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faccebookk.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facdbook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facdebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "face-book.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceabook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebboc.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebbook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebboook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebcook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebdok.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebgook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebhook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebkkk.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebo-ok.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceboak.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebock.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebocke.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebof.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceboik.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebok.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebokbook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebokc.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebokk.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebokok.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceboks.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebol.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebolk.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebomok.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceboo.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooa.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceboob.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceboobok.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooc.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceboock.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebood.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooe.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceboof.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooi.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooik.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooik.org"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooj.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook-corp.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook-covid-19.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook-ebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook-forum.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook-hardware.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook-inc.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook-login.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook-newsroom.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook-newsroom.org"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook-pmdcenter.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook-pmdcenter.net"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook-pmdcenter.org"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook-privacy.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook-program.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook-studio.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook-support.org"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook-texas-holdem.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook-texas-holdem.net"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook.br"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook.ca"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook.cc"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook.design"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook.hu"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook.in"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook.net"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook.nl"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook.org"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook.se"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook.shop"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook.tv"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook.us"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook.wang"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook123.org"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook30.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook30.net"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook30.org"
+      },
+      {
+        "kind": "domain",
+        "value": "facebook4business.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookadvertisingsecrets.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookatschool.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookawards.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookblueprint.net"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookbrand.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookbrand.net"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookcanadianelectionintegrityinitiative.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookcareer.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookcheats.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookck.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookclub.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookcom.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookconsultant.org"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookcoronavirus.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookcovers.org"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookcredits.info"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookdating.net"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookdusexe.org"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookemail.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookenespanol.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookexchange.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookexchange.net"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookflow.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookgames.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookgraphsearch.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookgraphsearch.info"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookgroups.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookhome.cc"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookhome.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookhome.info"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookhub.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooki.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookinc.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookland.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooklikeexchange.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooklive.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooklivestaging.net"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooklivestaging.org"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooklogin.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooklogin.info"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookloginhelp.net"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooklogs.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookmail.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookmail.tv"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookmanager.info"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookmarketing.info"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookmarketingpartner.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookmarketingpartners.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookmobile.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookmsn.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooknews.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooknfl.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooknude.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookofsex.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookpaper.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookpay.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookphonenumber.net"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookphoto.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookphotos.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookpmdcenter.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookpoke.net"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookpoke.org"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookpoker.info"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookpokerchips.info"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookporn.net"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookporn.org"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookporno.net"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookportal.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooks.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooksafety.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooksecurity.net"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookshop.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooksignup.net"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooksite.net"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookstories.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookstudios.net"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookstudios.org"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooksupplier.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooksuppliers.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookswagemea.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookswagstore.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooksz.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookthreads.net"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooktv.net"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooktv.org"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookvacation.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookw.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookworld.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebool.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebool.info"
+      },
+      {
+        "kind": "domain",
+        "value": "facebooll.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceboom.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceboon.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceboonk.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceboooik.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceboook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceboop.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceboot.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceboox.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebopk.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebpook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebuk.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebuok.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebvook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebyook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebzook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facecbgook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facecbook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facecbook.org"
+      },
+      {
+        "kind": "domain",
+        "value": "facecook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facecook.org"
+      },
+      {
+        "kind": "domain",
+        "value": "facedbook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceebok.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceebot.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facegbok.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facegbook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceobk.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceobok.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceobook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faceook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facerbooik.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facerbook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facesbooc.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facesounds.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facetook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facevbook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facewbook.co"
+      },
+      {
+        "kind": "domain",
+        "value": "facewook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facfebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fackebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facnbook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facrbook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facvebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facwebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facxebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fadebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faebok.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faebookc.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faeboook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faecebok.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faesebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fafacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faicbooc.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fasebokk.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fasebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faseboox.com"
+      },
+      {
+        "kind": "domain",
+        "value": "favebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "faycbok.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fb.careers"
+      },
+      {
+        "kind": "domain",
+        "value": "fb.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fb.gg"
+      },
+      {
+        "kind": "domain",
+        "value": "fb.me"
+      },
+      {
+        "kind": "domain",
+        "value": "fb.watch"
+      },
+      {
+        "kind": "domain",
+        "value": "fbacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fbbmarket.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fbboostyourbusiness.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fbcdn.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fbcdn.net"
+      },
+      {
+        "kind": "domain",
+        "value": "fbfeedback.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fbhome.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fbidb.io"
+      },
+      {
+        "kind": "domain",
+        "value": "fbinc.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fbinnovation.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fbmarketing.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fbreg.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fbrpms.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fbsbx.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fbsbx.net"
+      },
+      {
+        "kind": "domain",
+        "value": "fbsupport-covid.net"
+      },
+      {
+        "kind": "domain",
+        "value": "fbthirdpartypixel.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fbthirdpartypixel.net"
+      },
+      {
+        "kind": "domain",
+        "value": "fbthirdpartypixel.org"
+      },
+      {
+        "kind": "domain",
+        "value": "fburl.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fbwat.ch"
+      },
+      {
+        "kind": "domain",
+        "value": "fbworkmail.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fcacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fcaebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fcebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fcebookk.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fcfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fdacebook.info"
+      },
+      {
+        "kind": "domain",
+        "value": "feacboo.com"
+      },
+      {
+        "kind": "domain",
+        "value": "feacbook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "feacbooke.com"
+      },
+      {
+        "kind": "domain",
+        "value": "feacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fecbbok.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fecbooc.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fecbook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "feceboock.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fecebook.net"
+      },
+      {
+        "kind": "domain",
+        "value": "feceboox.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fececbook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "feook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "ferabook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fescebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fesebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "ffacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fgacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "ficeboock.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fmcebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fnacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fosebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fpacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fqcebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fracebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "freeb.com"
+      },
+      {
+        "kind": "domain",
+        "value": "freebasics.com"
+      },
+      {
+        "kind": "domain",
+        "value": "freebasics.net"
+      },
+      {
+        "kind": "domain",
+        "value": "freebs.com"
+      },
+      {
+        "kind": "domain",
+        "value": "freefacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "freefacebook.net"
+      },
+      {
+        "kind": "domain",
+        "value": "freefacebookads.net"
+      },
+      {
+        "kind": "domain",
+        "value": "freefblikes.com"
+      },
+      {
+        "kind": "domain",
+        "value": "freindfeed.com"
+      },
+      {
+        "kind": "domain",
+        "value": "friendbook.info"
+      },
+      {
+        "kind": "domain",
+        "value": "friendfed.com"
+      },
+      {
+        "kind": "domain",
+        "value": "friendfeed-api.com"
+      },
+      {
+        "kind": "domain",
+        "value": "friendfeed-media.com"
+      },
+      {
+        "kind": "domain",
+        "value": "friendfeed.com"
+      },
+      {
+        "kind": "domain",
+        "value": "friendfeedmedia.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fsacebok.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fscebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "fundraisingwithfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "funnyfacebook.org"
+      },
+      {
+        "kind": "domain",
+        "value": "futureofbusinesssurvey.org"
+      },
+      {
+        "kind": "domain",
+        "value": "gacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "gameroom.com"
+      },
+      {
+        "kind": "domain",
+        "value": "gfacecbook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "groups.com"
+      },
+      {
+        "kind": "domain",
+        "value": "hackerfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "hackfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "hackfacebookid.com"
+      },
+      {
+        "kind": "domain",
+        "value": "hifacebook.info"
+      },
+      {
+        "kind": "domain",
+        "value": "howtohackfacebook-account.com"
+      },
+      {
+        "kind": "domain",
+        "value": "hsfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "httpfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "httpsfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "httpwwwfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "i.org"
+      },
+      {
+        "kind": "domain",
+        "value": "internet.org"
+      },
+      {
+        "kind": "domain",
+        "value": "klik.me"
+      },
+      {
+        "kind": "domain",
+        "value": "liverail.com"
+      },
+      {
+        "kind": "domain",
+        "value": "liverail.tv"
+      },
+      {
+        "kind": "domain",
+        "value": "login-account.net"
+      },
+      {
+        "kind": "domain",
+        "value": "markzuckerberg.com"
+      },
+      {
+        "kind": "domain",
+        "value": "midentsolutions.com"
+      },
+      {
+        "kind": "domain",
+        "value": "mobilefacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "moneywithfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "myfbfans.com"
+      },
+      {
+        "kind": "domain",
+        "value": "newsfeed.com"
+      },
+      {
+        "kind": "domain",
+        "value": "nextstop.com"
+      },
+      {
+        "kind": "domain",
+        "value": "online-deals.net"
+      },
+      {
+        "kind": "domain",
+        "value": "opencreate.org"
+      },
+      {
+        "kind": "domain",
+        "value": "reachtheworldonfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "shopfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "sportsfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "sportstream.com"
+      },
+      {
+        "kind": "domain",
+        "value": "supportfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "terragraph.com"
+      },
+      {
+        "kind": "domain",
+        "value": "tfbnw.net"
+      },
+      {
+        "kind": "domain",
+        "value": "thefacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "thefacebook.net"
+      },
+      {
+        "kind": "domain",
+        "value": "thefind.com"
+      },
+      {
+        "kind": "domain",
+        "value": "toplayerserver.com"
+      },
+      {
+        "kind": "domain",
+        "value": "viewpointsfromfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "whyfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "worldhack.com"
+      },
+      {
+        "kind": "domain",
+        "value": "www-facebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "wwwfacebok.com"
+      },
+      {
+        "kind": "domain",
+        "value": "wwwfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "wwwmfacebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "zuckerberg.com"
+      },
+      {
+        "kind": "domain",
+        "value": "zuckerberg.net"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookwork.com"
+      },
+      {
+        "kind": "domain",
+        "value": "redkix.com"
+      },
+      {
+        "kind": "domain",
+        "value": "workplace.com"
+      },
+      {
+        "kind": "domain",
+        "value": "workplaceusecases.com"
+      },
+      {
+        "kind": "full",
+        "value": "fbcdn-a.akamaihd.net"
+      },
+      {
+        "kind": "domain",
+        "value": "analytics.facebook.com"
+      },
+      {
+        "kind": "domain",
+        "value": "facebookads.com"
+      },
+      {
+        "kind": "domain",
+        "value": "pixel.facebook.com"
+      }
+    ],
+    "instagram": [
+      {
+        "kind": "domain",
+        "value": "achat-followers-instagram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "acheter-followers-instagram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "acheterdesfollowersinstagram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "acheterfollowersinstagram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "bookstagram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "carstagram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "cdninstagram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "chickstagram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "ig.me"
+      },
+      {
+        "kind": "domain",
+        "value": "igcdn.com"
+      },
+      {
+        "kind": "domain",
+        "value": "igsonar.com"
+      },
+      {
+        "kind": "domain",
+        "value": "igtv.com"
+      },
+      {
+        "kind": "domain",
+        "value": "imstagram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "imtagram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instaadder.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instachecker.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instafallow.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instafollower.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagainer.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagda.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagify.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagmania.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagor.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagram-brand.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagram-engineering.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagram-help.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagram-press.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagram-press.net"
+      },
+      {
+        "kind": "domain",
+        "value": "instagram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagramci.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagramcn.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagramdi.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagramhashtags.net"
+      },
+      {
+        "kind": "domain",
+        "value": "instagramhilecim.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagramhilesi.org"
+      },
+      {
+        "kind": "domain",
+        "value": "instagramium.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagramizlenme.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagramkusu.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagramlogin.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagramm.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagramn.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagrampartners.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagramphoto.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagramq.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagramsepeti.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagramtakipcisatinal.net"
+      },
+      {
+        "kind": "domain",
+        "value": "instagramtakiphilesi.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagramtips.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagramtr.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagran.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagranm.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagrem.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagrm.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagtram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instagy.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instamgram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instangram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instanttelegram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "instaplayer.net"
+      },
+      {
+        "kind": "domain",
+        "value": "instastyle.tv"
+      },
+      {
+        "kind": "domain",
+        "value": "instgram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "intagram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "intagrm.com"
+      },
+      {
+        "kind": "domain",
+        "value": "intgram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "kingstagram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "lnstagram-help.com"
+      },
+      {
+        "kind": "domain",
+        "value": "theinstagramhack.com"
+      },
+      {
+        "kind": "domain",
+        "value": "oninstagram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "online-instagram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "onlineinstagram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "web-instagram.net"
+      },
+      {
+        "kind": "domain",
+        "value": "wwwinstagram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "graph.instagram.com"
+      },
+      {
+        "kind": "domain",
+        "value": "graph-fallback.instagram.com"
+      }
+    ],
+    "youtube": [
+      {
+        "kind": "domain",
+        "value": "youtube"
+      },
+      {
+        "kind": "domain",
+        "value": "ggpht.cn"
+      },
+      {
+        "kind": "domain",
+        "value": "ggpht.com"
+      },
+      {
+        "kind": "domain",
+        "value": "googlevideo.com"
+      },
+      {
+        "kind": "domain",
+        "value": "wide-youtube.l.google.com"
+      },
+      {
+        "kind": "domain",
+        "value": "withyoutube.com"
+      },
+      {
+        "kind": "domain",
+        "value": "youtu.be"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube-nocookie.com"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube-ui.l.google.com"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.ae"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.al"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.am"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.at"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.az"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.ba"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.be"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.bg"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.bh"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.bo"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.by"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.ca"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.cat"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.ch"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.cl"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.co"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.co.ae"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.co.at"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.co.cr"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.co.hu"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.co.id"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.co.il"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.co.in"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.co.jp"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.co.ke"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.co.kr"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.co.ma"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.co.nz"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.co.th"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.co.tz"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.co.ug"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.co.uk"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.co.ve"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.co.za"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.co.zw"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.ar"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.au"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.az"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.bd"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.bh"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.bo"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.br"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.by"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.co"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.do"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.ec"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.ee"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.eg"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.es"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.gh"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.gr"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.gt"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.hk"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.hn"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.hr"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.jm"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.jo"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.kw"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.lb"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.lv"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.ly"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.mk"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.mt"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.mx"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.my"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.ng"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.ni"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.om"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.pa"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.pe"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.ph"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.pk"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.pt"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.py"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.qa"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.ro"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.sa"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.sg"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.sv"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.tn"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.tr"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.tw"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.ua"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.uy"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.com.ve"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.cr"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.cz"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.de"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.dk"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.ee"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.es"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.fi"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.fr"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.ge"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.googleapis.com"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.gr"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.gt"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.hk"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.hr"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.hu"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.ie"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.in"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.iq"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.is"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.it"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.jo"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.jp"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.kr"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.kz"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.la"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.lk"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.lt"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.lu"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.lv"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.ly"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.ma"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.md"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.me"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.mk"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.mn"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.mx"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.my"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.ng"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.ni"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.nl"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.no"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.pa"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.pe"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.ph"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.pk"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.pl"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.pr"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.pt"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.qa"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.ro"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.rs"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.ru"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.sa"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.se"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.sg"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.si"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.sk"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.sn"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.soy"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.sv"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.tn"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.tv"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.ua"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.ug"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.uy"
+      },
+      {
+        "kind": "domain",
+        "value": "youtube.vn"
+      },
+      {
+        "kind": "domain",
+        "value": "youtubeeducation.com"
+      },
+      {
+        "kind": "domain",
+        "value": "youtubeembeddedplayer.googleapis.com"
+      },
+      {
+        "kind": "domain",
+        "value": "youtubefanfest.com"
+      },
+      {
+        "kind": "domain",
+        "value": "youtubegaming.com"
+      },
+      {
+        "kind": "domain",
+        "value": "youtubego.co.id"
+      },
+      {
+        "kind": "domain",
+        "value": "youtubego.co.in"
+      },
+      {
+        "kind": "domain",
+        "value": "youtubego.com"
+      },
+      {
+        "kind": "domain",
+        "value": "youtubego.com.br"
+      },
+      {
+        "kind": "domain",
+        "value": "youtubego.id"
+      },
+      {
+        "kind": "domain",
+        "value": "youtubego.in"
+      },
+      {
+        "kind": "domain",
+        "value": "youtubei.googleapis.com"
+      },
+      {
+        "kind": "domain",
+        "value": "youtubekids.com"
+      },
+      {
+        "kind": "domain",
+        "value": "youtubemobilesupport.com"
+      },
+      {
+        "kind": "domain",
+        "value": "yt.be"
+      },
+      {
+        "kind": "domain",
+        "value": "ytimg.com"
+      },
+      {
+        "kind": "full",
+        "value": "yt3.googleusercontent.com"
+      },
+      {
+        "kind": "domain",
+        "value": "ads.youtube.com"
+      }
+    ],
+    "shopee": [
+      {
+        "kind": "domain",
+        "value": "shopee.cl"
+      },
+      {
+        "kind": "domain",
+        "value": "shopee.cn"
+      },
+      {
+        "kind": "domain",
+        "value": "shopee.co.id"
+      },
+      {
+        "kind": "domain",
+        "value": "shopee.co.th"
+      },
+      {
+        "kind": "domain",
+        "value": "shopee.com"
+      },
+      {
+        "kind": "domain",
+        "value": "shopee.com.br"
+      },
+      {
+        "kind": "domain",
+        "value": "shopee.com.co"
+      },
+      {
+        "kind": "domain",
+        "value": "shopee.com.mx"
+      },
+      {
+        "kind": "domain",
+        "value": "shopee.com.my"
+      },
+      {
+        "kind": "domain",
+        "value": "shopee.es"
+      },
+      {
+        "kind": "domain",
+        "value": "shopee.fr"
+      },
+      {
+        "kind": "domain",
+        "value": "shopee.id"
+      },
+      {
+        "kind": "domain",
+        "value": "shopee.in"
+      },
+      {
+        "kind": "domain",
+        "value": "shopee.io"
+      },
+      {
+        "kind": "domain",
+        "value": "shopee.ph"
+      },
+      {
+        "kind": "domain",
+        "value": "shopee.sg"
+      },
+      {
+        "kind": "domain",
+        "value": "shopee.tw"
+      },
+      {
+        "kind": "domain",
+        "value": "shopee.vn"
+      },
+      {
+        "kind": "domain",
+        "value": "shopeemobile.com"
+      },
+      {
+        "kind": "domain",
+        "value": "shopeesz.com"
+      },
+      {
+        "kind": "domain",
+        "value": "shp.ee"
+      }
+    ]
+  }
+}

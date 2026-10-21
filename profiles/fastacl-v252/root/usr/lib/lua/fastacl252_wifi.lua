@@ -103,10 +103,10 @@ end
 function M.status(u)
   local main=u:get_all('fastacl252','main') or {}; local map=radio_map(u); local c=counts(u); local rows={}
   u:foreach('fastacl252','wifi',function(s)
-    if owned(s) then rows[#rows+1]={id=s['.name'],hidden=u:get('wireless',s['.name'],'hidden')=='1',network=s.network or '',ssid=s.ssid or '',band=s.band or '',subnet=s.subnet or '',mode=s.mode or 'direct',node=s.node or '',preproxy=s.preproxy or '',dns=s.dns or 'inherit',dns_type=s.dns_type or '',dns_ip=s.dns_ip or '',dns_name=s.dns_name or ''} end
+    if owned(s) then rows[#rows+1]={id=s['.name'],network=s.network or '',ssid=s.ssid or '',hidden=u:get('wireless',s['.name'],'hidden')=='1',band=s.band or '',subnet=s.subnet or '',mode=s.mode or 'direct',node=s.node or '',preproxy=s.preproxy or '',platforms=s.platforms or '',dns_split=s.dns_split or '0',block_domains=s.block_domains or '',split_mode=s.split_mode or 'all',split_rules=s.split_rules or '',dns=s.dns or 'inherit',dns_type=s.dns_type or '',dns_ip=s.dns_ip or '',dns_name=s.dns_name or ''} end
   end)
   table.sort(rows,function(a,b) return a.id<b.id end)
-  return {radios=map,managed=rows,counts=c,max5=math.max(0,math.min(9,math.floor(tonumber(main.max_wifi_5g) or 9))),max2=math.max(0,math.min(3,math.floor(tonumber(main.max_wifi_2g) or 3)))}
+  return {radios=map,managed=rows,counts=c,max5=tonumber(main.max_wifi_5g or 14),max2=tonumber(main.max_wifi_2g or 8)}
 end
 
 function M.create(u,req)
@@ -145,6 +145,10 @@ function M.update(u,req)
   local id=tostring(req.id or ''); local s=u:get_all('fastacl252',id)
   assert(s and s['.type']=='wifi' and owned(s),'FastACL WiFi 不存在')
   local mode,node,pre=validate_binding(u,req.node,req.preproxy)
+  local split={mode=(req.node and req.node~='') and 'proxy' or s.mode,platforms=req.platforms or s.platforms or '',dns_split=req.dns_split or s.dns_split or '0',block_domains=req.block_domains or s.block_domains or '',split_mode=req.split_mode or s.split_mode or 'all',split_rules=req.split_rules or s.split_rules or ''}; require('fastacl252_split').parse(split)
+  u:set('fastacl252',id,'platforms',split.platforms)
+  u:set('fastacl252',id,'dns_split',split.dns_split); u:set('fastacl252',id,'block_domains',split.block_domains)
+  u:set('fastacl252',id,'split_mode',split.split_mode); u:set('fastacl252',id,'split_rules',split.split_rules)
   u:set('fastacl252',id,'mode',mode); u:set('fastacl252',id,'node',node); u:set('fastacl252',id,'preproxy',pre); set_dns(u,id,req,mode)
 end
 
@@ -195,9 +199,17 @@ function M.remove_all(u,expected)
  assert(type(expected)=='table' and #expected==#ids,'WiFi 列表已变化，请刷新后重试');local seen={};for _,id in ipairs(expected) do assert(type(id)=='string' and not seen[id],'清除列表无效');seen[id]=true end;for _,id in ipairs(ids) do assert(seen[id],'WiFi 列表已变化，请刷新后重试') end
  table.sort(ids);return M.remove_many(u,ids)
 end
+function M.hide_many(u,ids,hidden)
+ assert(type(ids)=='table' and #ids>0 and #ids<=128,'请选择 1 至 128 个附加 WiFi')
+ assert(type(hidden)=='boolean','SSID 显示状态无效');local seen={}
+ for _,id in ipairs(ids) do
+  assert(type(id)=='string' and id:match('^jfa25w%d+$') and not seen[id],'附加 WiFi 编号无效或重复');seen[id]=true
+  local f=u:get_all('fastacl252',id);local w=u:get_all('wireless',id)
+  assert(f and f['.type']=='wifi' and owned(f) and f.network==id,'只能修改 FastACL 建立的附加 WiFi')
+  assert(w and w['.type']=='wifi-iface' and owned(w) and w.network==id and w.mode=='ap','附加 WiFi 接口不存在或不匹配')
+ end
+ for _,id in ipairs(ids) do M.hide_one(u,id,hidden) end
+ return {ids=ids,count=#ids,hidden=hidden}
+end
 M.owner=OWNER
 return M
-
-
-
-

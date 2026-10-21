@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/binary"
+ "encoding/json"
 	"errors"
 	"github.com/daeuniverse/outbound/netproxy"
 	"io"
@@ -52,7 +53,7 @@ func slotIdentity(r *relay, key string) string {
 	if id == 0 {
 		return "direct"
 	}
-	return r.config.Exits[strconv.Itoa(id)]
+	p,_:=r.platformPolicy(key);b,_:=json.Marshal(p);return r.config.Exits[strconv.Itoa(id)]+string(b)
 }
 func (m *relayManager) serveSlots() (net.Listener, error) {
 	r := m.current.Load()
@@ -197,6 +198,7 @@ func (m *relayManager) slot(c net.Conn) {
 			d = encryptedBase{}
 		} else {
 			d = r.exits[id]
+            if strings.HasPrefix(key,"platform_"){d=r.priorityExits[id]}
 		}
 		valid = d != nil
 	}
@@ -220,7 +222,10 @@ func (m *relayManager) slot(c net.Conn) {
 	if e != nil {
 		return
 	}
-	c.SetDeadline(time.Time{})
+	if strings.HasPrefix(key,"platform_") && request[1]==1 {
+  address,e=r.platformAddress(key,address);if e!=nil {socksReply(c,2,nil);return}
+ }
+ c.SetDeadline(time.Time{})
 	switch request[1] {
 	case 1:
 		dialCtx, stop := context.WithTimeout(ctx, 8*time.Second)
@@ -251,12 +256,12 @@ func (m *relayManager) slot(c net.Conn) {
 		remote.Close()
 		<-done
 	case 3:
-		m.slotUDP(c, d)
+		m.slotUDP(c, d, r, key)
 	default:
 		socksReply(c, 7, nil)
 	}
 }
-func (m *relayManager) slotUDP(c net.Conn, d netproxy.Dialer) {
+func (m *relayManager) slotUDP(c net.Conn, d netproxy.Dialer,r *relay,key string) {
 	// One UDP association belongs to its authenticated TCP connection. Pin the
 	// first datagram's endpoint and never accept packets from another address.
 	peer := c.RemoteAddr().(*net.TCPAddr).IP
@@ -324,7 +329,10 @@ func (m *relayManager) slotUDP(c net.Conn, d netproxy.Dialer) {
 				continue
 			}
 			dialCtx, stop := context.WithTimeout(ctx, 5*time.Second)
-			remote, e := d.DialContext(dialCtx, "udp", address)
+			target:=address
+            if strings.HasPrefix(key,"platform_"){target,e=r.platformAddress(key,address)}
+            if e!=nil{stop();<-m.data.udpLimit;continue}
+            remote, e := d.DialContext(dialCtx, "udp", target)
 			stop()
 			if e != nil {
 				<-m.data.udpLimit

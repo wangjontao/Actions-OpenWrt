@@ -1,4 +1,4 @@
--- FastACL 2.5.6 policy compiler: main-LAN device policies + managed WiFi subnet policies.
+-- FastACL 2.5.5 policy compiler: main-LAN device policies + managed WiFi subnet policies.
 local M={}
 -- libuci's native cursor has set/add but no LuCI-specific section() helper.
 function M.section(u,config,kind,name,values)
@@ -49,6 +49,7 @@ local function cidr_range(cidr)
   return base,base+size-1
 end
 local function validate_exit(c,x,guards_only)
+  require('fastacl252_split').parse(x)
   assert(x.mode=='direct' or x.mode=='proxy','Invalid policy mode')
   if x.mode=='proxy' and not guards_only then
     assert(M.id(x.node) and c.nodes[x.node],'Missing proxy node')
@@ -104,11 +105,11 @@ local function nft_set(name,kind,values)
 end
 function M.firewall(c,backend)
   M.validate(c,true); assert(backend=='nft','Invalid firewall backend')
-  local proxy={}; for _,d in ipairs(c.devices) do if d.mode=='proxy' or c.fixed_exit then proxy[#proxy+1]=d end end
+  local proxy={}; for _,d in ipairs(c.devices) do if d.mode=='proxy' then proxy[#proxy+1]=d end end
   local macs,ips,pairs={},{},{}; for _,d in ipairs(proxy) do macs[#macs+1]=d.mac;ips[#ips+1]=d.ip;pairs[#pairs+1]=d.mac..' . '..d.ip end
   local ifaces,proxy_wifi={},{}; local seen={}
   for _,v in ipairs(c.interfaces or {c.interface}) do if not seen[v] then ifaces[#ifaces+1]=quote_iface(v);seen[v]=true end end
-  for _,w in ipairs(c.wifis or {}) do if w.mode=='proxy' or c.fixed_exit then proxy_wifi[#proxy_wifi+1]=quote_iface(w.interface) end end
+  for _,w in ipairs(c.wifis or {}) do if w.mode=='proxy' then proxy_wifi[#proxy_wifi+1]=quote_iface(w.interface) end end
   local wifi_set,wifi_drop='',''
   if #proxy_wifi>0 then
     wifi_set=nft_set('proxy_wifi_ifaces','ifname',proxy_wifi)
@@ -117,12 +118,13 @@ function M.firewall(c,backend)
   local sets=nft_set('lan_ifaces','ifname',ifaces)..wifi_set..nft_set('proxy_macs','ether_addr',macs)..nft_set('proxy_ips','ipv4_addr',ips)..nft_set('proxy_pairs','ether_addr . ipv4_addr',pairs)
   local all='iifname @lan_ifaces '; local main='iifname '..quote_iface(c.interface)..' '
   local dns6=all..'meta nfproto ipv6 meta l4proto { tcp, udp } th dport 53 drop\n'
-  return {nft='table inet fastacl252 {\n'..sets..
+  local split_sets,split_rules=require('fastacl252_split').nft(c)
+  return {nft='table inet fastacl252 {\n'..sets..split_sets..
     'chain prerouting { type filter hook prerouting priority -151; policy accept;\n'..
     all..'udp sport 68 udp dport 67 return\n'..
     main..'meta nfproto ipv4 ether saddr @proxy_macs ether saddr . ip saddr != @proxy_pairs drop\n'..
     main..'meta nfproto ipv4 ip saddr @proxy_ips ether saddr . ip saddr != @proxy_pairs drop\n}\n'..
-    'chain forward { type filter hook forward priority -10; policy accept;\n'..dns6..
+    'chain forward { type filter hook forward priority -10; policy accept;\n'..dns6..split_rules..
     wifi_drop..
     main..'ether saddr @proxy_macs drop\n'..main..'ip saddr @proxy_ips drop\n}\n'..
     'chain dns_redirect { type nat hook prerouting priority -100; policy accept;\n'..

@@ -6,30 +6,10 @@ R=${FASTACL_RUNTIME_DIR:-/tmp/fastacl252}
 LOCK="${R}-apply.lock"
 mkdir -p "$R"
 
-edit_busy(){
-  local edit=/tmp/fastacl252-edit.lock owner age
-  [ -d "$edit" ] || return 1
-  owner=$(cat "$edit/pid" 2>/dev/null || true)
-  case "$owner" in
-    ''|*[!0-9]*)
-      age=$(lua -e 'local s=require("nixio.fs").stat("/tmp/fastacl252-edit.lock"); print(s and os.time()-s.mtime or 0)' 2>/dev/null || echo 0)
-      [ "$age" -gt 120 ] || return 0;;
-    *) kill -0 "$owner" 2>/dev/null && return 0;;
-  esac
-  rm -f "$edit/pid"
-  rmdir "$edit" 2>/dev/null || true
-  return 1
-}
-
-phase_stamp(){
-  read phase_uptime phase_idle < /proc/uptime
-  printf '%s %s\n' "$phase_uptime" "$1" >> "$R/switch-timing.log"
-}
-
 pause_fast(){
   sleep 0.1 2>/dev/null && return 0
   command -v usleep >/dev/null 2>&1 && { usleep 100000; return 0; }
-  lua -e 'require("nixio").nanosleep(0,100000000)'
+  sleep 1
 }
 
 release_lock(){
@@ -95,7 +75,7 @@ dns_ready(){ dns_alive && listener 12553; }
 wait_dae(){
   local i=0
   while ! dae_ready; do
-    i=$((i+1)); [ "$i" -lt 400 ] || return 1
+    i=$((i+1)); [ "$i" -lt 40 ] || return 1
     pause_fast
   done
 }
@@ -141,35 +121,9 @@ generate_next(){
   lua /usr/libexec/fastacl252-generate.lua nft
 }
 
-validation_key(){
-  # /tmp cache: exact generated policies and executable replacement identity.
-  command -v sha256sum >/dev/null 2>&1 || return 1
-  for executable in dae fastacl252-dns; do
-    executable_path=$(command -v "$executable") || return 1
-    FASTACL_VALIDATE_EXE="$executable_path" lua -e 'local s=assert(require("nixio.fs").stat(os.getenv("FASTACL_VALIDATE_EXE"))); print(s.ino,s.size,s.mtime,s.ctime)' || return 1
-  done
-  sha256sum "$R/router.next.dae" "$R/dns.next.json" || return 1
-}
-
 validate_next(){
-  validation_digest=''
-  if validation_identity=$(validation_key); then
-    validation_digest=$(printf '%s' "$validation_identity" | sha256sum | cut -d ' ' -f 1)
-  fi
-  if [ -n "$validation_digest" ] && [ -f "$R/validated/$validation_digest" ]; then
-    : >"$R/check.log"
-    : >"$R/dns-check.log"
-    return 0
-  fi
-  "${FASTACL_CHECK_HELPER:-/usr/libexec/fastacl252-check}" "$R/router.next.dae" "$R/dns.next.json" "$R/check.log" "$R/dns-check.log" || return 1
-  if [ -n "$validation_digest" ]; then
-    mkdir -p "$R/validated"
-    # Bound tmpfs use; markers contain hashes only, never configuration secrets.
-    if [ "$(find "$R/validated" -type f | wc -l)" -ge 64 ]; then
-      rm -f "$R/validated/"*
-    fi
-    : >"$R/validated/$validation_digest"
-  fi
+  dae validate -c "$R/router.next.dae" >"$R/check.log" 2>&1 || { cat "$R/check.log"; return 1; }
+  fastacl252-dns -check -config "$R/dns.next.json" >"$R/dns-check.log" 2>&1 || { cat "$R/dns-check.log"; return 1; }
 }
 
 firewall_apply(){
@@ -198,14 +152,6 @@ start_dae_next(){
   wait_dae || { cat "$R/router.log" 2>/dev/null || true; return 1; }
 }
 
-dns_reload_control(){
-  if [ -f /usr/libexec/fastacl252-control.lua ]; then
-    lua /usr/libexec/fastacl252-control.lua dns "$R/dns.json"
-  else
-    fastacl252-dns -reload -config "$R/dns.json"
-  fi
-}
-
 reload_dns_next(){
   if dns_ready && cmp -s "$R/dns.next.json" "$R/dns.json"; then return 0; fi
   if ! dns_ready; then
@@ -216,7 +162,7 @@ reload_dns_next(){
   cp "$R/dns.json" "$R/dns.prev.json"
   cp "$R/dns.next.json" "$R/dns.json.pending"
   mv "$R/dns.json.pending" "$R/dns.json"
-  if dns_reload_control >"$R/dns-reload.log" 2>&1; then return 0; fi
+  if fastacl252-dns -reload -config "$R/dns.json" >"$R/dns-reload.log" 2>&1; then return 0; fi
   echo '[FastACL] DNS reload rejected; keeping the running policy and listener' >&2
   cat "$R/dns-reload.log" >&2
   cp "$R/dns.prev.json" "$R/dns.json.pending"
@@ -229,10 +175,6 @@ reload_dns_next(){
 # the in-process reload does not finish, the caller falls back to dae-only
 # restart; system network/wifi/firewall are still untouched.
 dae_reload_fast(){
-  if [ -f /usr/libexec/fastacl252-control.lua ]; then
-    lua /usr/libexec/fastacl252-control.lua dae "$1" >"$R/reload.log" 2>&1
-    return $?
-  fi
   local pid="$1" cli i=0
   : > "$R/reload.log"
   dae reload "$pid" >"$R/reload.log" 2>&1 &
@@ -262,18 +204,9 @@ reload_dae_next(){
   cp "$R/router.dae" "$R/router.prev.dae"
   cp "$R/router.next.dae" "$R/router.dae"
   local pid; pid=$(cat "$R/router.pid")
-  local reload_rc=0
-  dae_reload_fast "$pid" || reload_rc=$?
-  if [ "$reload_rc" -eq 0 ] && wait_dae; then
+  if dae_reload_fast "$pid" && wait_dae; then
     echo 'hot' > "$R/last-apply-mode"
     return 0
-  fi
-
-  if [ "$reload_rc" -eq 2 ] && dae_ready; then
-    cp "$R/router.prev.dae" "$R/router.dae"
-    echo '[FastACL] dae rejected replacement; retaining running policy' >&2
-    cat "$R/reload.log" >&2
-    return 1
   fi
 
   echo '[FastACL] dae hot reload failed/timeout; falling back to dae-only restart' >&2
@@ -294,45 +227,13 @@ reload_dae_next(){
 }
 
 hot_apply(){
-  : > "$R/switch-timing.log"
-  phase_stamp lock_start
   acquire_lock
-  phase_stamp lock_done
-  phase_stamp guards_start
   generate_guards
-  phase_stamp guards_done
-  phase_stamp generate_start
   generate_next
-  phase_stamp generate_done
-  # Interface notifications often leave the compiled policy unchanged.
-  if cmp -s "$R/router.next.dae" "$R/router.dae" && cmp -s "$R/dns.next.json" "$R/dns.json" && cmp -s "$R/nft.next.rules" "$R/nft.loaded.rules" && dae_ready && dns_ready && nft list table inet fastacl252 >/dev/null 2>&1; then
-    echo 'hot' > "$R/last-request-mode"
-    if [ "$(uci -q get fastacl252.main.fixed_exit)" = 1 ]; then echo 'binding-update' > "$R/last-apply-mode"; fi
-    phase_stamp unchanged_done
-    return 0
-  fi
-  phase_stamp validate_start
-  if dae_ready && dns_ready && [ -f /usr/libexec/fastacl252-control.lua ]; then
-    # Generated policy is checked again by each live service before publication.
-    # Avoid loading two additional Go processes just to repeat those checks.
-    echo 'Validation performed by live reload endpoints' > "$R/check.log"
-    : > "$R/dns-check.log"
-  else
-    validate_next
-  fi
-  phase_stamp validate_done
-  phase_stamp firewall_start
+  validate_next
   firewall_apply
-  phase_stamp firewall_done
-  phase_stamp dns_reload_start
   reload_dns_next
-  phase_stamp dns_reload_done
-  local binding_only=0
-  if [ "$(uci -q get fastacl252.main.fixed_exit)" = 1 ] && dae_ready && cmp -s "$R/router.next.dae" "$R/router.dae"; then binding_only=1; fi
-  phase_stamp dae_reload_start
   reload_dae_next
-  phase_stamp dae_reload_done
-  if [ "$binding_only" = 1 ]; then echo binding-update > "$R/last-apply-mode"; fi
   echo 'hot' > "$R/last-request-mode"
 }
 
@@ -379,10 +280,8 @@ case "${1:-status}" in
     echo 'Core stopped; protection rules retained';;
   guard)
     while [ "$(uci -q get fastacl252.main.enabled 2>/dev/null || echo 0)" = 1 ]; do
-      if ! edit_busy && [ ! -d "$LOCK" ]; then
-        if ! dae_ready || ! dns_ready || ! nft list table inet fastacl252 >/dev/null 2>&1; then
-          /usr/bin/fastacl252 ensure >"$R/guard.log" 2>&1 || true
-        fi
+      if ! dae_ready || ! dns_ready || ! nft list table inet fastacl252 >/dev/null 2>&1; then
+        /usr/bin/fastacl252 ensure >"$R/guard.log" 2>&1 || true
       fi
       if [ ! -d /tmp/fastacl252-subscribe.lock ]; then
         lua /usr/libexec/fastacl252-subscribe.lua due >"$R/subscribe.log" 2>&1 &

@@ -2,7 +2,10 @@ module fastacl252-dns
 
 go 1.26.0
 
-require github.com/daeuniverse/outbound v0.0.0-sticky-ip.0.20260911162531-896954f65c52
+require (
+	github.com/daeuniverse/outbound v0.0.0-sticky-ip.0.20260911162531-896954f65c52
+	golang.org/x/net v0.38.0
+)
 
 require (
 	github.com/andybalholm/brotli v1.0.6 // indirect
@@ -37,7 +40,6 @@ require (
 	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/exp v0.0.0-20250207012021-f9890c6ad9f3 // indirect
 	golang.org/x/mod v0.23.0 // indirect
-	golang.org/x/net v0.38.0 // indirect
 	golang.org/x/sync v0.12.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/text v0.23.0 // indirect

@@ -28,16 +28,13 @@ fs.remove('/tmp/luci-indexcache')
 -- LuCI caches menus per login in sessionStorage, independently of server caches.
 -- Invalidate only that menu once when this UI revision is first loaded.
 local marker='juliang-menu-revision'
-local script=[=[<style id="juliang-hide-footer">footer .footer-content{display:none!important}</style><script id="juliang-menu-revision">(function(){try{var k='luci-session-store',d=JSON.parse(sessionStorage.getItem(k)||'{}'),r='255-device-subscription-list-1';for(var s in d){if(d[s]&&typeof d[s]==='object'&&d[s].juliangMenuRevision!==r){delete d[s].menu;d[s].juliangMenuRevision=r}}sessionStorage.setItem(k,JSON.stringify(d))}catch(e){}})();</script>]=]
+local script=[=[<script id="juliang-menu-revision">(function(){try{var k='luci-session-store',d=JSON.parse(sessionStorage.getItem(k)||'{}'),r='255-device-subscription-list-1';for(var s in d){if(d[s]&&typeof d[s]==='object'&&d[s].juliangMenuRevision!==r){delete d[s].menu;d[s].juliangMenuRevision=r}}sessionStorage.setItem(k,JSON.stringify(d))}catch(e){}})();</script>]=]
 for _,path in ipairs({'/usr/share/ucode/luci/template/themes/argon/header.ut','/usr/lib/lua/luci/view/themes/argon/header.htm'}) do
  local text=fs.readfile(path)
  if text then
   text=text:gsub('JuLtiang','JuLiang')
-  local brand='<span style="display:block;white-space:nowrap;line-height:1.2;text-align:center">JuLiang</span><span style="display:block;white-space:nowrap;line-height:1.4;text-align:center">控制中心</span>'
-  text=text:gsub('(<a%s+class="brand"[^>]*>).-</a>',function(open) return open..brand..'</a>' end)
   -- Keep the brand on two deliberate lines at every sidebar width.
   text=text:gsub('>JuLiang%s*控制中心</a>', '><span style="display:block;white-space:nowrap;line-height:1.2;text-align:center">JuLiang</span><span style="display:block;white-space:nowrap;line-height:1.4;text-align:center">控制中心</span></a>')
-  text=text:gsub('<style id="juliang%-hide%-footer">.-</style>','')
   text=text:gsub('<script id="juliang%-menu%-revision">.-</script>','')
   local updated,n=text:gsub('<head>',function() return '<head>\n'..script end,1)
   if n>0 then assert(fs.writefile(path,updated));fs.chmod(path,'644') end
@@ -45,3 +42,15 @@ for _,path in ipairs({'/usr/share/ucode/luci/template/themes/argon/header.ut','/
 end
 for path in fs.glob('/tmp/luci-indexcache*') do fs.remove(path) end
 
+-- Persist footer visibility after theme migration.
+local fs=require'nixio.fs'
+local css='<style id="juliang-hide-footer">footer .footer-content{display:none!important}</style>'
+for _,p in ipairs({'/usr/share/ucode/luci/template/themes/argon/header.ut','/usr/lib/lua/luci/view/themes/argon/header.htm'})do
+ local s=fs.readfile(p)
+ if s then
+  if not fs.access(p..'.before-hide-footer') then assert(fs.writefile(p..'.before-hide-footer',s));fs.chmod(p..'.before-hide-footer','600') end
+  s=s:gsub('<style id="juliang%-hide%-footer">.-</style>','')
+  local t,n=s:gsub('<head>',function()return '<head>\n'..css end,1);assert(n==1,'Cannot locate theme head')
+  assert(fs.writefile(p..'.new',t));fs.chmod(p..'.new','644');assert(fs.rename(p..'.new',p))
+ end
+end

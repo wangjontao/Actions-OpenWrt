@@ -1,0 +1,32 @@
+{
+  "version": "2.5.7",
+  "mechanism": "shared-dae-application-reload",
+  "based_on": "f2a2d5ef1eedab6b85d53d204ca8031e20c71ce5",
+  "fixed_exit": false,
+  "source_router": "JDCloud RE-CP-03; no device configuration exported",
+  "features": [
+    "smart-ip-split",
+    "dns-domain-split",
+    "platform-force-proxy",
+    "AF41-platform-priority",
+    "wifi-bulk-delete-hide",
+    "wifi-create-progress",
+    "CLOEXEC-edit-lock",
+    "node-only-listener-validation",
+    "main-lan-address-guard-scope"
+  ],
+  "limitations": [
+    "existing node assignment may reload shared dae and affect other sessions",
+    "platform identification excludes unrecognized encrypted DNS/direct-IP traffic",
+    "QoS shaping bandwidth and WAN interface require site configuration",
+    "firmware build and all-device regression not run"
+  ],
+  "wifi_defaults": {
+    "5g": 9,
+    "2g": 3
+  },
+  "live_router_override": {
+    "5g": 14,
+    "2g": 8
+  }
+}
