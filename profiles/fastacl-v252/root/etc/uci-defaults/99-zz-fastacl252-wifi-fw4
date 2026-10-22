@@ -1,0 +1,4 @@
+#!/bin/sh
+# Pin only FastACL-owned bridge devices; do not restart network or radios.
+[ -f /etc/config/fastacl252 ] || exit 0
+lua /usr/libexec/fastacl252-wifi-fw4.lua

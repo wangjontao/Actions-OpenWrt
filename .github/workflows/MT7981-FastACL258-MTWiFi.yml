@@ -1,5 +1,5 @@
 name: MT7981 MTWiFi FastACL 2.5.8 Testing
-run-name: 'FastACL 2.5.8 fixed-entry switching · ${{ github.ref_name }}'
+run-name: 'FastACL 2.5.8-r2 DHCP firewall fix · ${{ github.ref_name }}'
 'on':
   workflow_dispatch: {}
   push:
@@ -49,6 +49,7 @@ jobs:
         .venv/bin/python scripts/tests/test_mt7981_workflow_shell.py
         .venv/bin/python scripts/tests/test_firmware_artifacts_mt7981.py
         .venv/bin/python profiles/fastacl-v252/tests/test_wireless.py
+        .venv/bin/python profiles/fastacl-v252/tests/test_wifi_fw4.py
         .venv/bin/python profiles/fastacl-v252/tests/test_fixed_exit.py
         python3 profiles/fastacl-v252/tests/test_lite_hotpath.py
         .venv/bin/python profiles/fastacl-v252/tests/test_control.py
