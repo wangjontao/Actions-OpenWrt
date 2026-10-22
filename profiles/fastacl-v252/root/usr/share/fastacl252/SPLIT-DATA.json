@@ -1,0 +1,14 @@
+{
+  "ipv4": {
+    "source": "https://ftp.apnic.net/stats/apnic/delegated-apnic-latest",
+    "snapshot": "2026-10-20",
+    "count": 5498,
+    "sha256": "eaf10f439040399aafd001215d98f768e6fcd01d59f5337c16e39547b5edc23c"
+  },
+  "domains": {
+    "source": "https://github.com/felixonmars/dnsmasq-china-list/blob/master/accelerated-domains.china.conf",
+    "snapshot": "local validated data from prior split tests",
+    "count": 109795,
+    "sha256": "590b8534244632ecda6e0b53e2d332055de4630a8a57b139dfe5744e4b72477a"
+  }
+}

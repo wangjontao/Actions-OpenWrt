@@ -11,3 +11,7 @@ No live nodes, subscriptions, WiFi passwords, device bindings, slot secrets or p
 ## 2.5.8-r2 DHCP startup fix
 
 Pin each owned WiFi bridge explicitly in its fw4 zone, in addition to the logical network reference. This prevents early firewall loads from omitting the DHCP/DNS zone before netifd reports the managed interface up. An idempotent first-boot migration updates only matching FastACL-owned zones, preserving primary and unrelated networks and existing device entries. Live Philips HY3000 testing recovered A1/A2 DHCP leases and phone Internet access; no WiFi or dae/DNS restart was required. Added migration ownership/idempotence regression coverage.
+
+## Bundled split-data repair
+
+Ship both cn-ipv4.txt (5,498 APNIC-derived CN IPv4 ranges, 2026-10-20 snapshot) and cn-domains.txt (109,795 suffixes from the previously validated dnsmasq-china-list snapshot). The previous source checkpoint omitted these runtime data assets, causing smart IP routing to fail and preventing domestic DNS domain splitting. Pinned SHA-256 metadata, format/count and actual smart-policy compilation tests are included. Package installation rejects missing/empty data files. Live policy compilation and real dae/DNS validators passed after installing the files without changing saved settings or restarting services.

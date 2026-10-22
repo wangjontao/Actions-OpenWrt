@@ -1,5 +1,5 @@
 name: MT7981 MTWiFi FastACL 2.5.8 Testing
-run-name: 'FastACL 2.5.8-r2 DHCP firewall fix · ${{ github.ref_name }}'
+run-name: 'FastACL 2.5.8-r3 split data fix · ${{ github.ref_name }}'
 'on':
   workflow_dispatch: {}
   push:
@@ -59,6 +59,7 @@ jobs:
           if head -n1 "$file" | grep -q '^#!/bin/sh'; then sh -n "$file"; shfmt -ln posix "$file" >/dev/null; fi
         done
         .venv/bin/python profiles/fastacl-v252/tests/test_import.py
+        .venv/bin/python profiles/fastacl-v252/tests/test_split_data.py
         .venv/bin/python profiles/fastacl-v252/tests/test_subscription.py
         .venv/bin/python profiles/fastacl-v252/tests/test_menu_cleanup.py
         .venv/bin/python profiles/fastacl-v252/tests/test_reboot.py
