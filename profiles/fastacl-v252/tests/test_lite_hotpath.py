@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 controller = (ROOT / "root/usr/lib/lua/luci/controller/fastacl252.lua").read_text(encoding='utf-8')
@@ -15,9 +16,11 @@ def between(text: str, start: str, end: str) -> str:
     return text[a:b]
 
 
-assert "version='2.5.8'" in controller
-assert "PKG_VERSION:=2.5.8" in pkg
-assert "fastacl252.main.version=2.5.8" in defaults
+version = re.search(r"^PKG_VERSION:=(\d+\.\d+\.\d+)$", pkg, re.M).group(1)
+assert f"version='{version}'" in controller
+assert f"fastacl252.main.version={version}" in defaults
+assert f"option version '{version}'" in (ROOT / "root/etc/config/fastacl252").read_text(encoding="utf-8")
+assert f"FastACL V{version}" in (ROOT / "root/usr/lib/lua/luci/view/fastacl252/console.htm").read_text(encoding="utf-8")
 
 # Managed WiFi node/preproxy/DNS updates are pure application-layer switches.
 wifi_update = between(controller, "if req.action=='update' then", "if req.action=='hide_all'")
@@ -71,7 +74,7 @@ assert "/usr/bin/fastacl252 apply" not in guard
 assert "procd_add_reload_trigger fastacl252" in init
 assert "procd_add_reload_trigger fastacl252 firewall" not in init
 
-print("FastACL 2.5.8 hot-path architecture: OK")
+print(f"FastACL {version} version consistency and hot-path architecture: OK")
 
 # DNS hot updates must acknowledge a live in-process reload, never stop listeners.
 dns_hot = between(runtime, "reload_dns_next(){", "# dae's own reload")

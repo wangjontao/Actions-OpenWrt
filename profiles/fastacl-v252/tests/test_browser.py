@@ -1,8 +1,9 @@
-"""Exercise the compact FastACL V2.5.8 UI against an isolated demo backend."""
+"""Exercise the compact FastACL UI against an isolated demo backend."""
 import pathlib, re, threading, traceback
 from http.server import ThreadingHTTPServer
 from playwright.sync_api import sync_playwright, expect
 import preview_server
+VERSION=re.search(r"^PKG_VERSION:=(.+)$", (pathlib.Path(__file__).parents[1]/"package-Makefile").read_text(),re.M).group(1)
 
 OUT=pathlib.Path(__file__).parents[1]/'test-results'
 OUT.mkdir(parents=True,exist_ok=True)
@@ -16,7 +17,7 @@ try:
         page.on('pageerror',lambda e:errors.append(str(e)))
 
         stage='initial load';page.goto(url)
-        expect(page.get_by_text('FastACL V2.5.8',exact=False)).to_be_visible()
+        expect(page.get_by_text(f'FastACL V{VERSION}',exact=False)).to_be_visible()
         expect(page.locator('#f25-devices .item')).to_have_count(3)
         expect(page.get_by_role('heading',name='多 WiFi 分配模式',exact=True)).to_be_visible()
         expect(page.locator('#f25-direct-dns')).to_have_value('alidns')
@@ -119,7 +120,7 @@ try:
         expect(page.get_by_text('全局 DNS',exact=True)).to_be_visible()
         page.screenshot(path=str(OUT/'ui-mobile-lite.png'),full_page=True)
         assert not errors,errors
-        browser.close();print('FastACL V2.5.8 quick-switch, batch-delete and responsive UI passed')
+        browser.close();print(f'FastACL V{VERSION} quick-switch, batch-delete and responsive UI passed')
 except Exception:
     detail='stage: '+stage+'\n\n'+traceback.format_exc()+'\npage errors:\n'+'\n'.join(errors)
     (OUT/'ui-browser-error.txt').write_text(detail,encoding='utf-8')
