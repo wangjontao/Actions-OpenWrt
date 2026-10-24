@@ -161,3 +161,61 @@ func TestSlotUDPAndAuthentication(t *testing.T) {
 		t.Fatalf("unexpected UDP reply %q", b[:n])
 	}
 }
+
+// Keep all connections open together: the old global 128 cap rejects #129.
+func TestSlotsBeyondOldGlobalLimit(t *testing.T) {
+	_, address, r := slotFixture(t)
+	for i := 0; i < 256; i++ {
+		c, err := slotClient(t, address, "wifi_a1", r.config.DataSecret, "tcp")
+		if err != nil {
+			t.Fatalf("connection %d: %v", i+1, err)
+		}
+		t.Cleanup(func() { c.Close() })
+		c.SetDeadline(time.Now().Add(3 * time.Second))
+		if _, err = c.Write([]byte("x")); err != nil {
+			t.Fatal(err)
+		}
+		b := make([]byte, 3)
+		if _, err = io.ReadFull(c, b); err != nil || string(b) != "A:x" {
+			t.Fatalf("connection %d echo %q: %v", i+1, b, err)
+		}
+		c.SetDeadline(time.Time{})
+	}
+}
+func TestOptionalSlotLimit(t *testing.T) {
+	unlimited := newSlotLimit(0)
+	for i := 0; i < 2048; i++ {
+		if !acquireSlot(unlimited) {
+			t.Fatal("default must be unlimited")
+		}
+		releaseSlot(unlimited)
+	}
+	limited := newSlotLimit(2)
+	if !acquireSlot(limited) || !acquireSlot(limited) || acquireSlot(limited) {
+		t.Fatal("explicit cap not respected")
+	}
+	releaseSlot(limited)
+	if !acquireSlot(limited) {
+		t.Fatal("released capacity not reusable")
+	}
+}
+
+func TestUDPFlowsBeyondOldGlobalLimit(t *testing.T) {
+	_, address, r := slotFixture(t)
+	for i := 0; i < 80; i++ {
+		c, e := slotClient(t, address, "wifi_a1", r.config.DataSecret, "udp")
+		if e != nil {
+			t.Fatalf("UDP session %d: %v", i+1, e)
+		}
+		t.Cleanup(func() { c.Close() })
+		c.SetDeadline(time.Now().Add(3 * time.Second))
+		if _, e = c.Write([]byte("ping")); e != nil {
+			t.Fatal(e)
+		}
+		b := make([]byte, 32)
+		n, e := c.Read(b)
+		if e != nil || string(b[:n]) != "A:ping" {
+			t.Fatalf("UDP flow %d reply %q: %v", i+1, b[:n], e)
+		}
+	}
+}

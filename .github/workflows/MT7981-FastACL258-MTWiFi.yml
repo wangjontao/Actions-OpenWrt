@@ -1,5 +1,5 @@
 name: MT7981 MTWiFi FastACL 2.5.8 Testing
-run-name: 'FastACL 2.5.8-r3 split data fix · ${{ github.ref_name }}'
+run-name: 'FastACL 2.5.8 MT7981 - unlimited fixed-entry'
 'on':
   workflow_dispatch: {}
   push:
@@ -14,7 +14,7 @@ run-name: 'FastACL 2.5.8-r3 split data fix · ${{ github.ref_name }}'
     - scripts/tests/test_firmware_artifacts_mt7981.py
     - scripts/tests/test_mt7981_workflow_shell.py
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: mt7981-fastacl258-fixed
   cancel-in-progress: true
@@ -244,24 +244,6 @@ jobs:
         path: openwrt/upload/*
         if-no-files-found: error
         retention-days: 30
-    - name: Publish firmware release
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: MT7981-FastACL2.5.8-MTWiFi-${{ matrix.group }}-${{ env.BUILD_DATE }}
-        name: MT7981 FastACL 2.5.8 MTWiFi ${{ matrix.group }} ${{ env.BUILD_DATE }}
-        body: |
-          FastACL 2.5.8 MTWiFi testing build.
-          Devices: ${{ matrix.devices }}
-
-          MTWiFi 7.6.6.1 retained; HNAT/WHNAT acceleration is disabled for dae policy enforcement.
-          Matched 6.6 hardware trees and existing Z8103AX LED / dual-IP payloads retained.
-          Per-device counters use the vendor ioctl; unavailable counters are shown as unavailable.
-          Hardware testing is still required before deployment.
-          NPS uses nps.jontao.top:8024, with lowercase WAN MAC vkey (colons removed).
-        files: openwrt/upload/*
-        fail_on_unmatched_files: true
-        prerelease: true
-        make_latest: false
     - name: Upload build failure diagnostics
       if: failure()
       uses: actions/upload-artifact@v4

@@ -7,7 +7,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/binary"
- "encoding/json"
+	"encoding/json"
 	"errors"
 	"github.com/daeuniverse/outbound/netproxy"
 	"io"
@@ -28,6 +28,30 @@ type slotTracker struct {
 	sessions map[*slotSession]struct{}
 	limit    chan struct{}
 	udpLimit chan struct{}
+}
+
+// A nil limiter accepts connections without an application-level cap.
+func newSlotLimit(n int) chan struct{} {
+	if n <= 0 {
+		return nil
+	}
+	return make(chan struct{}, n)
+}
+func acquireSlot(limit chan struct{}) bool {
+	if limit == nil {
+		return true
+	}
+	select {
+	case limit <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+func releaseSlot(limit chan struct{}) {
+	if limit != nil {
+		<-limit
+	}
 }
 
 func (m *relayManager) publish(next *relay) {
@@ -53,7 +77,9 @@ func slotIdentity(r *relay, key string) string {
 	if id == 0 {
 		return "direct"
 	}
-	p,_:=r.platformPolicy(key);b,_:=json.Marshal(p);return r.config.Exits[strconv.Itoa(id)]+string(b)
+	p, _ := r.platformPolicy(key)
+	b, _ := json.Marshal(p)
+	return r.config.Exits[strconv.Itoa(id)] + string(b)
 }
 func (m *relayManager) serveSlots() (net.Listener, error) {
 	r := m.current.Load()
@@ -65,18 +91,17 @@ func (m *relayManager) serveSlots() (net.Listener, error) {
 		return nil, e
 	}
 	m.data.sessions = map[*slotSession]struct{}{}
-	m.data.limit = make(chan struct{}, 128)
-	m.data.udpLimit = make(chan struct{}, 64)
+	m.data.limit = newSlotLimit(r.config.DataMaxConnections)
+	m.data.udpLimit = newSlotLimit(r.config.DataMaxUDPFlows)
 	go func() {
 		for {
 			c, e := l.Accept()
 			if e != nil {
 				return
 			}
-			select {
-			case m.data.limit <- struct{}{}:
-				go func() { defer func() { <-m.data.limit }(); m.slot(c) }()
-			default:
+			if acquireSlot(m.data.limit) {
+				go func() { defer releaseSlot(m.data.limit); m.slot(c) }()
+			} else {
 				c.Close()
 			}
 		}
@@ -198,7 +223,9 @@ func (m *relayManager) slot(c net.Conn) {
 			d = encryptedBase{}
 		} else {
 			d = r.exits[id]
-            if strings.HasPrefix(key,"platform_"){d=r.priorityExits[id]}
+			if strings.HasPrefix(key, "platform_") {
+				d = r.priorityExits[id]
+			}
 		}
 		valid = d != nil
 	}
@@ -222,10 +249,14 @@ func (m *relayManager) slot(c net.Conn) {
 	if e != nil {
 		return
 	}
-	if strings.HasPrefix(key,"platform_") && request[1]==1 {
-  address,e=r.platformAddress(key,address);if e!=nil {socksReply(c,2,nil);return}
- }
- c.SetDeadline(time.Time{})
+	if strings.HasPrefix(key, "platform_") && request[1] == 1 {
+		address, e = r.platformAddress(key, address)
+		if e != nil {
+			socksReply(c, 2, nil)
+			return
+		}
+	}
+	c.SetDeadline(time.Time{})
 	switch request[1] {
 	case 1:
 		dialCtx, stop := context.WithTimeout(ctx, 8*time.Second)
@@ -261,7 +292,7 @@ func (m *relayManager) slot(c net.Conn) {
 		socksReply(c, 7, nil)
 	}
 }
-func (m *relayManager) slotUDP(c net.Conn, d netproxy.Dialer,r *relay,key string) {
+func (m *relayManager) slotUDP(c net.Conn, d netproxy.Dialer, r *relay, key string) {
 	// One UDP association belongs to its authenticated TCP connection. Pin the
 	// first datagram's endpoint and never accept packets from another address.
 	peer := c.RemoteAddr().(*net.TCPAddr).IP
@@ -320,22 +351,26 @@ func (m *relayManager) slotUDP(c net.Conn, d netproxy.Dialer,r *relay,key string
 		size := len(flows)
 		mu.Unlock()
 		if f == nil {
-			if size >= 16 {
+			if cap := r.config.DataMaxUDPFlowsPerSession; cap > 0 && size >= cap {
 				continue
 			}
-			select {
-			case m.data.udpLimit <- struct{}{}:
-			default:
+			if !acquireSlot(m.data.udpLimit) {
 				continue
 			}
 			dialCtx, stop := context.WithTimeout(ctx, 5*time.Second)
-			target:=address
-            if strings.HasPrefix(key,"platform_"){target,e=r.platformAddress(key,address)}
-            if e!=nil{stop();<-m.data.udpLimit;continue}
-            remote, e := d.DialContext(dialCtx, "udp", target)
+			target := address
+			if strings.HasPrefix(key, "platform_") {
+				target, e = r.platformAddress(key, address)
+			}
+			if e != nil {
+				stop()
+				releaseSlot(m.data.udpLimit)
+				continue
+			}
+			remote, e := d.DialContext(dialCtx, "udp", target)
 			stop()
 			if e != nil {
-				<-m.data.udpLimit
+				releaseSlot(m.data.udpLimit)
 				continue
 			}
 			f = &flow{remote, append([]byte{0, 0, 0}, raw...)}
@@ -344,7 +379,7 @@ func (m *relayManager) slotUDP(c net.Conn, d netproxy.Dialer,r *relay,key string
 			mu.Unlock()
 			dst := endpoint
 			go func(address string, f *flow) {
-				defer func() { <-m.data.udpLimit }()
+				defer func() { releaseSlot(m.data.udpLimit) }()
 				defer func() { f.conn.Close(); mu.Lock(); delete(flows, address); mu.Unlock() }()
 				b := make([]byte, 65535)
 				for {
