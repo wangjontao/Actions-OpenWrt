@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+if [ -x /sbin/mtwifi_cfg ]; then
+  lua /usr/libexec/juliang-wifi-hardware-migrate
+fi

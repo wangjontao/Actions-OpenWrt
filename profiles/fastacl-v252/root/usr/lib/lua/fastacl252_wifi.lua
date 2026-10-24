@@ -70,43 +70,6 @@ end
 -- Derive stable per-BSS addresses from the router's physical MAC, not from
 -- MTWiFi's potentially duplicated virtual BSSID. Keep addresses unicast and
 -- locally administered; deterministic offsets survive reboot and UCI reload.
-local function mac_bytes(s)
-  if type(s)~='string' then return nil end
-  local a,b,c,d,e,f=s:lower():match('^(%x%x):(%x%x):(%x%x):(%x%x):(%x%x):(%x%x)$')
-  if not a then return nil end
-  return {tonumber(a,16),tonumber(b,16),tonumber(c,16),tonumber(d,16),tonumber(e,16),tonumber(f,16)}
-end
-local function mac_text(b)
-  return string.format('%02x:%02x:%02x:%02x:%02x:%02x',b[1],b[2],b[3],b[4],b[5],b[6])
-end
-local function router_base_mac()
-  for _,dev in ipairs({'eth0','wan','lan1','eth1'}) do
-    local f=io.open('/sys/class/net/'..dev..'/address','r')
-    if f then
-      local value=f:read('*l'); f:close()
-      local b=mac_bytes(value)
-      if b and (b[1] % 2)==0 and table.concat(b,':')~='00:00:00:00:00:00' then return b end
-    end
-  end
-  fail('无法读取本机物理 MAC，拒绝创建可能重复的 MTWiFi BSSID')
-end
-local function bssid_for(u,id)
-  local base=router_base_mac()
-  local slot=tonumber(id:match('(%d+)$'))
-  assert(slot and slot>=1 and slot<=99,'附加 WiFi 编号无效')
-  base[1]=base[1]-(base[1]%2)
-  if math.floor(base[1]/2)%2==0 then base[1]=base[1]+2 end
-  local n=base[4]*65536+base[5]*256+base[6]+slot
-  n=n%16777216
-  base[4]=math.floor(n/65536); base[5]=math.floor(n/256)%256; base[6]=n%256
-  local candidate=mac_text(base)
-  local conflict=false
-  u:foreach('wireless','wifi-iface',function(s)
-    if tostring(s.macaddr or ''):lower()==candidate then conflict=true end
-  end)
-  assert(not conflict,'计算出的 BSSID 已被占用，请检查无线 MAC 配置')
-  return candidate
-end
 local function add(u,cfg,kind,name,values,network)
   values.jfa25_owner=OWNER; values.jfa25_network=network
   assert(not u:get(cfg,name),'配置名称冲突: '..name)
@@ -150,6 +113,7 @@ function M.status(u)
 end
 
 function M.create(u,req)
+  require("juliang_wifi_hardware").preflight() -- V2.6.0 hardware identity gate
   req=req or {}; local st=M.status(u)
   local n5=int(req.count5 or 0,0,st.max5,'5GHz 新增数量超限'); local n2=int(req.count2 or 0,0,st.max2,'2.4GHz 新增数量超限')
   assert(n5+n2>0,'请至少新增一个 WiFi')
@@ -168,7 +132,7 @@ function M.create(u,req)
     add(u,'network','device',id..'_dev',{name=dev,type='bridge',bridge_empty='1',ipv6='0'},id)
     add(u,'network','interface',id,{device=dev,proto='static',ipaddr=ip,netmask='255.255.255.0',delegate='0'},id)
     add(u,'dhcp','dhcp',id,{interface=id,start='100',limit='120',leasetime='12h',ra='disabled',dhcpv6='disabled',ndp='disabled',dhcp_option={'6,'..ip}},id)
-    add(u,'wireless','wifi-iface',id,{device=radio,network=id,mode='ap',ssid=ssid,macaddr=bssid_for(u,id),encryption='psk2+ccmp',key=key,isolate='1',disabled='0',hidden=hidden and '1' or '0'},id)
+    add(u,'wireless','wifi-iface',id,{device=radio,network=id,mode='ap',ssid=ssid,encryption='psk2+ccmp',key=key,isolate='1',disabled='0',hidden=hidden and '1' or '0'},id)
     add(u,'firewall','zone',id,{name=id,network={id},device={dev},input='REJECT',output='ACCEPT',forward='REJECT'},id)
     add(u,'firewall','rule',id..'_dhcp',{name='FastACL '..id..' DHCP',src=id,proto='udp',dest_port='67',family='ipv4',target='ACCEPT'},id)
     add(u,'firewall','rule',id..'_dns',{name='FastACL '..id..' DNS',src=id,proto='tcp udp',dest_port='53 12553',family='ipv4',target='ACCEPT'},id)

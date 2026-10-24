@@ -1,0 +1,29 @@
+#!/usr/bin/lua
+local u=require('uci').cursor()
+require('juliang_wifi_hardware').preflight()
+local function legacy(s)
+ local value=tostring(s.macaddr or ''):lower()
+ if value=='' or s.juliang_mac_mode=='custom' or s.juliang_mac_mode=='random' then return false end
+ if value:match('^3[246e]:ca:81:') then return true end
+ local slot=tonumber(s['.name']:match('^jfa25w(%d+)$'))
+ if not slot then return false end
+ for _,dev in ipairs({'eth0','eth1','wan','lan1'}) do
+  local f=io.open('/sys/class/net/'..dev..'/address','r')
+  if f then
+   local mac=f:read('*l');f:close();local b={}
+   for byte in tostring(mac):gmatch('%x%x') do b[#b+1]=tonumber(byte,16) end
+   if #b==6 then
+    b[1]=b[1]-b[1]%4+2
+    local n=(b[4]*65536+b[5]*256+b[6]+slot)%16777216
+    b[4]=math.floor(n/65536);b[5]=math.floor(n/256)%256;b[6]=n%256
+    if value==string.format('%02x:%02x:%02x:%02x:%02x:%02x',unpack(b)) then return true end
+   end
+  end
+ end
+ return false
+end
+
+local ids={}
+u:foreach('wireless','wifi-iface',function(s) if s.jfa25_owner=='fastacl252-dev2' and legacy(s) then ids[#ids+1]=s['.name'] end end)
+for _,id in ipairs(ids) do u:delete('wireless',id,'macaddr') end
+assert(u:commit('wireless'))

@@ -23,7 +23,7 @@ end
 function M.catalog()
   local out={}
   for id,p in pairs(providers) do
-    out[#out+1]={id=id,label=p.label,scope=p.scope,kind=p.kind,ip=p.ip,name=p.name or ''}
+    if id~='follow_exit' then out[#out+1]={id=id,label=p.label,scope=p.scope,kind=p.kind,ip=p.ip,name=p.name or ''} end
   end
   table.sort(out,function(a,b) if a.scope~=b.scope then return a.scope<b.scope end return a.label<b.label end)
   return out

@@ -33,3 +33,6 @@ install -m755 "$GITHUB_WORKSPACE/profiles/mt7981-v2-common/95-juliang-dual-ip" p
 install -m755 "$GITHUB_WORKSPACE/profiles/fastacl-v252/nps/99-nps-firstboot-mac" package/fastacl252/files/etc/uci-defaults/99-nps-firstboot-mac
 install -d package/fastacl252/files/etc/hotplug.d/iface
 install -m755 "$GITHUB_WORKSPACE/profiles/fastacl-v252/nps/99-nps-wan-ifup" package/fastacl252/files/etc/hotplug.d/iface/99-nps-wan-ifup
+
+# V2.6.0: use Factory radio identity in MTWiFi configuration generation.
+python3 "$GITHUB_WORKSPACE/scripts/patch-fastacl260-mtwifi.py" --required

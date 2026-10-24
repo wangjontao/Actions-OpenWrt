@@ -152,7 +152,7 @@
 </style>
 <div class="f252">
   <div class="f25-sticky" aria-label="FastACL 状态与操作提示">
-  <h2><span class="f25-brand-text">JuLiangTK · FastACL V2.5.8</span></h2>
+  <h2><span class="f25-brand-text">JuLiangTK · FastACL V2.6.0</span></h2>
   <div class="bar"><span id="f25-health">读取状态…</span><button class="cbi-button" id="f25-refresh">刷新</button><input id="f25-search" placeholder="搜索设备 / MAC / IP"></div>
   <div id="f25-msg" class="msg" role="status" aria-live="polite" aria-atomic="true"></div>
   </div>
@@ -234,7 +234,7 @@ function el(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!=nu
 function nodeSel(v,pre){const s=document.createElement('select');opt(s,'',pre?'不使用前置':'国内直连');(state.nodes||[]).forEach(n=>opt(s,n.id,n.name));s.value=v||'';return s}
 function dnsAllowed(x,mode){return mode==='proxy'?x.kind==='doh':x.scope==='direct'}
 function dnsFill(s,mode){for(const scope of ['direct','proxy']){const entries=(state.dns_catalog||[]).filter(x=>x.scope===scope&&(mode==='proxy'||dnsAllowed(x,mode)));if(!entries.length)continue;const group=document.createElement('optgroup');group.label=scope==='direct'?'国内公共 DNS':'海外公共 DNS';for(const x of entries){const o=document.createElement('option');o.value=x.id;o.disabled=!dnsAllowed(x,mode);o.textContent=x.label+(o.disabled?'（仅直连，UDP）':x.kind==='doh'&&scope==='direct'?'（DoH）':'');group.appendChild(o)}s.appendChild(group)}}
-function dnsSel(mode,v,custom){const s=document.createElement('select');opt(s,'inherit','跟随全局 DNS');dnsFill(s,mode);if(custom)opt(s,'custom','自定义 DNS');s.value=v||'inherit';if(!s.value)s.value='inherit';return s}
+function dnsSel(mode,v,custom){if(v==='follow_exit')v='cloudflare';const s=document.createElement('select');opt(s,'inherit','跟随全局 DNS');dnsFill(s,mode);if(custom)opt(s,'custom','自定义 DNS');s.value=v||'inherit';if(!s.value)s.value='inherit';return s}
 function dnsPath(mode){const s=document.createElement('select');setDnsPath(s,mode);s.disabled=true;s.title='查询路径由出口节点决定，代理 DNS 不允许回落直连';return s}
 function setDnsPath(s,mode){s.replaceChildren();opt(s,mode,mode==='split'?'国内域名直连 DNS · 其余跟随代理':mode==='proxy'?'跟随代理出口（节点 + 前置）':'本地直连出口');s.value=mode}
 function field(name,c,wide){const d=el('div','field'+(wide?' wide':''));d.append(el('label','',name),c);return d}
@@ -303,7 +303,7 @@ function renderWifis(){
  });updateWifiBulk();renderWifiCreate();
 }
 
-function renderDns(){for(const [id,scope,val] of [['direct-dns','direct',state.direct_dns],['proxy-dns','proxy',state.proxy_dns]]){const s=$(id);s.replaceChildren();dnsFill(s,scope);s.value=val||''}}
+function renderDns(){for(const [id,scope,val] of [['direct-dns','direct',state.direct_dns],['proxy-dns','proxy',state.proxy_dns]]){const s=$(id);s.replaceChildren();dnsFill(s,scope);s.value=val==='follow_exit'?'cloudflare':val||''}}
 function renderSubLogs(){const root=$('sub-logs');root.replaceChildren();const names=new Map((state.subscriptions||[]).map(s=>[s.id,s.name]));for(const log of (Array.isArray(state.subscription_history)?state.subscription_history:[])){const row=el('div','item'),title=el('div',log.ok?'good':'bad',new Date(log.attempt*1000).toLocaleString()+' · '+(names.get(log.id)||'已删除订阅')+' · '+(log.ok?'成功':'失败'));row.append(title,el('div','note',log.ok?'导入 '+log.count+' 个节点 · 耗时 '+Math.max(0,(log.finished||log.attempt)-log.attempt)+' 秒':log.error||'更新失败'));root.append(row)}if(!root.childNodes.length)root.append(el('p','note','暂无更新记录；下次更新订阅后显示。'))}
 function renderSubs(){renderSubLogs();const list=state.subscriptions||[],root=$('sub-list');root.replaceChildren();$('sub-count').textContent=list.length+' 个';$('sub-update').disabled=state.subscription_running===true;$('sub-update').textContent=state.subscription_running?'更新中…':'更新全部';list.forEach((s,i)=>{const row=el('div','subscription-row'),number=el('span','subscription-number',String(i+1).padStart(2,'0')),identity=el('div','subscription-identity'),period=el('div','subscription-period','每 '+s.interval_hours+' 小时'),last=el('div','subscription-result'),actions=el('div','subscription-actions'),update=el('button','cbi-button subscription-update','更新'),remove=el('button','cbi-button danger','删除'),st=s.status||{};identity.append(el('div','title',s.name||s.id),el('div','meta',s.enabled===false?'已停用':'自动更新已启用'));const when=Number(st.finished||st.attempt||0);if(when>0&&Number.isFinite(when)){last.append(el('div','subscription-result-state '+(st.ok?'good':'bad'),st.ok?'成功 · '+Number(st.count||0)+' 个节点':'更新失败'),el('div','meta',new Date(when*1000).toLocaleString()));if(st.ok===false&&st.error)last.append(el('div','meta',st.error))}else last.append(el('div','meta','尚未更新'));update.type=remove.type='button';update.disabled=state.subscription_running===true;update.onclick=async()=>{update.disabled=true;try{await sub({action:'update',id:s.id})}finally{update.disabled=state.subscription_running===true}};remove.onclick=()=>confirm('删除订阅“'+(s.name||s.id)+'”？')&&sub({action:'remove',id:s.id});actions.append(update,remove);row.append(number,identity,period,last,actions);root.append(row)});if(!list.length)root.append(el('div','subscription-empty','暂无订阅，在上方添加 HTTPS 订阅地址。'))}
 function render(){health();renderNodes();renderBatch();renderDevices();renderWifis();renderDns();renderSubs()}
