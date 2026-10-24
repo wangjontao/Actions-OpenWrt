@@ -1,0 +1,5 @@
+#!/bin/sh
+chmod 755 /usr/libexec/juliang-bbr /etc/init.d/juliang-bbr
+/etc/init.d/juliang-bbr enable
+/usr/libexec/juliang-bbr apply || logger -t juliang-bbr 'BBR unavailable; retained existing TCP algorithm'
+exit 0

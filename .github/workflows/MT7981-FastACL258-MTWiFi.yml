@@ -1,5 +1,5 @@
 name: MT7981 MTWiFi FastACL 2.5.8 Testing
-run-name: 'FastACL 2.5.8 MT7981 - unlimited fixed-entry'
+run-name: 'FastACL 2.5.8 - BBR and unlimited connections - MT7981'
 'on':
   workflow_dispatch: {}
   push:
@@ -46,6 +46,7 @@ jobs:
         install -m755 "$(find /tmp/dae-core -type f -name dae | head -n1)" /tmp/dae
     - name: Validate Lite hot path and syntax
       run: |
+        python3 profiles/fastacl-v252/tests/test_bbr.py
         .venv/bin/python scripts/tests/test_mt7981_workflow_shell.py
         .venv/bin/python scripts/tests/test_firmware_artifacts_mt7981.py
         .venv/bin/python profiles/fastacl-v252/tests/test_wireless.py

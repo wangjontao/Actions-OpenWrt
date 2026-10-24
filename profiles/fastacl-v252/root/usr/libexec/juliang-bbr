@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+PREVIOUS=/etc/juliang-bbr.previous
+available() { modprobe tcp_bbr 2>/dev/null || true; sysctl -n net.ipv4.tcp_available_congestion_control | tr ' ' '\n' | grep -qx bbr; }
+case "${1:-status}" in
+ available) available;;
+ status)
+  printf 'enabled=%s\n' "$(uci -q get juliang_bbr.main.enabled || echo 0)"
+  printf 'current=%s\n' "$(sysctl -n net.ipv4.tcp_congestion_control)"
+  printf 'available=%s\n' "$(sysctl -n net.ipv4.tcp_available_congestion_control)";;
+ apply)
+  current=$(sysctl -n net.ipv4.tcp_congestion_control)
+  if [ "$(uci -q get juliang_bbr.main.enabled || echo 0)" = 1 ]; then
+   available || { echo 'BBR unavailable: a matching tcp_bbr kernel module is required.' >&2; exit 1; }
+   if [ ! -s "$PREVIOUS" ]; then
+    case "$current" in bbr) printf 'cubic\n' > "$PREVIOUS";; *) printf '%s\n' "$current" > "$PREVIOUS";; esac
+    chmod 600 "$PREVIOUS"
+   fi
+   wanted=bbr
+  else
+   wanted=$(cat "$PREVIOUS" 2>/dev/null || echo cubic)
+   case "$wanted" in ''|*[!a-zA-Z0-9_]*) wanted=cubic;; esac
+   [ "$wanted" != bbr ] || wanted=cubic
+   modprobe "tcp_$wanted" 2>/dev/null || true
+   sysctl -n net.ipv4.tcp_available_congestion_control | tr ' ' '\n' | grep -qx "$wanted" || wanted=reno
+  fi
+  [ "$current" = "$wanted" ] || sysctl -w "net.ipv4.tcp_congestion_control=$wanted"
+  [ "$(sysctl -n net.ipv4.tcp_congestion_control)" = "$wanted" ];;
+ *) echo 'Usage: juliang-bbr available|status|apply' >&2; exit 2;;
+esac
