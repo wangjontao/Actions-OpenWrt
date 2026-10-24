@@ -24,7 +24,7 @@ def collect(target, output):
         if Path(name).is_file():
             shutil.copy2(name, output / ('build.config' if name == '.config' else name))
     (output / 'BUILD.txt').write_text(
-        'version=2.5.8\ncommit=' + os.environ.get('GITHUB_SHA', '') +
+        'version=2.6.0\ncommit=' + os.environ.get('GITHUB_SHA', '') +
         '\ndevices=' + os.environ.get('MT7981_DEVICES', '') + '\n')
     sums = [f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}'
             for p in sorted(output.iterdir()) if p.is_file() and p.name != 'SHA256SUMS']
@@ -85,7 +85,7 @@ def verify(target, output, devices, reader=rootfs):
                 missing = REQUIRED - packages.keys()
                 if missing:
                     raise ValueError('missing installed packages: ' + ', '.join(sorted(missing)))
-                if not packages['fastacl252'].startswith('2.5.8-'):
+                if not packages['fastacl252'].startswith('2.6.0-'):
                     raise ValueError('unexpected FastACL version: ' + packages['fastacl252'])
                 if 'kmod-mt7915e' in packages:
                     raise ValueError('competing mt76 driver installed')

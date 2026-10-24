@@ -2,6 +2,9 @@ name: MT7981 MTWiFi FastACL 2.6.0 Testing
 run-name: 'FastACL 2.6.0 - BBR and unlimited connections - MT7981'
 'on':
   workflow_dispatch: {}
+  push:
+    branches: ['codex/mt7981-fastacl260-hardware-mac']
+    paths: ['.github/workflows/MT7981-FastACL260-MTWiFi.yml']
 
 permissions:
   contents: read
