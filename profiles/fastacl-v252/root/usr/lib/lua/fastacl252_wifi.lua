@@ -72,7 +72,43 @@ end
 -- locally administered; deterministic offsets survive reboot and UCI reload.
 local function mac_bytes(s)
   if type(s)~='string' then return nil end
-  local a,b,c,d,e,f=s:lower():match('^(%x%x):(%x%x):(%x%x):(%x%x):(%x%x):(%x%x)  values.jfa25_owner=OWNER; values.jfa25_network=network
+  local a,b,c,d,e,f=s:lower():match('^(%x%x):(%x%x):(%x%x):(%x%x):(%x%x):(%x%x)$')
+  if not a then return nil end
+  return {tonumber(a,16),tonumber(b,16),tonumber(c,16),tonumber(d,16),tonumber(e,16),tonumber(f,16)}
+end
+local function mac_text(b)
+  return string.format('%02x:%02x:%02x:%02x:%02x:%02x',b[1],b[2],b[3],b[4],b[5],b[6])
+end
+local function router_base_mac()
+  for _,dev in ipairs({'eth0','wan','lan1','eth1'}) do
+    local f=io.open('/sys/class/net/'..dev..'/address','r')
+    if f then
+      local value=f:read('*l'); f:close()
+      local b=mac_bytes(value)
+      if b and (b[1] % 2)==0 and table.concat(b,':')~='00:00:00:00:00:00' then return b end
+    end
+  end
+  fail('无法读取本机物理 MAC，拒绝创建可能重复的 MTWiFi BSSID')
+end
+local function bssid_for(u,id)
+  local base=router_base_mac()
+  local slot=tonumber(id:match('(%d+)$'))
+  assert(slot and slot>=1 and slot<=99,'附加 WiFi 编号无效')
+  base[1]=base[1]-(base[1]%2)
+  if math.floor(base[1]/2)%2==0 then base[1]=base[1]+2 end
+  local n=base[4]*65536+base[5]*256+base[6]+slot
+  n=n%16777216
+  base[4]=math.floor(n/65536); base[5]=math.floor(n/256)%256; base[6]=n%256
+  local candidate=mac_text(base)
+  local conflict=false
+  u:foreach('wireless','wifi-iface',function(s)
+    if tostring(s.macaddr or ''):lower()==candidate then conflict=true end
+  end)
+  assert(not conflict,'计算出的 BSSID 已被占用，请检查无线 MAC 配置')
+  return candidate
+end
+local function add(u,cfg,kind,name,values,network)
+  values.jfa25_owner=OWNER; values.jfa25_network=network
   assert(not u:get(cfg,name),'配置名称冲突: '..name)
   assert(require('fastacl252').section(u,cfg,kind,name,values),'创建配置失败: '..cfg..'.'..name)
 end
