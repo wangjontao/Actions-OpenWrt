@@ -243,14 +243,10 @@ end
 local function router_base_mac(u)
   -- Prefer actual Ethernet/board MACs. Do not derive from an existing MTWiFi
   -- BSSID: MTWiFi may already have initialized that address incorrectly.
-  local sys=require 'luci.sys'
   for _,dev in ipairs({'eth0','wan','lan1','eth1'}) do
     local f=io.open('/sys/class/net/'..dev..'/address','r')
     if f then local value=f:read('*l'); f:close(); local b=mac_bytes(value); if b then return b end end
   end
-  u:foreach('network','device',function(s)
-    if not mac_bytes(s.macaddr) and s.name then return end
-  end)
   fail('无法读取本机物理 MAC，拒绝创建可能重复的 MTWiFi BSSID')
 end
 local function bssid_for(u,id)
@@ -420,7 +416,8 @@ end
 return M
 ))
   assert(slot and slot>=1 and slot<=99,'附加 WiFi 编号无效')
-  base[1]=(base[1] | 2) & 254
+  base[1]=base[1] - (base[1] % 2) -- clear multicast bit
+  if math.floor(base[1]/2)%2==0 then base[1]=base[1]+2 end -- set local bit
   local n=base[4]*65536+base[5]*256+base[6]+slot
   n=n % 16777216
   base[4]=math.floor(n/65536); base[5]=math.floor(n/256)%256; base[6]=n%256
