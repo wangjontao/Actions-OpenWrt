@@ -1,10 +1,10 @@
 {
-  "version": "2.6.1",
+  "version": "2.6.2",
   "upstream_repository": "wangjontao/immortalwrt-24.10",
-  "upstream_branch": "2.6.1",
-  "upstream_commit": "e909816b42027e96f69be793aa1274510574f39b",
-  "workflow": ".github/workflows/MT7981-FastACL261-ImmortalWrt.yml",
+  "upstream_branch": "2.6.2",
+  "upstream_commit": "87e7c69cc8150e88497c659a9eb5decb5b9ff2cc",
+  "workflow": ".github/workflows/MT7981-FastACL262-ImmortalWrt.yml",
   "devices": 20,
   "driver": "mt76/mt7981",
-  "hardware_validation": "CI build plus existing 2.6.0 wireless hardware validation"
+  "hardware_validation": "CI build plus existing 2.6.0 wireless hardware validation and 2.6.2 capacity profiles"
 }
