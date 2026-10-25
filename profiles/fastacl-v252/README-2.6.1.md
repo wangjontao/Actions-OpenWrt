@@ -26,6 +26,13 @@
   - `/usr/bin/wan-watchdog enable|disable|status`
 - 状态保存在 `/tmp/wan-watchdog.status`，动作日志保存在 `/root/wan-watchdog.log`。
 
+## NPS 启动顺序
+
+- 保留开机后等待 40 秒再初始化 NPS 的原有设计。
+- NPS 初始化会等待 IPv4 默认路由和物理 WAN MAC 同时就绪，并在 WAN `ifup/ifupdate` 后重新启动客户端。
+- WAN 事件已成功启动 NPS 时，通过 `/tmp` 就绪标记跳过 40 秒定时器的重复启动。
+- 使用进程锁避免开机初始化和 hotplug 同时修改 NPS 配置。
+
 ## 无线默认值
 
 - 2.4 GHz 默认使用信道 1、HE20，降低拥挤信道和 40 MHz 兼容性问题。
