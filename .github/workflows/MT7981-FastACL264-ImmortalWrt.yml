@@ -215,7 +215,7 @@ jobs:
             mapfile -t images < <(find bin/targets/mediatek/filogic -maxdepth 1 -type f \( -iname "*${device}*sysupgrade*" -o -iname "*${device}*factory*" \) -size +5M)
             [ "${#images[@]}" -gt 0 ] || { echo "ERROR: $device firmware image missing"; find bin/targets/mediatek/filogic -maxdepth 1 -type f -printf '%f %s bytes\n' | sort; exit 1; }
             cp -a "${images[@]}" upload/
-            manifest=bin/targets/mediatek/filogic/immortalwrt-mediatek-filogic-${DEVICE}.manifest
+            manifest=bin/targets/mediatek/filogic/immortalwrt-mediatek-filogic.manifest
             [ -s "$manifest" ] || { echo "ERROR: shared package manifest missing"; exit 1; }
             for pkg in fastacl252 juliangtk-dae lyaml luci-theme-argon luci-app-argon-config luci-app-ttyd luci-app-autoreboot nps luci-app-nps npc sqm-scripts kmod-sched-cake kmod-ifb; do
               grep -q "^$pkg " "$manifest" || { echo "ERROR: $pkg missing from $device"; exit 1; }
