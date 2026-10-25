@@ -228,7 +228,7 @@ jobs:
           grep -q 'nps.jontao.top' package/fastacl252/files/usr/libexec/nps-wan-mac
           cp .config upload/build.config
           find bin/targets/mediatek/filogic -maxdepth 1 -type f -name '*.buildinfo' -exec cp -a {} upload/ \;
-          cp "JuLiangTK-${DEVICE_TAG}-final.config" profiles/fastacl-v252/README-2.6.4.md upload/
+          cp "JuLiangTK-${DEVICE_GROUP}-final.config" profiles/fastacl-v252/README-2.6.4.md upload/
           printf 'branch=%s\ncommit=%s\nsource_commit=%s\nversion=2.6.4\ngroup=%s\ndevices=%s\n' \
             "$GITHUB_REF_NAME" "$GITHUB_SHA" "$SOURCE_COMMIT" "$DEVICE_GROUP" "$DEVICES" > upload/LITE-BUILD.txt
           sha256sum upload/* | tee upload/SHA256SUMS
