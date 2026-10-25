@@ -1,5 +1,5 @@
 name: MT7981 FastACL 2.6.3 from ImmortalWrt 2.6.3 (Grouped)
-run-name: 'FastACL 2.6.3 - 4 grouped jobs from immortalwrt-24.10@31b7a33'
+run-name: 'FastACL 2.6.3 - 4 grouped jobs from immortalwrt-24.10@39d8b37'
 
 'on':
   workflow_dispatch: {}
@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: wangjontao/immortalwrt-24.10
-          ref: 31b7a33e44a6c7092821e1acd3ec2d2c53b36b37
+          ref: 39d8b37bbf2d6a0812acaa27676b017928d95b34
           persist-credentials: false
       - uses: actions/setup-go@v5
         with:
@@ -123,7 +123,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: wangjontao/immortalwrt-24.10
-          ref: 31b7a33e44a6c7092821e1acd3ec2d2c53b36b37
+          ref: 39d8b37bbf2d6a0812acaa27676b017928d95b34
           persist-credentials: false
       - name: Initialize build environment
         env:
