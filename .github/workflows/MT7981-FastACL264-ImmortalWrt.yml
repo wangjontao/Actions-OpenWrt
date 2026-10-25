@@ -1,5 +1,5 @@
 name: MT7981 FastACL 2.6.4 from ImmortalWrt 2.6.4 (Grouped)
-run-name: 'FastACL 2.6.4 - 4 grouped jobs from immortalwrt-24.10@9af9a61'
+run-name: 'FastACL 2.6.4 - 4 grouped jobs from immortalwrt-24.10@99a9ca0'
 
 'on':
   workflow_dispatch: {}
@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: wangjontao/immortalwrt-24.10
-          ref: 609f18a08db0a79377d8bd55a87d5990ab951a7b
+          ref: 99a9ca017943fe6d9da2ba77c5f17c8f21edd581
           persist-credentials: false
       - uses: actions/setup-go@v5
         with:
@@ -123,7 +123,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: wangjontao/immortalwrt-24.10
-          ref: 609f18a08db0a79377d8bd55a87d5990ab951a7b
+          ref: 99a9ca017943fe6d9da2ba77c5f17c8f21edd581
           persist-credentials: false
       - name: Initialize build environment
         env:
@@ -215,7 +215,7 @@ jobs:
             mapfile -t images < <(find bin/targets/mediatek/filogic -maxdepth 1 -type f \( -iname "*${device}*sysupgrade*" -o -iname "*${device}*factory*" \) -size +5M)
             [ "${#images[@]}" -gt 0 ] || { echo "ERROR: $device firmware image missing"; find bin/targets/mediatek/filogic -maxdepth 1 -type f -printf '%f %s bytes\n' | sort; exit 1; }
             cp -a "${images[@]}" upload/
-            manifest=bin/targets/mediatek/filogic/immortalwrt-mediatek-filogic-${DEVICE}.manifest
+            manifest="$(if [ -s "bin/targets/mediatek/filogic/immortalwrt-mediatek-filogic-${DEVICE}.manifest" ]; then echo "bin/targets/mediatek/filogic/immortalwrt-mediatek-filogic-${DEVICE}.manifest"; else find bin/targets/mediatek/filogic -maxdepth 1 -type f -name 'immortalwrt-mediatek-filogic*.manifest' -size +0c | head -n1; fi)"
             [ -s "$manifest" ] || { echo "ERROR: shared package manifest missing"; exit 1; }
             for pkg in fastacl252 juliangtk-dae lyaml luci-theme-argon luci-app-argon-config luci-app-ttyd luci-app-autoreboot nps luci-app-nps npc sqm-scripts kmod-sched-cake kmod-ifb; do
               grep -q "^$pkg " "$manifest" || { echo "ERROR: $pkg missing from $device"; exit 1; }

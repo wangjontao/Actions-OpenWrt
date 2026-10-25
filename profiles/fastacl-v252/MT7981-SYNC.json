@@ -2,7 +2,7 @@
   "version": "2.6.4",
   "upstream_repository": "wangjontao/immortalwrt-24.10",
   "upstream_branch": "2.6.4",
-  "upstream_commit": "609f18a08db0a79377d8bd55a87d5990ab951a7b",
+  "upstream_commit": "99a9ca017943fe6d9da2ba77c5f17c8f21edd581",
   "workflow": ".github/workflows/MT7981-FastACL264-ImmortalWrt.yml",
   "devices": 20,
   "driver": "mt76/mt7981",
