@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: fastacl262-actions-immortalwrt-grouped-${{ github.ref }}
+  group: fastacl262-actions-immortalwrt-grouped-${{ github.ref }}-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -213,14 +213,14 @@ jobs:
             mapfile -t images < <(find bin/targets/mediatek/filogic -maxdepth 1 -type f \( -iname "*${device}*sysupgrade*" -o -iname "*${device}*factory*" \) -size +5M)
             [ "${#images[@]}" -gt 0 ] || { echo "ERROR: $device firmware image missing"; find bin/targets/mediatek/filogic -maxdepth 1 -type f -printf '%f %s bytes\n' | sort; exit 1; }
             cp -a "${images[@]}" upload/
-            mapfile -t manifests < <(find bin/targets/mediatek/filogic -maxdepth 1 -type f -name "*${device}*.manifest")
-            [ "${#manifests[@]}" -gt 0 ] || { echo "ERROR: $device manifest missing"; exit 1; }
+            manifest=bin/targets/mediatek/filogic/immortalwrt-mediatek-filogic.manifest
+            [ -s "$manifest" ] || { echo "ERROR: shared package manifest missing"; exit 1; }
             for pkg in fastacl252 juliangtk-dae lyaml luci-theme-argon luci-app-argon-config luci-app-ttyd luci-app-autoreboot nps luci-app-nps npc sqm-scripts kmod-sched-cake kmod-ifb; do
-              grep -q "^$pkg " "${manifests[0]}" || { echo "ERROR: $pkg missing from $device"; exit 1; }
+              grep -q "^$pkg " "$manifest" || { echo "ERROR: $pkg missing from $device"; exit 1; }
             done
-            if grep -Ei '^(luci-app-store|luci-app-quickstart|quickstart|taskd) ' "${manifests[0]}"; then echo "ERROR: iStore/QuickStart unexpectedly present in $device"; exit 1; fi
-            if grep -Ei '^(luci-app-(passwall2?|homeproxy|openclash)|luci-i18n-(passwall2?|homeproxy|openclash)-)' "${manifests[0]}"; then echo "ERROR: forbidden proxy plugin present in $device"; exit 1; fi
-            cp -a "${manifests[@]}" upload/
+            if grep -Ei '^(luci-app-store|luci-app-quickstart|quickstart|taskd) ' "$manifest"; then echo "ERROR: iStore/QuickStart unexpectedly present in $device"; exit 1; fi
+            if grep -Ei '^(luci-app-(passwall2?|homeproxy|openclash)|luci-i18n-(passwall2?|homeproxy|openclash)-)' "$manifest"; then echo "ERROR: forbidden proxy plugin present in $device"; exit 1; fi
+            cp "$manifest" "upload/${device}.manifest"
           done
           grep -q '2.6.2' package/fastacl252/Makefile
           grep -q 'nps.jontao.top' package/fastacl252/files/usr/libexec/nps-wan-mac
