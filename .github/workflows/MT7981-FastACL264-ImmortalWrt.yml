@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: wangjontao/immortalwrt-24.10
-          ref: 9af9a61af1a1d89a5c282479c01778566b85f15c
+          ref: 609f18a08db0a79377d8bd55a87d5990ab951a7b
           persist-credentials: false
       - uses: actions/setup-go@v5
         with:
@@ -123,7 +123,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: wangjontao/immortalwrt-24.10
-          ref: 9af9a61af1a1d89a5c282479c01778566b85f15c
+          ref: 609f18a08db0a79377d8bd55a87d5990ab951a7b
           persist-credentials: false
       - name: Initialize build environment
         env:
