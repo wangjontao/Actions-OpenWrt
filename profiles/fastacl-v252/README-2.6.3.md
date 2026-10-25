@@ -22,7 +22,7 @@ V2.6.3 adds a signed, model-aware online firmware updater to LuCI.
 
 ## Release trust
 
-- Release manifests are hosted at `https://up.juliangtk.top/<channel>.json`.
+- Release manifests are hosted at `https://up.juliangtk.top:8443/<channel>.json`.
 - Firmware is hosted under immutable versioned paths.
 - The signing private key exists only in the protected GitHub `release` environment.
 - The device embeds only the public verification key.
